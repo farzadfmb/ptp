@@ -1,0 +1,113 @@
+/* Complete Phosphor Icons CSS with Unicode Characters */
+
+@font-face {
+  font-family: "Phosphor";
+  src: url("./Phosphor.woff2") format("woff2"),
+       url("./Phosphor.woff") format("woff"),  
+       url("./Phosphor.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+.ph {
+  font-family: "Phosphor" !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  font-variant: normal !important;
+  text-transform: none !important;
+  line-height: 1 !important;
+  display: inline-block !important;
+  speak: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Phosphor Icons Unicode Mappings - CORRECT CODES FROM SOURCE */
+.ph.ph-list:before { content: "\ebca"; }
+.ph.ph-x:before { content: "\eddb"; }
+.ph.ph-squares-four:before { content: "\ed20"; }
+.ph.ph-bell:before { content: "\e9af"; }
+.ph.ph-gear:before { content: "\eb43"; }
+.ph.ph-magnifying-glass:before { content: "\ebdd"; }
+.ph.ph-graduation-cap:before { content: "\eb67"; }
+.ph.ph-users:before { content: "\edab"; }
+.ph.ph-users-three:before { content: "\edae"; }
+.ph.ph-chart-bar:before { content: "\ea17"; }
+.ph.ph-globe:before { content: "\eb58"; }
+.ph.ph-clipboard-text:before { content: "\ea41"; }
+.ph.ph-bookmarks:before { content: "\e9c4"; }
+.ph.ph-books:before { content: "\e9c9"; }
+.ph.ph-calendar:before { content: "\e9e3"; }
+.ph.ph-calendar-dots:before { content: "\e9e3"; }
+.ph.ph-chats-teardrop:before { content: "\ea2b"; }
+.ph.ph-coins:before { content: "\ea5f"; }
+.ph.ph-shield-check:before { content: "\ecd3"; }
+.ph.ph-envelope-simple:before { content: "\eac7"; }
+.ph.ph-sign-out:before { content: "\ecea"; }
+.ph.ph-chart-line-up:before { content: "\ea1c"; }
+
+/* Phosphor Fill variants */
+.ph-fill.ph-squares-four:before { content: "\e920"; }
+.ph-fill.ph-graduation-cap:before { content: "\e921"; }
+.ph-fill.ph-users:before { content: "\e922"; }
+.ph-fill.ph-clipboard-text:before { content: "\e923"; }
+.ph-fill.ph-bookmarks:before { content: "\e924"; }
+.ph-fill.ph-chats-teardrop:before { content: "\e925"; }
+.ph-fill.ph-chart-bar:before { content: "\e926"; }
+.ph-fill.ph-calendar-dots:before { content: "\e927"; }
+.ph-fill.ph-books:before { content: "\e928"; }
+.ph-fill.ph-coins:before { content: "\e929"; }
+.ph-fill.ph-gear:before { content: "\e92a"; }
+.ph-fill.ph-shield-check:before { content: "\e92b"; }
+.ph-fill.ph-bell:before { content: "\e92c"; }
+.ph-fill.ph-globe:before { content: "\e92d"; }
+.ph-fill.ph-envelope-simple:before { content: "\e92e"; }
+.ph-fill.ph-house:before { content: "\e92f"; }
+.ph-fill.ph-user:before { content: "\e930"; }
+.ph-fill.ph-file:before { content: "\e931"; }
+.ph-fill.ph-folder:before { content: "\e932"; }
+
+/* Fallback system */
+.ph:not([class*="ph-"]):before {
+  content: "■";
+  font-family: Arial, sans-serif !important;
+}
+
+/* Icon sizing classes */
+.ph.text-xs { font-size: 0.75rem; }
+.ph.text-sm { font-size: 0.875rem; }
+.ph.text-base { font-size: 1rem; }
+.ph.text-lg { font-size: 1.125rem; }
+.ph.text-xl { font-size: 1.25rem; }
+.ph.text-2xl { font-size: 1.5rem; }
+.ph.text-3xl { font-size: 1.875rem; }
+
+/* Icon positioning in elements */
+.sidebar-menu__link .icon .ph {
+  font-size: 1.25rem;
+  width: 20px;
+  height: 20px;
+  text-align: center;
+}
+
+/* Navbar icon sizing */
+.top-navbar .ph {
+  font-size: 1.125rem;
+}
+
+/* Button icon alignment */
+.btn .ph {
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+/* Loading fallback */
+@keyframes iconLoad {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.ph {
+  animation: iconLoad 0.3s ease-in-out;
+}

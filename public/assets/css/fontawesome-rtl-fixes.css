@@ -1,0 +1,96 @@
+/* Font Awesome RTL Fixes */
+
+/* RTL Icon Direction Fixes */
+.fa-arrow-left {
+    transform: scaleX(-1);
+}
+
+.fa-arrow-right {
+    transform: scaleX(-1);
+}
+
+.fa-chevron-left {
+    transform: scaleX(-1);
+}
+
+.fa-chevron-right {
+    transform: scaleX(-1);
+}
+
+/* RTL Sidebar Icon Alignment */
+.sidebar-menu__link .fa,
+.sidebar-submenu__link .fa {
+    margin-left: 8px;
+    margin-right: 0;
+    width: 16px;
+    text-align: center;
+}
+
+/* RTL Navbar Icon Alignment */
+.top-navbar .fa {
+    margin-left: 4px;
+    margin-right: 0;
+}
+
+/* RTL Button Icon Spacing */
+.btn .fa {
+    margin-left: 4px;
+    margin-right: 0;
+}
+
+/* Icon Size Consistency */
+.fa {
+    font-size: 1em;
+    line-height: inherit;
+}
+
+/* Dropdown Icon RTL */
+.dropdown-toggle .fa-chevron-down {
+    margin-left: 4px;
+    margin-right: 0;
+}
+
+/* Navigation Toggle Icon */
+.toggle-btn .fa {
+    font-size: 1.2em;
+}
+
+/* Status Icons */
+.text-success .fa {
+    color: inherit;
+}
+
+.text-danger .fa {
+    color: inherit;
+}
+
+.text-warning .fa {
+    color: inherit;
+}
+
+.text-info .fa {
+    color: inherit;
+}
+
+/* Card Icon Alignment */
+.card-header .fa,
+.card-title .fa {
+    margin-left: 8px;
+    margin-right: 0;
+}
+
+/* Table Action Icons */
+.table .fa {
+    margin: 0 2px;
+}
+
+/* Form Icon Alignment */
+.input-group .fa {
+    line-height: inherit;
+}
+
+/* Breadcrumb Icons */
+.breadcrumb-item .fa {
+    margin-left: 4px;
+    margin-right: 0;
+}

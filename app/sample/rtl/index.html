@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en" dir="rtl" class="semi-dark">
+
+<head>
+  <?php
+  require_once '../layouts/hedtag.php';
+  ?>
+</head>
+
+<body>
+
+
+  <!--start wrapper-->
+  <div class="wrapper">
+
+    <!--start sidebar -->
+    <?php
+    require_once '../layouts/sidebar.php';
+    ?>
+    <!--end sidebar -->
+
+    <!--start top header-->
+    <?php
+    require_once '../layouts/Heder.php';
+    ?>
+    <!--end top header-->
+
+
+    <!-- start page content wrapper-->
+    <div class="page-content-wrapper">
+      <!-- start page content-->
+      <div class="page-content">
+
+        <!--start breadcrumb-->
+        <div class="page-breadcrumb d-none d-sm-flex align-items-center mb-3">
+          <div class="breadcrumb-title pe-3">Dashboard</div>
+          <div class="ps-3">
+            <nav aria-label="breadcrumb">
+              <ol class="breadcrumb mb-0 p-0 align-items-center">
+                <li class="breadcrumb-item"><a href="javascript:;">
+                    <ion-icon name="home-outline"></ion-icon>
+                  </a>
+                </li>
+                <li class="breadcrumb-item active" aria-current="page">eCommerce</li>
+              </ol>
+            </nav>
+          </div>
+
+        </div>
+        <!--end breadcrumb-->
+
+
+
+
+        <div class="card radius-10 w-100">
+          <div class="card-body">
+            <div class="d-flex align-items-center">
+              <h6 class="mb-0">کاربر جدید</h6>
+              <div class="border p-4 rounded">
+                <div class="card-title d-flex align-items-center">
+                  <h5 class="mb-0">کاربر جدید</h5>
+                </div>
+                <hr />
+                <form method="post" action="<?= url('panel/add_user.php') ?>">
+                  <div class="row mb-3">
+                    <label for="inputEnterYourName" class="col-sm-3 col-form-label">نام</label>
+                    <div class="col-sm-9">
+                      <input type="text" class="form-control" name="first_name" id="inputEnterYourName" placeholder="نام">
+                    </div>
+                  </div>
+                  <div class="row mb-3">
+                    <label for="inputEnterYourName" class="col-sm-3 col-form-label">نام خنوادگی</label>
+                    <div class="col-sm-9">
+                      <input type="text" class="form-control" name="last_name" id="inputEnterYourName" placeholder="نام خانوادگی">
+                    </div>
+                  </div>
+                  <div class="row mb-3">
+                    <label for="inputPhoneNo2" class="col-sm-3 col-form-label">تلفن تماس</label>
+                    <div class="col-sm-9">
+                      <input type="text" class="form-control" name="phone_number" id="inputPhoneNo2" placeholder="تلفن تماس">
+                    </div>
+                  </div>
+
+                  <div class="row mb-3">
+                    <label for="inputEmailAddress2" class="col-sm-3 col-form-label">کد پرسنلی</label>
+                    <div class="col-sm-9">
+                      <input type="text" class="form-control" name="Personnel_code" id="" placeholder="کد پرسنلی">
+                    </div>
+                  </div>
+
+                  <div class="row mb-3">
+                    <label for="" class="col-sm-3 col-form-label">نام کاربری</label>
+                    <div class="col-sm-9">
+                      <input type="text" class="form-control" name="user_name" id="" placeholder="نام کاربری">
+                    </div>
+                  </div>
+
+
+                  <div class="row mb-3">
+                    <label for="inputEmailAddress2" class="col-sm-3 col-form-label">کد ملی</label>
+                    <div class="col-sm-9">
+                      <input type="text" class="form-control" name="national_code" id="inputEmailAddress2" placeholder="کد ملی">
+                    </div>
+                  </div>
+
+                  <div class="row mb-3">
+                    <label for="inputChoosePassword2" class="col-sm-3 col-form-label">رمز عبور</label>
+                    <div class="col-sm-9">
+                      <input type="text" class="form-control" name="password" id="inputChoosePassword2" placeholder="رمز عبور">
+                    </div>
+                  </div>
+                  <div class="row mb-3">
+                    <label for="inputConfirmPassword2" class="col-sm-3 col-form-label">نقش کاربری</label>
+                    <div class="col-sm-9">
+                      <div class="multiselect_div">
+                        <select class="multiselect mb-3" name="user_role" aria-label="Default select example">
+                          <option selected>نقش کاربری</option>
+                          <option value="1">مدیر کل</option>
+                          <option value="2">مدیر سایت </option>
+                          <option value="3">ارزیاب</option>
+                          <option value="3">دبیر کانون</option>
+                          <option value="4">ارزیاب شونده</option>
+                        </select>
+                      </div>
+                    </div>
+
+           
+
+                    <div class="row mb-3">
+                      <label for="inputEnterYourName" class="col-sm-3 col-form-label">استان</label>
+                      <div class="col-sm-9">
+                        <input type="text" class="form-control" name="province" id="inputEnterYourName" placeholder="شهر">
+                      </div>
+
+                    </div>
+                    <div class="row mb-3">
+                      <label for="inputEnterYourName" class="col-sm-3 col-form-label">شهر</label>
+                      <div class="col-sm-9">
+                        <input type="text" class="form-control" name="city" id="inputEnterYourName" placeholder="شهر">
+                      </div>
+
+                    </div>
+                    <div class="row mb-3">
+                      <label for="inputAddress4" class="col-sm-3 col-form-label">ادرس</label>
+                      <div class="col-sm-9">
+                        <textarea class="form-control" name="address" id="inputAddress4" rows="3" placeholder="ادرس"></textarea>
+                      </div>
+                    </div>
+                    <!-- <div class="row mb-3">
+                  <label for="inputAddress4" class="col-sm-3 col-form-label"></label>
+                  <div class="col-sm-9">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="gridCheck4">
+                      <label class="form-check-label" for="gridCheck4"></label>
+                    </div>
+                  </div>
+                </div> -->
+                    <div class="row">
+                      <label class="col-sm-3 col-form-label"></label>
+                      <div class="col-sm-9">
+                        <button type="submit" class="btn btn-primary px-5">ایجاد کاربر</button>
+                      </div>
+                </form>
+              </div>
+
+          </div>
+        </div>
+      </div>
+      <!-- end page content-->
+    </div>
+    <!--end page content wrapper-->
+
+
+    <!--start footer-->
+    <footer class="footer">
+      <div class="footer-text">
+        Copyright © 2021. All right reserved.
+      </div>
+    </footer>
+    <!--end footer-->
+
+
+    <!--Start Back To Top Button-->
+    <a href="javaScript:;" class="back-to-top">
+      <ion-icon name="arrow-up-outline"></ion-icon>
+    </a>
+    <!--End Back To Top Button-->
+
+ 
+
+
+    <!--start overlay-->
+    <div class="overlay nav-toggle-icon"></div>
+    <!--end overlay-->
+
+  </div>
+  <!--end wrapper-->
+
+  <?php require_once '../layouts/footer.php' ?>
+ 
+
+
+</body>
+
+</html>

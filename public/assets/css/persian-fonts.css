@@ -1,0 +1,78 @@
+/* 
+ * Yekan Bakh Font - Premium Persian Font
+ * This is a fallback local font for better Persian typography
+ */
+
+@font-face {
+    font-family: 'YekanBakh';
+    src: url('data:font/woff2;base64,') format('woff2');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'YekanBakh';
+    src: url('data:font/woff2;base64,') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'YekanBakh';
+    src: url('data:font/woff2;base64,') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'YekanBakh';
+    src: url('data:font/woff2;base64,') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Samim Font - Another good Persian font alternative */
+@font-face {
+    font-family: 'Samim';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/samim-font@v4.0.5/dist/woff2/Samim.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Samim';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/samim-font@v4.0.5/dist/woff2/Samim-Bold.woff2') format('woff2');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Dana Font - Modern Persian font */
+@font-face {
+    font-family: 'Dana';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/dana-font@v2.0.4/dist/woff2/Dana-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Dana';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/dana-font@v2.0.4/dist/woff2/Dana-Medium.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Dana';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/dana-font@v2.0.4/dist/woff2/Dana-DemiBold.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}

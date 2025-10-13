@@ -1,0 +1,70 @@
+/* Phosphor Icons - Complete CSS with fallbacks */
+/* Primary CDN */
+@import url('https://cdn.jsdelivr.net/npm/phosphor-icons@1.4.2/src/css/icons.min.css');
+
+/* Alternative CDNs for better connectivity */
+@import url('https://unpkg.com/phosphor-icons@1.4.2/src/css/icons.min.css');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/phosphor-icons/1.4.2/phosphor.min.css');
+
+/* Font Face Definition */
+@font-face {
+    font-family: 'phosphor-icons';
+    src: url('https://cdn.jsdelivr.net/npm/phosphor-icons@1.4.2/src/fonts/Phosphor.woff2') format('woff2'),
+         url('https://cdn.jsdelivr.net/npm/phosphor-icons@1.4.2/src/fonts/Phosphor.woff') format('woff'),
+         url('https://cdn.jsdelivr.net/npm/phosphor-icons@1.4.2/src/fonts/Phosphor.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Base Icon Class */
+.ph, [class^="ph-"], [class*=" ph-"] {
+    font-family: 'phosphor-icons', 'Phosphor', sans-serif !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+    line-height: 1 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    display: inline-block !important;
+    white-space: nowrap !important;
+    word-wrap: normal !important;
+    direction: ltr !important;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* Specific Icon Mappings for Better Compatibility */
+.ph-squares-four::before { content: "■"; font-size: 0.8em; }
+.ph-graduation-cap::before { content: "🎓"; font-size: 0.8em; }
+.ph-users-three::before { content: "👥"; font-size: 0.8em; }
+.ph-clipboard-text::before { content: "📋"; font-size: 0.8em; }
+.ph-users::before { content: "👤"; font-size: 0.8em; }
+.ph-bookmarks::before { content: "📑"; font-size: 0.8em; }
+.ph-chats-teardrop::before { content: "💬"; font-size: 0.8em; }
+.ph-chart-bar::before { content: "📊"; font-size: 0.8em; }
+.ph-calendar-dots::before { content: "📅"; font-size: 0.8em; }
+.ph-books::before { content: "📚"; font-size: 0.8em; }
+.ph-coins::before { content: "🪙"; font-size: 0.8em; }
+.ph-gear::before { content: "⚙️"; font-size: 0.8em; }
+.ph-shield-check::before { content: "🛡️"; font-size: 0.8em; }
+.ph-bell::before { content: "🔔"; font-size: 0.8em; }
+.ph-magnifying-glass::before { content: "🔍"; font-size: 0.8em; }
+.ph-globe::before { content: "🌐"; font-size: 0.8em; }
+.ph-x::before { content: "✕"; font-weight: bold; }
+.ph-list::before { content: "☰"; }
+
+/* RTL Icon Direction Fix */
+[dir="rtl"] .ph {
+    transform: scaleX(-1);
+}
+
+/* Exceptions - Icons that shouldn't be flipped */
+[dir="rtl"] .ph-x,
+[dir="rtl"] .ph-gear,
+[dir="rtl"] .ph-bell,
+[dir="rtl"] .ph-chart-bar,
+[dir="rtl"] .ph-calendar-dots {
+    transform: none;
+}

@@ -1,0 +1,15 @@
+RewriteEngine On
+
+# Handle static assets (CSS, JS, Images, Uploads)
+RewriteCond %{REQUEST_URI} ^/?css/(.*)$ [OR]
+RewriteCond %{REQUEST_URI} ^/?js/(.*)$ [OR]
+RewriteCond %{REQUEST_URI} ^/?images/(.*)$ [OR]
+RewriteCond %{REQUEST_URI} ^/?uploads/(.*)$
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ public/$1 [L]
+
+# Redirect everything else to index.php (for our custom routing)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/?public/
+RewriteRule ^(.*)$ index.php [QSA,L]

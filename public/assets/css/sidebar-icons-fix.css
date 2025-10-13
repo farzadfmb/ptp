@@ -1,0 +1,199 @@
+/* Sidebar Icons Size and Dropdown Arrow Fixes */
+
+/* کوچک کردن اندازه آیکون‌های منو */
+.sidebar-menu__link .icon .fas,
+.sidebar-menu__link .icon .far,
+.sidebar-menu__link .icon .fab {
+    font-size: 14px !important; /* کاهش از 16px به 14px */
+    width: 16px !important;
+    height: 16px !important;
+    line-height: 16px !important;
+    text-align: center !important;
+    margin-left: 8px !important;
+    margin-right: 0 !important;
+    display: inline-block !important;
+}
+
+/* آیکون فلش dropdown */
+.sidebar-menu__link .dropdown-arrow {
+    margin-right: auto !important;
+    margin-left: 8px !important;
+    transition: transform 0.3s ease !important;
+}
+
+.sidebar-menu__link .dropdown-arrow .fas {
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    color: #6b7280 !important;
+    width: 14px !important;
+    height: 14px !important;
+    line-height: 14px !important;
+    text-align: center !important;
+}
+
+/* وقتی منو باز می‌شود فلش بچرخد */
+.sidebar-menu__item.show .dropdown-arrow,
+.sidebar-menu__item.active .dropdown-arrow {
+    transform: rotate(180deg) !important;
+}
+
+.sidebar-menu__item.show .dropdown-arrow .fas,
+.sidebar-menu__item.active .dropdown-arrow .fas {
+    color: #4f46e5 !important;
+}
+
+/* Layout برای sidebar menu link */
+.sidebar-menu__link {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0 !important;
+    padding: 12px 16px !important;
+    text-decoration: none !important;
+    border-radius: 8px !important;
+    transition: all 0.3s ease !important;
+}
+
+/* Icon container */
+.sidebar-menu__link .icon {
+    flex-shrink: 0 !important;
+    width: 20px !important;
+    height: 20px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Text container */
+.sidebar-menu__link .text {
+    flex: 1 !important;
+    margin-right: 8px !important;
+    margin-left: 0 !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+}
+
+/* Badge */
+.sidebar-menu__link .link-badge {
+    flex-shrink: 0 !important;
+    margin-right: auto !important;
+    margin-left: 4px !important;
+    background: #ef4444 !important;
+    color: white !important;
+    font-size: 10px !important;
+    padding: 2px 6px !important;
+    border-radius: 10px !important;
+    min-width: 16px !important;
+    text-align: center !important;
+}
+
+/* Dropdown arrow positioning */
+.sidebar-menu__link .dropdown-arrow {
+    flex-shrink: 0 !important;
+    margin-right: 8px !important;
+    margin-left: 0 !important;
+    width: 16px !important;
+    height: 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* RTL Adjustments */
+[dir="rtl"] .sidebar-menu__link {
+    direction: rtl !important;
+}
+
+[dir="rtl"] .sidebar-menu__link .icon {
+    margin-left: 8px !important;
+    margin-right: 0 !important;
+}
+
+[dir="rtl"] .sidebar-menu__link .text {
+    margin-left: 8px !important;
+    margin-right: 0 !important;
+    text-align: right !important;
+}
+
+[dir="rtl"] .sidebar-menu__link .dropdown-arrow {
+    margin-left: 8px !important;
+    margin-right: 0 !important;
+}
+
+/* Hover effects */
+.sidebar-menu__link:hover {
+    background: rgba(79, 70, 229, 0.1) !important;
+    color: #4f46e5 !important;
+}
+
+.sidebar-menu__link:hover .icon .fas,
+.sidebar-menu__link:hover .dropdown-arrow .fas {
+    color: #4f46e5 !important;
+}
+
+/* Active state */
+.sidebar-menu__item.active > .sidebar-menu__link,
+.sidebar-menu__item.show > .sidebar-menu__link {
+    background: rgba(79, 70, 229, 0.15) !important;
+    color: #4f46e5 !important;
+}
+
+.sidebar-menu__item.active > .sidebar-menu__link .icon .fas,
+.sidebar-menu__item.active > .sidebar-menu__link .dropdown-arrow .fas,
+.sidebar-menu__item.show > .sidebar-menu__link .icon .fas,
+.sidebar-menu__item.show > .sidebar-menu__link .dropdown-arrow .fas {
+    color: #4f46e5 !important;
+}
+
+/* Submenu styling */
+
+
+.sidebar-submenu__link {
+  
+    font-size: 13px !important;
+    color: #6b7280 !important;
+   
+}
+
+.sidebar-submenu__link:hover {
+    background: rgba(79, 70, 229, 0.1) !important;
+    color: #4f46e5 !important;
+    
+}
+
+/* Animation for submenu */
+.sidebar-submenu {
+    display: none;
+    max-height: 0;
+    opacity: 0;
+   
+    overflow: hidden;
+}
+
+.sidebar-menu__item.show .sidebar-submenu,
+.sidebar-menu__item.active .sidebar-submenu {
+    display: block !important;
+    max-height: 300px;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Force Font Awesome for arrows */
+.dropdown-arrow .fas {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .sidebar-menu__link .icon .fas {
+        font-size: 12px !important;
+    }
+    
+    .sidebar-menu__link .text {
+        font-size: 13px !important;
+    }
+    
+    .sidebar-menu__link .dropdown-arrow .fas {
+        font-size: 9px !important;
+    }
+}

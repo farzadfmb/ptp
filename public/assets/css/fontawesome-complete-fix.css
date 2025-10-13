@@ -1,0 +1,179 @@
+/* Font Awesome Complete Fix CSS */
+/* این فایل برای اطمینان از نمایش صحیح تمام آیکون‌های Font Awesome */
+
+/* اولویت Font Awesome */
+.fas, .far, .fal, .fab {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+    font-style: normal !important;
+    font-variant: normal !important;
+    text-rendering: auto !important;
+    line-height: 1 !important;
+    -webkit-font-smoothing: antialiased !important;
+}
+
+.far {
+    font-weight: 400 !important;
+}
+
+.fab {
+    font-family: "Font Awesome 6 Brands" !important;
+    font-weight: 400 !important;
+}
+
+/* رفع مشکل نمایش آیکون‌ها */
+.fa, .fas, .far, .fab, [class^="fa-"], [class*=" fa-"] {
+    display: inline-block !important;
+    text-decoration: none !important;
+    speak: none !important;
+}
+
+/* رفع مشکل RTL */
+.fa-chevron-left {
+    transform: scaleX(-1) !important;
+}
+
+.fa-chevron-right {
+    transform: scaleX(-1) !important;
+}
+
+.fa-arrow-left {
+    transform: scaleX(-1) !important;
+}
+
+.fa-arrow-right {
+    transform: scaleX(-1) !important;
+}
+
+/* اندازه و فاصله آیکون‌ها */
+.sidebar-menu__link .fas,
+.sidebar-menu__link .far,
+.sidebar-submenu__link .fas,
+.sidebar-submenu__link .far {
+    width: 20px !important;
+    text-align: center !important;
+    margin-left: 8px !important;
+    margin-right: 0 !important;
+}
+
+/* آیکون‌های navbar */
+.top-navbar .fas,
+.top-navbar .far {
+    font-size: 1.1em !important;
+}
+
+/* آیکون‌های کارت‌ها */
+.card .fas,
+.card .far {
+    font-size: inherit !important;
+}
+
+/* آیکون toggle button */
+.toggle-btn .fas {
+    font-size: 1.4em !important;
+    line-height: 1 !important;
+}
+
+/* آیکون‌های dropdown */
+.dropdown-menu .fas,
+.dropdown-menu .far {
+    width: 20px !important;
+    text-align: center !important;
+    margin-left: 8px !important;
+    margin-right: 0 !important;
+}
+
+/* آیکون‌های دکمه */
+.btn .fas,
+.btn .far {
+    margin-left: 4px !important;
+    margin-right: 0 !important;
+}
+
+/* رفع مشکل اندازه آیکون در circle */
+.rounded-circle .fas,
+.rounded-circle .far {
+    line-height: inherit !important;
+    vertical-align: middle !important;
+}
+
+/* آیکون‌های جدول */
+.table .fas,
+.table .far {
+    font-size: 0.9em !important;
+}
+
+/* آیکون‌های فرم */
+.form-control + .fas,
+.form-control + .far,
+.input-group .fas,
+.input-group .far {
+    pointer-events: none !important;
+}
+
+/* Animation برای آیکون‌های خاص */
+.shaking-animation .fa-bell {
+    animation: shake 2s infinite !important;
+}
+
+@keyframes shake {
+    0%, 20%, 40%, 60%, 80%, 100% {
+        transform: translateY(0);
+    }
+    10%, 30%, 50%, 70%, 90% {
+        transform: translateY(-2px);
+    }
+}
+
+/* Hover effects */
+.fas:hover,
+.far:hover {
+    transform: scale(1.1) !important;
+    transition: transform 0.2s ease !important;
+}
+
+/* آیکون‌های رنگی */
+.text-primary-600 .fas { color: #3b82f6 !important; }
+.text-success-600 .fas { color: #10b981 !important; }
+.text-warning-600 .fas { color: #f59e0b !important; }
+.text-danger-600 .fas { color: #ef4444 !important; }
+.text-gray-500 .fas { color: #6b7280 !important; }
+
+/* بک آپ اضافی اگر CDN کار نکرد */
+@font-face {
+    font-family: 'FontAwesome-Fallback';
+    src: local('Arial Unicode MS'), local('Segoe UI Symbol');
+}
+
+/* Fallback content برای آیکون‌های اصلی */
+.fa-fallback .fa-home::before { content: "🏠"; }
+.fa-fallback .fa-user::before { content: "👤"; }
+.fa-fallback .fa-users::before { content: "👥"; }
+.fa-fallback .fa-cog::before { content: "⚙️"; }
+.fa-fallback .fa-chart-bar::before { content: "📊"; }
+.fa-fallback .fa-book::before { content: "📚"; }
+.fa-fallback .fa-graduation-cap::before { content: "🎓"; }
+.fa-fallback .fa-bell::before { content: "🔔"; }
+.fa-fallback .fa-envelope::before { content: "✉️"; }
+.fa-fallback .fa-calendar-alt::before { content: "📅"; }
+.fa-fallback .fa-search::before { content: "🔍"; }
+.fa-fallback .fa-globe::before { content: "🌐"; }
+.fa-fallback .fa-bars::before { content: "≡"; }
+.fa-fallback .fa-times::before { content: "×"; }
+.fa-fallback .fa-chevron-left::before { content: "‹"; }
+.fa-fallback .fa-chevron-right::before { content: "›"; }
+.fa-fallback .fa-star::before { content: "★"; }
+.fa-fallback .fa-heart::before { content: "♥"; }
+
+/* اطمینان از لود شدن آیکون‌ها */
+.fas, .far, .fab {
+    font-display: swap !important;
+}
+
+/* پشتیبانی از تمام سایزها */
+.fa-xs { font-size: 0.75em !important; }
+.fa-sm { font-size: 0.875em !important; }
+.fa-lg { font-size: 1.25em !important; }
+.fa-xl { font-size: 1.5em !important; }
+.fa-2x { font-size: 2em !important; }
+.fa-3x { font-size: 3em !important; }

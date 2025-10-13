@@ -1,0 +1,412 @@
+/* RTL and Responsive Fixes for Persian Admin Panel */
+
+/* =================================== 
+   RTL Base Settings 
+   =================================== */
+
+html {
+  direction: rtl !important;
+}
+
+body {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Force RTL for all elements */
+* {
+  direction: inherit;
+}
+
+/* =================================== 
+   Phosphor Icons Complete Fix 
+   =================================== */
+
+/* Load Phosphor font properly */
+@font-face {
+  font-family: "Phosphor";
+  src: url("./Phosphor.woff2") format("woff2"),
+       url("./Phosphor.woff") format("woff"),  
+       url("./Phosphor.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+/* Phosphor icon base class */
+.ph {
+  font-family: "Phosphor" !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  font-variant: normal !important;
+  text-transform: none !important;
+  line-height: 1 !important;
+  display: inline-block !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure proper icon rendering */
+.ph:before {
+  font-family: "Phosphor" !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+}
+
+/* =================================== 
+   Layout Fixes for RTL Persian 
+   =================================== */
+
+/* Base Sidebar Layout */
+.sidebar {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 280px;
+  height: 100vh;
+  z-index: 1050;
+  overflow-y: auto;
+  background: #fff;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+/* Desktop Layout - Sidebar always visible */
+@media (min-width: 1200px) {
+  .sidebar {
+    position: fixed !important;
+    transform: translateX(0) !important;
+    right: 0 !important;
+  }
+  
+  .dashboard-main-wrapper {
+    margin-right: 280px !important;
+    margin-left: 0 !important;
+  }
+}
+
+/* Tablet/Mobile Layout - Sidebar hidden by default */
+@media (max-width: 1199.98px) {
+  .sidebar {
+    transform: translateX(100%) !important;
+    transition: transform 0.3s ease-in-out;
+  }
+  
+  .sidebar.show {
+    transform: translateX(0) !important;
+  }
+  
+  .dashboard-main-wrapper {
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+  }
+}
+
+/* Mobile specific adjustments */
+@media (max-width: 767.98px) {
+  .top-navbar .flex-align {
+    gap: 8px !important;
+  }
+  
+  .top-navbar form.w-350 {
+    display: none !important;
+  }
+  
+  .toggle-btn {
+    display: flex !important;
+  }
+  
+  .sidebar {
+    width: 100% !important;
+    max-width: 300px;
+  }
+}
+
+/* Sidebar Overlay */
+.side-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1040;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.side-overlay.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Mobile Menu Button */
+.toggle-btn {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+}
+
+/* Card Responsive */
+@media (max-width: 575.98px) {
+  .card {
+    margin-bottom: 1rem;
+  }
+  
+  .card-body {
+    padding: 1rem !important;
+  }
+  
+  .row > [class*='col-'] {
+    margin-bottom: 1rem;
+  }
+}
+
+/* Table Responsive */
+@media (max-width: 767.98px) {
+  .table-responsive {
+    border: none;
+  }
+  
+  .table {
+    font-size: 0.875rem;
+  }
+  
+  .table th,
+  .table td {
+    padding: 0.5rem !important;
+    white-space: nowrap;
+  }
+}
+
+/* Chart Responsive */
+@media (max-width: 767.98px) {
+  .apexcharts-canvas {
+    max-width: 100% !important;
+  }
+  
+  [id*="chart"] {
+    max-width: 100%;
+    overflow: hidden;
+  }
+}
+
+/* Form Responsive */
+@media (max-width: 575.98px) {
+  .form-control {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  .btn {
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Dropdown Responsive */
+@media (max-width: 767.98px) {
+  .dropdown-menu {
+    position: fixed !important;
+    top: auto !important;
+    right: 1rem !important;
+    left: 1rem !important;
+    transform: none !important;
+    margin: 0 !important;
+  }
+}
+
+/* =================================== 
+   Complete RTL Fixes 
+   =================================== */
+
+/* Force RTL on all major components */
+.sidebar,
+.dashboard-main-wrapper,
+.top-navbar,
+.sidebar-menu,
+.sidebar-submenu,
+.dropdown-menu,
+.card,
+.table,
+.form-control,
+.btn,
+.navbar,
+.breadcrumb {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Left-to-right exceptions for specific content */
+.table td[class*="number"],
+.table td[class*="price"],
+.table td[class*="amount"],
+input[type="number"],
+input[type="tel"],
+input[type="email"],
+.email,
+.phone,
+.url {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* Flex direction fixes */
+.flex-between,
+.flex-align,
+.d-flex {
+  flex-direction: row-reverse;
+}
+
+.flex-between {
+  justify-content: space-between;
+}
+
+/* Margin and padding adjustments */
+.sidebar-menu__link .icon {
+  margin-left: 0 !important;
+  margin-right: 10px !important;
+}
+
+.sidebar-submenu {
+  padding-right: 5px !important;
+  padding-left: 0 !important;
+}
+
+/* Dropdown positioning */
+.dropdown-menu {
+  right: 0 !important;
+  left: auto !important;
+}
+
+/* Form elements RTL */
+.form-control {
+  text-align: right !important;
+  padding-right: 12px !important;
+  padding-left: 40px !important;
+}
+
+.input-icon {
+  right: 12px !important;
+  left: auto !important;
+}
+
+/* =================================== 
+   Phosphor Icon Character Codes 
+   =================================== */
+
+/* Main Navigation Icons */
+.ph-list:before { content: "\f1b7"; }
+.ph-x:before { content: "\f2c5"; }
+.ph-squares-four:before { content: "\f230"; }
+.ph-graduation-cap:before { content: "\f154"; }
+.ph-users:before { content: "\f27e"; }
+.ph-users-three:before { content: "\f27d"; }
+.ph-clipboard-text:before { content: "\f0b1"; }
+.ph-bookmarks:before { content: "\f081"; }
+.ph-chats-teardrop:before { content: "\f0a2"; }
+.ph-chart-bar:before { content: "\f094"; }
+.ph-calendar-dots:before { content: "\f087"; }
+.ph-books:before { content: "\f080"; }
+.ph-coins:before { content: "\f0b5"; }
+.ph-gear:before { content: "\f149"; }
+.ph-shield-check:before { content: "\f217"; }
+
+/* Navbar Icons */
+.ph-bell:before { content: "\f06e"; }
+.ph-magnifying-glass:before { content: "\f1a8"; }
+.ph-globe:before { content: "\f14e"; }
+.ph-chart-line-up:before { content: "\f097"; }
+.ph-envelope-simple:before { content: "\f119"; }
+.ph-sign-out:before { content: "\f21c"; }
+
+/* Additional Icons */
+.ph-house:before { content: "\f171"; }
+.ph-user:before { content: "\f279"; }
+.ph-file:before { content: "\f12b"; }
+.ph-folder:before { content: "\f135"; }
+
+/* Icon Base Styles */
+.ph {
+  display: inline-block !important;
+  font-family: "Phosphor" !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  font-variant: normal !important;
+  text-transform: none !important;
+  line-height: 1 !important;
+  vertical-align: middle;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Icon alignment in sidebar */
+.sidebar-menu__link .icon {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 10px;
+}
+
+/* Icon sizing */
+.text-xl .ph { font-size: 1.25rem; }
+.text-2xl .ph { font-size: 1.5rem; }
+.text-26 .ph { font-size: 1.625rem; }
+
+/* Fallback for missing icons */
+.ph:not([class*="ph-"]):before {
+  content: "●";
+  font-family: Arial, sans-serif !important;
+}
+
+/* =================================== 
+   Performance Optimizations 
+   =================================== */
+
+/* Hardware acceleration for smooth animations */
+.sidebar,
+.side-overlay,
+.dashboard-main-wrapper {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Reduce paint during animations */
+.sidebar {
+  contain: layout style paint;
+}
+
+/* =================================== 
+   Accessibility Enhancements 
+   =================================== */
+
+/* Focus visible for keyboard navigation */
+.sidebar-menu__link:focus,
+.toggle-btn:focus {
+  outline: 2px solid var(--bs-primary, #0d6efd);
+  outline-offset: 2px;
+}
+
+/* Screen reader friendly */
+.toggle-btn[aria-expanded="true"] + .sidebar {
+  transform: translateX(0);
+}
+
+/* =================================== 
+   Print Styles 
+   =================================== */
+
+@media print {
+  .sidebar,
+  .top-navbar,
+  .preloader,
+  .side-overlay {
+    display: none !important;
+  }
+  
+  .dashboard-main-wrapper {
+    margin: 0 !important;
+  }
+}

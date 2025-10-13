@@ -1,0 +1,81 @@
+/* Simple Icon Fix - Fallback Method */
+
+/* Remove any conflicting icon styles */
+.ph {
+    font-family: "Phosphor", Arial, sans-serif !important;
+    font-style: normal !important;
+    font-weight: normal !important;
+    font-variant: normal !important;
+    text-transform: none !important;
+    line-height: 1 !important;
+    display: inline-block !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Force load the original Phosphor CSS */
+@import url('./phosphor-complete.css');
+
+/* Ensure proper loading order */
+.ph:before {
+    font-family: "Phosphor" !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+    display: inline-block;
+}
+
+/* Fallback icons if Phosphor doesn't load */
+.ph.ph-list:not(:before) { font-family: Arial !important; }
+.ph.ph-list:not(:before):after { content: "≡"; }
+
+.ph.ph-x:not(:before) { font-family: Arial !important; }
+.ph.ph-x:not(:before):after { content: "✕"; }
+
+.ph.ph-bell:not(:before) { font-family: Arial !important; }
+.ph.ph-bell:not(:before):after { content: "🔔"; }
+
+.ph.ph-gear:not(:before) { font-family: Arial !important; }
+.ph.ph-gear:not(:before):after { content: "⚙"; }
+
+.ph.ph-magnifying-glass:not(:before) { font-family: Arial !important; }
+.ph.ph-magnifying-glass:not(:before):after { content: "🔍"; }
+
+.ph.ph-squares-four:not(:before) { font-family: Arial !important; }
+.ph.ph-squares-four:not(:before):after { content: "▦"; }
+
+.ph.ph-graduation-cap:not(:before) { font-family: Arial !important; }
+.ph.ph-graduation-cap:not(:before):after { content: "🎓"; }
+
+.ph.ph-users:not(:before) { font-family: Arial !important; }
+.ph.ph-users:not(:before):after { content: "👥"; }
+
+.ph.ph-chart-bar:not(:before) { font-family: Arial !important; }
+.ph.ph-chart-bar:not(:before):after { content: "📊"; }
+
+.ph.ph-globe:not(:before) { font-family: Arial !important; }
+.ph.ph-globe:not(:before):after { content: "🌐"; }
+
+/* Fix icon alignment */
+.sidebar-menu__link .icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-left: 10px;
+}
+
+.sidebar-menu__link .icon .ph {
+    font-size: 18px;
+}
+
+/* Navbar icon sizing */
+.top-navbar .ph {
+    font-size: 20px;
+}
+
+/* Force icon display */
+.ph {
+    min-width: 1em;
+    text-align: center;
+}

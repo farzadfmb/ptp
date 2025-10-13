@@ -1,0 +1,183 @@
+/* ULTIMATE FONT AWESOME FIX - راه حل نهایی */
+
+/* حذف کامل تداخل فونت فارسی با Font Awesome */
+.fas, .far, .fab,
+i.fas, i.far, i.fab,
+span.fas, span.far, span.fab,
+[class*="fa-"], [class^="fa-"] {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+    font-style: normal !important;
+    text-rendering: auto !important;
+    -webkit-font-smoothing: antialiased !important;
+    speak: never !important;
+    font-variant-ligatures: none !important;
+    font-variant-caps: normal !important;
+    font-variant-numeric: normal !important;
+    font-feature-settings: normal !important;
+    font-stretch: normal !important;
+    line-height: 1 !important;
+    display: inline-block !important;
+    text-transform: none !important;
+    vertical-align: baseline !important;
+}
+
+/* قوانین خاص برای انواع مختلف */
+.far, i.far {
+    font-weight: 400 !important;
+}
+
+.fab, i.fab {
+    font-family: "Font Awesome 6 Brands" !important;
+    font-weight: 400 !important;
+}
+
+/* Override های بسیار قدرتمند برای Persian RTL */
+html[dir="rtl"] .fas, html[dir="rtl"] .far, html[dir="rtl"] .fab,
+html[dir="rtl"] i.fas, html[dir="rtl"] i.far, html[dir="rtl"] i.fab,
+body[dir="rtl"] .fas, body[dir="rtl"] .far, body[dir="rtl"] .fab,
+body[dir="rtl"] i.fas, body[dir="rtl"] i.far, body[dir="rtl"] i.fab,
+div[dir="rtl"] .fas, div[dir="rtl"] .far, div[dir="rtl"] .fab,
+div[dir="rtl"] i.fas, div[dir="rtl"] i.far, div[dir="rtl"] i.fab {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+}
+
+html[dir="rtl"] .far, html[dir="rtl"] i.far,
+body[dir="rtl"] .far, body[dir="rtl"] i.far,
+div[dir="rtl"] .far, div[dir="rtl"] i.far {
+    font-weight: 400 !important;
+}
+
+html[dir="rtl"] .fab, html[dir="rtl"] i.fab,
+body[dir="rtl"] .fab, body[dir="rtl"] i.fab,
+div[dir="rtl"] .fab, div[dir="rtl"] i.fab {
+    font-family: "Font Awesome 6 Brands" !important;
+    font-weight: 400 !important;
+}
+
+/* Override برای همه کلاس‌های persian-font */
+.persian-font .fas, .persian-font .far, .persian-font .fab,
+.persian-font i.fas, .persian-font i.far, .persian-font i.fab,
+*[class*="persian"] .fas, *[class*="persian"] .far, *[class*="persian"] .fab,
+*[class*="persian"] i.fas, *[class*="persian"] i.far, *[class*="persian"] i.fab {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+}
+
+/* Override برای تمام سلکتورهای ممکن */
+* .fas, * .far, * .fab,
+* i.fas, * i.far, * i.fab {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+}
+
+* .far, * i.far {
+    font-weight: 400 !important;
+}
+
+* .fab, * i.fab {
+    font-family: "Font Awesome 6 Brands" !important;
+    font-weight: 400 !important;
+}
+
+/* CSS Specificity Wars - بالاترین اولویت */
+html body div .fas,
+html body div i.fas,
+html body span .fas,
+html body span i.fas,
+html body .sidebar .fas,
+html body .navbar .fas,
+html body .card .fas {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+    font-style: normal !important;
+}
+
+/* Inline style override */
+.fas[style*="font-family"],
+.far[style*="font-family"],
+.fab[style*="font-family"],
+i.fas[style*="font-family"],
+i.far[style*="font-family"],
+i.fab[style*="font-family"] {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+}
+
+/* Pseudo-elements */
+.fas::before, .far::before, .fab::before,
+i.fas::before, i.far::before, i.fab::before {
+    font-family: inherit !important;
+    font-weight: inherit !important;
+    font-style: inherit !important;
+    text-rendering: auto !important;
+    -webkit-font-smoothing: antialiased !important;
+}
+
+/* خاص آیکون‌های مهم - با مشخص کردن unicode */
+.fa-home::before { content: "\f015"; }
+.fa-users::before { content: "\f0c0"; }
+.fa-cog::before { content: "\f013"; }
+.fa-chart-bar::before { content: "\f080"; }
+.fa-graduation-cap::before { content: "\f19d"; }
+.fa-bell::before { content: "\f0f3"; }
+.fa-envelope::before { content: "\f0e0"; }
+.fa-search::before { content: "\f002"; }
+.fa-bars::before { content: "\f0c9"; }
+.fa-times::before { content: "\f00d"; }
+.fa-comments::before { content: "\f086"; }
+.fa-book-open::before { content: "\f518"; }
+.fa-certificate::before { content: "\f0a3"; }
+.fa-th::before { content: "\f00a"; }
+.fa-clipboard-list::before { content: "\f46d"; }
+.fa-chalkboard-teacher::before { content: "\f51c"; }
+.fa-bookmark::before { content: "\f02e"; }
+.fa-calendar-alt::before { content: "\f073"; }
+.fa-book::before { content: "\f02d"; }
+.fa-dollar-sign::before { content: "\f155"; }
+.fa-shield-alt::before { content: "\f3ed"; }
+.fa-globe::before { content: "\f0ac"; }
+.fa-sign-out-alt::before { content: "\f2f5"; }
+.fa-chart-line::before { content: "\f201"; }
+.fa-ellipsis-v::before { content: "\f142"; }
+
+/* Force load indication */
+body.fontawesome-force-loaded .fas,
+body.fontawesome-force-loaded .far,
+body.fontawesome-force-loaded .fab {
+    font-family: "Font Awesome 6 Free" !important;
+}
+
+/* CSS Animation برای loading check */
+@keyframes fa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(359deg); }
+}
+
+.fa-spin {
+    animation: fa-spin 2s infinite linear;
+}
+
+/* Accessibility */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Debug helper */
+.debug-fa .fas::after,
+.debug-fa .far::after,
+.debug-fa .fab::after {
+    content: " [FA-OK]";
+    font-size: 10px;
+    color: green;
+    font-family: Arial, sans-serif;
+}

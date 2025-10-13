@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="fa" dir="rtl" class="semi-dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>کاربران سازمان</title>
+    <link rel="shortcut icon" href="http://localhost/public/assets/images/logo/favicon.png">
+
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/css/pace.min.css">
+    <script src="http://localhost/public/themes/dashkote/js/pace.min.js" defer></script>
+
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/plugins/perfect-scrollbar/css/perfect-scrollbar.css">
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/plugins/simplebar/css/simplebar.css">
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/plugins/metismenu/css/metisMenu.min.css">
+
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/css/bootstrap.min.css">
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/css/bootstrap-extended.css">
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/css/style.css">
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/css/icons.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <link rel="preconnect" href="//fdn.fontcdn.ir">
+    <link rel="preconnect" href="//v1.fontapi.ir">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vazirmatn@33/dist/font-face.css">
+    <link rel="stylesheet" href="https://v1.fontapi.ir/css/Yekan">
+    <link rel="stylesheet" href="http://localhost/public/assets/css/persian-fonts-local.css">
+    <link rel="stylesheet" href="http://localhost/public/assets/css/theme-rtl.css">
+
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/css/dark-theme.css">
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/css/semi-dark.css">
+    <link rel="stylesheet" href="http://localhost/public/themes/dashkote/css/header-colors.css">
+
+                    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css">
+                    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
+    
+            <style>
+    body {
+        background: #f5f7fb;
+    }
+    .organization-users-table tbody tr {
+        opacity: 1 !important;
+        transform: none !important;
+        visibility: visible !important;
+        display: table-row !important;
+    }
+    .organization-users-table tbody tr td {
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .organization-users-table thead th {
+        white-space: nowrap;
+    }
+    .organization-users-table .badge {
+        font-size: 12px;
+        padding: 6px 12px;
+        border-radius: 999px;
+    }
+    .organization-users-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .organization-users-actions form {
+        display: inline-flex;
+        align-items: center;
+    }
+    .organization-users-actions .btn {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .organization-users-actions .btn i {
+        font-size: 15px;
+    }
+</style>
+    </head>
+<body class="font-persian">
+    <div class="wrapper">
+
+<aside class="sidebar-wrapper" data-simplebar="true">
+    <div class="sidebar-header">
+        <div>
+            <img src="http://localhost/public/uploads/system/68de8408ca8e5_1759413256.png" class="logo-icon" alt="لوگوی سازمان">
+        </div>
+        <div>
+            <span class="logo-text mb-0 sidebar-site-title d-block text-truncate" title="سامانه شایستگی نوین">
+                سامانه شایستگی نوین            </span>
+        </div>
+        <div class="toggle-icon ms-auto"><ion-icon name="menu-sharp"></ion-icon></div>
+    </div>
+
+
+    <ul class="metismenu" id="menu">
+        <div class="px-3 pt-2 pb-3 text-center organization-profile-block">
+        <div class="rounded-circle mx-auto p-2 bg-white shadow-sm org-avatar">
+            <img src="http://localhost/public/uploads/organizations/logos/68dcdc921f6a3_1759304850.png" class="img-fluid rounded-circle h-100 w-100 object-fit-cover" alt="لوگوی سازمان">
+        </div>
+        <div class="fw-semibold mt-2 text-white org-name" title="وزارت ورزش و جوانان ایران">
+            وزارت ورزش و جوانان ایران        </div>
+    </div>
+                                                        <li>
+                <a href="http://localhost/organizations/dashboard" >
+                    <div class="parent-icon">
+                        <ion-icon name="home-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">داشبورد</div>
+                </a>
+                            </li>
+                                                        <li>
+                <a href="javascript:;"  class="has-arrow">
+                    <div class="parent-icon">
+                        <ion-icon name="briefcase-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">مدیریت سازمان</div>
+                </a>
+                                    <ul>
+                                                                                <li>
+                                <a href="http://localhost/organizations/report-settings">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    تنظیمات گزارشات                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/organizations/organization_post.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    پست های سازمانی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/organizations/organization_location.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    محل های خدمت                                </a>
+                            </li>
+                                            </ul>
+                            </li>
+                                                        <li>
+                <a href="javascript:;"  class="has-arrow">
+                    <div class="parent-icon">
+                        <ion-icon name="shield-checkmark-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">مدیریت دسترسی ها</div>
+                </a>
+                                    <ul>
+                                                                                <li>
+                                <a href="http://localhost/mng_role/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    نقش ها                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/matrix/role_menu.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ماتریس نقش دسترسی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/mng_role/unit.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    دستگاه های اجرایی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/organizations/users">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    کاربران سازمان                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/mng_user/user_role.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ماتریس نقش کاربران                                </a>
+                            </li>
+                                            </ul>
+                            </li>
+                                                        <li>
+                <a href="javascript:;"  class="has-arrow">
+                    <div class="parent-icon">
+                        <ion-icon name="people-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">مدیریت گروه های ارزیابی</div>
+                </a>
+                                    <ul>
+                                                                                <li>
+                                <a href="http://localhost/mng/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    تقویم ارزیابی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/mng/calendar_mng.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ماتریس تقویم ارزشیابی                                </a>
+                            </li>
+                                            </ul>
+                            </li>
+                                                        <li>
+                <a href="javascript:;"  class="has-arrow">
+                    <div class="parent-icon">
+                        <ion-icon name="construct-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">مدیریت ابزار ها</div>
+                </a>
+                                    <ul>
+                                                                                <li>
+                                <a href="http://localhost/manegement/tools.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ابزار های ارزیابی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/manegement/tools_mbti.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    تنظیمات آزمون MBTI                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/manegement/tools_DISC.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    تنظیمات آزمون DISC                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/manegement/tools_neo.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    تنظیمات آزمون NEO                                </a>
+                            </li>
+                                            </ul>
+                            </li>
+                                                        <li>
+                <a href="javascript:;"  class="has-arrow">
+                    <div class="parent-icon">
+                        <ion-icon name="ribbon-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">مدیریت شایستگی</div>
+                </a>
+                                    <ul>
+                                                                                <li>
+                                <a href="http://localhost/competencytype/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ابعاد شایستگی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/competency/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    شایستگی ها                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/competency_model/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    مدل شایستگی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/competency_features/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ویژگی های شایستگی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/model_competency/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ماتریس مدل شایستگی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/tool_competency/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ماتریس شایستگی ابزار                                </a>
+                            </li>
+                                            </ul>
+                            </li>
+                                                        <li>
+                <a href="javascript:;"  class="has-arrow">
+                    <div class="parent-icon">
+                        <ion-icon name="book-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">مدیریت دوره های آموزشی</div>
+                </a>
+                                    <ul>
+                                                                                <li>
+                                <a href="http://localhost/competencyedu/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    برنامه های توسعه فردی                                </a>
+                            </li>
+                                            </ul>
+                            </li>
+                                                        <li>
+                <a href="javascript:;"  class="has-arrow">
+                    <div class="parent-icon">
+                        <ion-icon name="clipboard-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">ثبت نتایج</div>
+                </a>
+                                    <ul>
+                                                                                <li>
+                                <a href="http://localhost/upload_user_tool_qu/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ثبت نتایج آزمون به تفکیک سوال                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/upload_user_tool_qu/upload_user_qu.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ثبت نتایج آزمون                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/upload_user_tool_qu/user_tool_value.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ثبت امتیاز ابزار                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/assessor/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    ارزیابی های فعال                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/assessor/whashuplist.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    Wash-Up                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/assessor/userReportInExelList.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    گزارش اکسل                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/resume/index.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    رزومه های منتخب                                </a>
+                            </li>
+                                            </ul>
+                            </li>
+                                                        <li>
+                <a href="javascript:;"  class="has-arrow">
+                    <div class="parent-icon">
+                        <ion-icon name="bar-chart-sharp"></ion-icon>
+                    </div>
+                    <div class="menu-title">گزارشات</div>
+                </a>
+                                    <ul>
+                                                                                <li>
+                                <a href="http://localhost/report/UserToolsResult.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    مشاهده نتایج خود ارزیابی کاربران                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/report/UserFinalReport.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    گزارش نهایی ارزیابی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/report/EducationList.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    گزارش برنامه های توسعه فردی                                </a>
+                            </li>
+                                                                                <li>
+                                <a href="http://localhost/report/reportsetting.php">
+                                    <ion-icon name="ellipse-outline"></ion-icon>
+                                    تنظیمات گزارش ارزیابی                                </a>
+                            </li>
+                                            </ul>
+                            </li>
+            </ul>
+
+
+</aside>
+
+<header class="top-header">
+    <nav class="navbar navbar-expand gap-3 align-items-center">
+        <div class="mobile-menu-button d-xl-none"><ion-icon name="menu-sharp"></ion-icon></div>
+
+        <form class="searchbar d-none d-md-flex">
+            <div class="position-absolute top-50 translate-middle-y search-icon ms-3"><ion-icon name="search-sharp"></ion-icon></div>
+            <input class="form-control" type="text" placeholder="جستجو کنید...">
+            <div class="position-absolute top-50 translate-middle-y search-close-icon"><ion-icon name="close-sharp"></ion-icon></div>
+        </form>
+
+        <div class="d-none d-md-flex align-items-center gap-2 text-secondary">
+            <ion-icon name="calendar-clear-outline" class="fs-5"></ion-icon>
+            <span class="fw-medium">شنبه ۱۲ مهر ۱۴۰۴</span>
+        </div>
+
+        <div class="top-navbar-right ms-auto">
+            <ul class="navbar-nav align-items-center">
+                <li class="nav-item mobile-search-button d-md-none">
+                    <a class="nav-link" href="javascript:;">
+                        <ion-icon name="search-sharp"></ion-icon>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link dark-mode-icon" href="javascript:;" data-bs-toggle="tooltip" data-bs-placement="bottom" title="تغییر تم">
+                        <div class="mode-icon">
+                            <ion-icon name="moon-sharp"></ion-icon>
+                        </div>
+                    </a>
+                </li>
+                <li class="nav-item dropdown dropdown-large">
+                    <a class="nav-link dropdown-toggle dropdown-toggle-nocaret" href="javascript:;" data-bs-toggle="dropdown">
+                        <div class="position-relative">
+                            <span class="notify-badge">0</span>
+                            <ion-icon name="notifications-sharp"></ion-icon>
+                        </div>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        <a href="javascript:;">
+                            <div class="msg-header">
+                                <p class="msg-header-title">اعلان‌ها</p>
+                                <p class="msg-header-clear ms-auto">علامت‌گذاری به عنوان خوانده شده</p>
+                            </div>
+                        </a>
+                        <div class="header-notifications-list p-3 text-center text-muted small">
+                            در حال حاضر اعلان فعالی موجود نیست.
+                        </div>
+                        <a href="javascript:;">
+                            <div class="text-center msg-footer">مشاهده همه اعلان‌ها</div>
+                        </a>
+                    </div>
+                </li>
+                <li class="nav-item dropdown dropdown-user-setting">
+                    <a class="nav-link dropdown-toggle dropdown-toggle-nocaret" href="javascript:;" data-bs-toggle="dropdown">
+                        <div class="user-setting">
+                            <img src="http://localhost/public/uploads/system/68de8bdd1669f_1759415261.png" class="user-img" alt="وزارت ورزش و جوانان ایران">
+                        </div>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <div class="px-3 py-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="http://localhost/public/uploads/system/68de8bdd1669f_1759415261.png" alt="وزارت ورزش و جوانان ایران" class="rounded-circle" width="54" height="54">
+                                    <div>
+                                        <h6 class="mb-0">وزارت ورزش و جوانان ایران</h6>
+                                        <small class="text-secondary">organization@example.com</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="http://localhost/organizations/profile">
+                                <div class="d-flex align-items-center">
+                                    <ion-icon name="person-outline"></ion-icon>
+                                    <div class="ms-3"><span>پروفایل سازمان</span></div>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="http://localhost/organizations/settings">
+                                <div class="d-flex align-items-center">
+                                    <ion-icon name="settings-outline"></ion-icon>
+                                    <div class="ms-3"><span>تنظیمات</span></div>
+                                </div>
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="http://localhost/organizations/logout">
+                                <div class="d-flex align-items-center">
+                                    <ion-icon name="log-out-outline"></ion-icon>
+                                    <div class="ms-3"><span>خروج</span></div>
+                                </div>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </nav>
+</header>
+
+<div class="page-content-wrapper">
+    <div class="page-content">
+        <div class="row g-4">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm rounded-24 h-100">
+                    <div class="card-body p-24">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-16 mb-24">
+                            <div class="d-flex flex-wrap gap-10">
+                                <a href="http://localhost/organizations/users/import" class="btn btn-outline-main rounded-pill px-24 d-flex align-items-center gap-8">
+                                    <i class="fas fa-file-upload"></i>
+                                    بارگذاری اکسل
+                                </a>
+                                <a href="http://localhost/organizations/users/create" class="btn btn-main rounded-pill px-24 d-flex align-items-center gap-8">
+                                    <i class="fas fa-user-plus"></i>
+                                    ایجاد کاربر
+                                </a>
+                            </div>
+                            <div class="text-end">
+                                <h2 class="mb-6 text-gray-900">لیست کاربران سازمان</h2>
+                                <p class="text-gray-500 mb-0">کاربران ثبت‌شده برای سازمان را مشاهده، مدیریت و جستجو کنید.</p>
+                            </div>
+                        </div>
+
+                        
+                        
+                        <form action="http://localhost/organizations/users" method="get" class="row gy-3 gx-3 align-items-center mb-24">
+                            <div class="col-lg-6 col-md-8">
+                                <label for="search" class="form-label fw-semibold text-gray-600">جستجو در کاربران</label>
+                                <div class="input-group">
+                                    <input type="text" id="search" name="search" class="form-control" placeholder="نام، نام خانوادگی یا کد ارزیابی" value="">
+                                    <button type="submit" class="btn btn-outline-main">
+                                        <i class="fas fa-search"></i>
+                                        جستجو
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+
+                        
+                        <div class="table-responsive rounded-16 border border-gray-100">
+                            <table class="table align-middle mb-0 text-end organization-users-table js-data-table">
+                                <thead class="bg-gray-100 text-gray-700">
+                                    <tr>
+                                        <th scope="col" class="no-sort no-search">عملیات</th>
+                                        <th scope="col">نام</th>
+                                        <th scope="col">نام خانوادگی</th>
+                                        <th scope="col">جنسیت</th>
+                                        <th scope="col">کد ارزیابی</th>
+                                        <th scope="col">شناسه سازمان</th>
+                                        <th scope="col">ادمین سیستم</th>
+                                        <th scope="col">مدیر</th>
+                                        <th scope="col">ارزیابی‌شونده</th>
+                                        <th scope="col">ارزیاب</th>
+                                        <th scope="col">فعال</th>
+                                        <th scope="col">نام سازمان</th>
+                                        <th scope="col">استان</th>
+                                        <th scope="col">شهر</th>
+                                        <th scope="col">تاریخ ایجاد</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                                                    </tbody>
+                            </table>
+                        </div>
+                                                    <div class="alert alert-info mt-24 rounded-16 text-end d-flex align-items-center gap-12" role="alert">
+                                <i class="fas fa-user-plus"></i>
+                                <span>کاربری برای نمایش وجود ندارد. می‌توانید با دکمه «ایجاد کاربر» یک کاربر جدید اضافه کنید.</span>
+                            </div>
+                                            </div>
+                </div>
+            </div>
+        </div>
+
+            </div>
+        <footer class="page-footer">
+            <p class="mb-0">&copy; 2025 پنل سازمانی ادمیت. تمام حقوق محفوظ است.</p>
+        </footer>
+    </div>
+
+    <a href="javascript:;" class="back-to-top">
+        <ion-icon name="arrow-up-outline"></ion-icon>
+    </a>
+
+    <div class="overlay nav-toggle-icon"></div>
+    <div class="switcher-wrapper" id="layout-switcher" hidden></div>
+</div>
+
+
+<script src="http://localhost/public/themes/dashkote/js/jquery.min.js"></script>
+<script src="http://localhost/public/themes/dashkote/plugins/simplebar/js/simplebar.min.js"></script>
+<script src="http://localhost/public/themes/dashkote/plugins/metismenu/js/metisMenu.min.js"></script>
+<script src="http://localhost/public/themes/dashkote/plugins/perfect-scrollbar/js/perfect-scrollbar.js"></script>
+<script src="http://localhost/public/themes/dashkote/js/bootstrap.bundle.min.js"></script>
+<script src="http://localhost/public/themes/dashkote/js/main.js"></script>
+<script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+<script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+<script src="http://localhost/public/assets/js/persian-font-enforcer.js"></script>
+
+        <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+        <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+        <script src="https://cdn.datatables.net/responsive/2.5.0/js/responsive.bootstrap5.min.js"></script>
+        <script src="http://localhost/public/assets/js/datatables-init.js"></script>
+
+
+</body>
+</html>
+</div>

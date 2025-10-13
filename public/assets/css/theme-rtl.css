@@ -1,0 +1,654 @@
+:root {
+    --persian-font-stack: 'Yekan', 'Vazirmatn', 'IRANYekanX', 'IRANSansX', 'IRANYekan', 'Sahel', 'Samim', 'Tahoma', 'Segoe UI', 'Arial', sans-serif;
+    --persian-heading-weight: 600;
+    --persian-body-weight: 400;
+    --persian-line-height: 1.7;
+    --persian-letter-spacing: -0.01em;
+    --persian-text-color: #111827;
+    --persian-muted-color: #6b7280;
+    --persian-border-color: #e5e7eb;
+    --persian-background: #f6f7fb;
+    --persian-card-bg: #ffffff;
+    --persian-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    --persian-radius-lg: 24px;
+}
+
+html {
+    font-size: 14px;
+    background-color: var(--persian-background);
+    color: var(--persian-text-color);
+}
+
+html[dir="rtl"] {
+    direction: rtl;
+}
+
+body.font-persian {
+    font-family: var(--persian-font-stack);
+    font-weight: var(--persian-body-weight);
+    line-height: var(--persian-line-height);
+    letter-spacing: var(--persian-letter-spacing);
+    background-color: var(--persian-background);
+    text-align: right;
+    color: var(--persian-text-color);
+}
+
+body.font-persian h1,
+body.font-persian h2,
+body.font-persian h3,
+body.font-persian h4,
+body.font-persian h5,
+body.font-persian h6 {
+    font-family: var(--persian-font-stack);
+    font-weight: var(--persian-heading-weight);
+    line-height: 1.5;
+    letter-spacing: -0.015em;
+}
+
+body.font-persian p,
+body.font-persian span,
+body.font-persian label,
+body.font-persian div,
+body.font-persian li,
+body.font-persian a {
+    font-family: var(--persian-font-stack);
+    line-height: var(--persian-line-height);
+}
+
+body.font-persian strong,
+body.font-persian b {
+    font-weight: 600;
+}
+
+body.font-persian,
+body.font-persian.rtl-body,
+body.font-persian .rtl-container,
+body.font-persian .dashboard-body,
+body.font-persian .dashboard-main-wrapper,
+body.font-persian .sidebar,
+body.font-persian .top-navbar {
+    direction: rtl;
+    text-align: right;
+}
+
+body.font-persian .ltr-force,
+body.font-persian .ltr-force * {
+    direction: ltr !important;
+    text-align: left !important;
+}
+
+body.font-persian .btn {
+    font-family: var(--persian-font-stack);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    border-radius: 999px;
+}
+
+body.font-persian .btn i {
+    margin-left: 0;
+    margin-right: 6px;
+}
+
+body.font-persian .form-label,
+body.font-persian .form-control,
+body.font-persian .form-select,
+body.font-persian .form-check-label {
+    font-family: var(--persian-font-stack);
+}
+
+body.font-persian .form-control,
+body.font-persian .form-select {
+    border-radius: 14px;
+    padding: 0.55rem 1rem;
+}
+
+body.font-persian .form-check-input {
+    margin-left: 0;
+    margin-right: -1.8rem;
+}
+
+body.font-persian .form-check {
+    padding-right: 2.5rem;
+    padding-left: 0;
+}
+
+body.font-persian .input-group {
+    flex-direction: row-reverse;
+}
+
+body.font-persian .input-group .input-group-text:first-child {
+    border-top-right-radius: 16px;
+    border-bottom-right-radius: 16px;
+}
+
+body.font-persian .input-group .form-control:last-child {
+    border-top-left-radius: 16px;
+    border-bottom-left-radius: 16px;
+}
+
+body.font-persian .card {
+    border-radius: var(--persian-radius-lg);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    box-shadow: var(--persian-shadow);
+    background-color: var(--persian-card-bg);
+}
+
+body.font-persian .card-header,
+body.font-persian .card-footer {
+    border-color: rgba(148, 163, 184, 0.18);
+}
+
+body.font-persian .table {
+    margin-bottom: 0;
+    background-color: #ffffff;
+    color: var(--persian-text-color);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 18px;
+    overflow: hidden;
+}
+
+body.font-persian .table thead th {
+    background: linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(79, 70, 229, 0.04));
+    color: #1f2937;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border-bottom: none;
+    padding: 0.9rem 1.25rem;
+}
+
+body.font-persian .table tbody td {
+    padding: 0.85rem 1.25rem;
+    border-color: rgba(148, 163, 184, 0.18);
+    vertical-align: middle;
+    font-size: 0.92rem;
+}
+
+body.font-persian .table tbody tr:nth-of-type(odd) {
+    background-color: rgba(79, 70, 229, 0.02);
+}
+
+body.font-persian .table tbody tr:hover {
+    background-color: rgba(79, 70, 229, 0.07);
+}
+
+body.font-persian .table .badge {
+    font-weight: 500;
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+}
+
+body.font-persian .table .organization-users-actions,
+body.font-persian .table .table-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+body.font-persian .table .organization-users-actions .btn,
+body.font-persian .table .table-actions .btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+body.font-persian .table .no-sort,
+body.font-persian .table .no-search {
+    white-space: nowrap;
+}
+
+/* DataTables RTL Enhancements */
+body.font-persian .dataTables_wrapper {
+    direction: rtl;
+    text-align: right;
+}
+
+body.font-persian .dataTables_wrapper .row {
+    margin: 0;
+}
+
+body.font-persian .dataTables_wrapper .dataTables_length,
+body.font-persian .dataTables_wrapper .dataTables_filter,
+body.font-persian .dataTables_wrapper .dataTables_info,
+body.font-persian .dataTables_wrapper .dataTables_paginate {
+    float: none;
+    text-align: right;
+}
+
+body.font-persian .dataTables_wrapper .dataTables_filter,
+body.font-persian .dataTables_wrapper .dataTables_length {
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+body.font-persian .dataTables_wrapper .dataTables_filter label,
+body.font-persian .dataTables_wrapper .dataTables_length label {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-start;
+}
+
+body.font-persian .dataTables_wrapper .dataTables_filter input[type="search"],
+body.font-persian .dataTables_wrapper .dataTables_length select {
+    border-radius: 999px;
+    padding: 0.45rem 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background-color: #ffffff;
+}
+
+body.font-persian .dataTables_wrapper .dataTables_paginate {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+body.font-persian .dataTables_wrapper .dataTables_paginate .paginate_button {
+    border-radius: 999px !important;
+    padding: 0.35rem 0.85rem;
+    border: none !important;
+    transition: all 0.2s ease-in-out;
+    background-color: transparent;
+}
+
+body.font-persian .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background-color: #4f46e5 !important;
+    color: #ffffff !important;
+    box-shadow: 0 6px 16px rgba(79, 70, 229, 0.3);
+}
+
+body.font-persian .dataTables_wrapper .dataTables_paginate .paginate_button:hover:not(.current) {
+    background-color: rgba(79, 70, 229, 0.1) !important;
+    color: #4f46e5 !important;
+}
+
+body.font-persian .dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+body.font-persian .dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover {
+    background-color: transparent !important;
+    color: #9ca3af !important;
+    box-shadow: none;
+}
+
+body.font-persian .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 18px;
+}
+
+body.font-persian .breadcrumb {
+    flex-direction: row-reverse;
+    gap: 8px;
+}
+
+body.font-persian .breadcrumb-item + .breadcrumb-item::before {
+    content: '\00bb';
+    color: var(--persian-muted-color);
+    padding: 0 0 0 0.5rem;
+}
+
+body.font-persian .dropdown-menu {
+    text-align: right;
+    transform-origin: top right;
+}
+
+body.font-persian .top-navbar .dropdown-menu {
+    right: 0;
+    left: auto;
+}
+
+body.font-persian .sidebar {
+    text-align: right;
+}
+
+body.font-persian .sidebar-wrapper .sidebar-site-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.4;
+    color: #0f172a;
+}
+
+body.font-persian .sidebar-wrapper .organization-profile-block {
+    margin: 0.5rem 1.25rem 0.75rem;
+    padding: 0;
+}
+
+body.font-persian .sidebar-wrapper .organization-profile-block .org-avatar {
+    width: 82px;
+    height: 82px;
+}
+
+body.font-persian .sidebar-wrapper .organization-profile-block .org-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+body.font-persian .sidebar .sidebar-menu__link,
+body.font-persian .sidebar .sidebar-submenu__link {
+    justify-content: flex-start;
+    gap: 12px;
+}
+
+body.font-persian .sidebar .sidebar-menu__icon {
+    margin-left: 0;
+    margin-right: 12px;
+}
+
+body.font-persian .sidebar .sidebar-menu__arrow {
+    margin-left: auto;
+    margin-right: 0;
+    transform: scaleX(-1);
+}
+
+body.font-persian .top-navbar .toggle-btn {
+    margin-right: 0;
+    margin-left: 12px;
+}
+
+@media (min-width: 1200px) {
+    body.font-persian .dashboard-main-wrapper {
+        margin-right: 280px;
+        margin-left: 0;
+    }
+
+    body.font-persian .sidebar {
+        position: fixed;
+        right: 0;
+        left: auto;
+        transform: translateX(0);
+    }
+}
+
+@media (max-width: 1199.98px) {
+    body.font-persian .sidebar {
+        transform: translateX(100%);
+        transition: transform 0.3s ease-in-out;
+        position: fixed;
+        z-index: 1050;
+        height: 100vh;
+        overflow-y: auto;
+        right: 0;
+        left: auto;
+    }
+
+    body.font-persian .sidebar.show {
+        transform: translateX(0);
+    }
+
+    body.font-persian .dashboard-main-wrapper {
+        margin-right: 0;
+        margin-left: 0;
+    }
+}
+
+@media (max-width: 767.98px) {
+    body.font-persian .top-navbar form {
+        display: none !important;
+    }
+
+    body.font-persian .toggle-btn {
+        display: flex !important;
+    }
+
+    body.font-persian .dataTables_wrapper .dataTables_filter,
+    body.font-persian .dataTables_wrapper .dataTables_length,
+    body.font-persian .dataTables_wrapper .dataTables_info,
+    body.font-persian .dataTables_wrapper .dataTables_paginate {
+        text-align: center;
+        justify-content: center;
+    }
+
+    body.font-persian .table .organization-users-actions,
+    body.font-persian .table .table-actions {
+        justify-content: center;
+    }
+}
+
+/* Utility classes */
+body.font-persian .text-muted-fa {
+    color: var(--persian-muted-color) !important;
+}
+
+body.font-persian .shadow-fa {
+    box-shadow: var(--persian-shadow) !important;
+}
+
+body.font-persian .rounded-fa {
+    border-radius: var(--persian-radius-lg) !important;
+}
+
+body.font-persian .border-fa {
+    border: 1px solid var(--persian-border-color) !important;
+}
+
+body.font-persian .bg-fa {
+    background-color: var(--persian-card-bg) !important;
+}
+
+html.rtl-enabled body {
+    direction: rtl;
+}
+
+html.rtl-enabled .modal.fade .modal-dialog {
+    transform-origin: center right;
+}
+
+body.font-persian .toast {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Legacy utility bridge for existing views */
+:root {
+    --legacy-main-50: #eef2ff;
+    --legacy-main-100: #e0e7ff;
+    --legacy-main-400: #6366f1;
+    --legacy-main-500: #4f46e5;
+    --legacy-main-600: #4338ca;
+    --legacy-main-700: #3730a3;
+    --legacy-gray-900: #111827;
+    --legacy-gray-800: #1f2937;
+    --legacy-gray-700: #374151;
+    --legacy-gray-600: #4b5563;
+    --legacy-gray-500: #6b7280;
+    --legacy-gray-400: #9ca3af;
+    --legacy-gray-300: #d1d5db;
+    --legacy-gray-200: #e5e7eb;
+    --legacy-gray-100: #f3f4f6;
+    --legacy-success-50: #ecfdf5;
+    --legacy-success-100: #d1fae5;
+    --legacy-success-600: #059669;
+    --legacy-success-700: #047857;
+    --legacy-danger-50: #fef2f2;
+    --legacy-danger-100: #fee2e2;
+    --legacy-danger-600: #dc2626;
+}
+
+body.font-persian .text-gray-900 { color: var(--legacy-gray-900) !important; }
+body.font-persian .text-gray-800 { color: var(--legacy-gray-800) !important; }
+body.font-persian .text-gray-700 { color: var(--legacy-gray-700) !important; }
+body.font-persian .text-gray-600 { color: var(--legacy-gray-600) !important; }
+body.font-persian .text-gray-500 { color: var(--legacy-gray-500) !important; }
+body.font-persian .text-gray-400 { color: var(--legacy-gray-400) !important; }
+body.font-persian .text-gray-300 { color: var(--legacy-gray-300) !important; }
+body.font-persian .text-gray-200 { color: var(--legacy-gray-200) !important; }
+body.font-persian .text-gray-100 { color: var(--legacy-gray-100) !important; }
+
+body.font-persian .text-main-500 { color: var(--legacy-main-500) !important; }
+body.font-persian .text-main-600 { color: var(--legacy-main-600) !important; }
+body.font-persian .bg-main-50 { background-color: var(--legacy-main-50) !important; }
+body.font-persian .bg-main-100 { background-color: var(--legacy-main-100) !important; }
+
+body.font-persian .bg-gray-100 { background-color: var(--legacy-gray-100) !important; }
+body.font-persian .border-gray-100 { border-color: var(--legacy-gray-100) !important; }
+body.font-persian .border-gray-200 { border-color: var(--legacy-gray-200) !important; }
+
+body.font-persian .bg-success-50 { background-color: var(--legacy-success-50) !important; }
+body.font-persian .bg-success-100 { background-color: var(--legacy-success-100) !important; }
+body.font-persian .text-success-600 { color: var(--legacy-success-600) !important; }
+body.font-persian .text-success-700 { color: var(--legacy-success-700) !important; }
+
+body.font-persian .bg-danger-50 { background-color: var(--legacy-danger-50) !important; }
+body.font-persian .bg-danger-100 { background-color: var(--legacy-danger-100) !important; }
+body.font-persian .text-danger-600 { color: var(--legacy-danger-600) !important; }
+
+body.font-persian .btn-main {
+    background: linear-gradient(135deg, var(--legacy-main-500), var(--legacy-main-600));
+    border: 1px solid var(--legacy-main-600);
+    color: #ffffff !important;
+    box-shadow: 0 10px 25px rgba(79, 70, 229, 0.25);
+    transition: all 0.2s ease-in-out;
+}
+
+body.font-persian .btn-main:hover,
+body.font-persian .btn-main:focus {
+    background: linear-gradient(135deg, var(--legacy-main-600), var(--legacy-main-700));
+    color: #ffffff !important;
+    border-color: var(--legacy-main-700);
+    box-shadow: 0 12px 30px rgba(67, 56, 202, 0.35);
+}
+
+body.font-persian .btn-outline-main {
+    color: var(--legacy-main-600);
+    border: 1px solid rgba(79, 70, 229, 0.35);
+    background-color: transparent;
+    transition: all 0.2s ease-in-out;
+}
+
+body.font-persian .btn-outline-main:hover,
+body.font-persian .btn-outline-main:focus {
+    color: #ffffff;
+    background-color: var(--legacy-main-600);
+    border-color: var(--legacy-main-600);
+}
+
+body.font-persian .btn-outline-gray {
+    color: var(--legacy-gray-600);
+    border: 1px solid var(--legacy-gray-200);
+    background-color: #ffffff;
+    transition: all 0.2s ease-in-out;
+}
+
+body.font-persian .btn-outline-gray:hover,
+body.font-persian .btn-outline-gray:focus {
+    color: var(--legacy-main-600);
+    border-color: var(--legacy-main-400);
+    background-color: rgba(99, 102, 241, 0.08);
+}
+
+body.font-persian .fw-medium { font-weight: 500 !important; }
+body.font-persian .text-13 { font-size: 0.8125rem !important; }
+body.font-persian .text-15 { font-size: 0.9375rem !important; }
+
+body.font-persian .gap-6 { gap: 0.375rem !important; }
+body.font-persian .gap-8 { gap: 0.5rem !important; }
+body.font-persian .gap-10 { gap: 0.625rem !important; }
+body.font-persian .gap-12 { gap: 0.75rem !important; }
+body.font-persian .gap-16 { gap: 1rem !important; }
+body.font-persian .gap-24 { gap: 1.5rem !important; }
+body.font-persian .g-24 { --bs-gutter-x: 1.5rem; --bs-gutter-y: 1.5rem; }
+
+body.font-persian .p-12 { padding: 0.75rem !important; }
+body.font-persian .p-13 { padding: 0.8125rem !important; }
+body.font-persian .p-16 { padding: 1rem !important; }
+body.font-persian .p-20 { padding: 1.25rem !important; }
+body.font-persian .p-24 { padding: 1.5rem !important; }
+
+body.font-persian .px-16 { padding-inline: 1rem !important; }
+body.font-persian .px-20 { padding-inline: 1.25rem !important; }
+body.font-persian .px-24 { padding-inline: 1.5rem !important; }
+body.font-persian .px-28 { padding-inline: 1.75rem !important; }
+body.font-persian .px-32 { padding-inline: 2rem !important; }
+
+body.font-persian .py-12 { padding-block: 0.75rem !important; }
+body.font-persian .py-13 { padding-block: 0.8125rem !important; }
+body.font-persian .py-20 { padding-block: 1.25rem !important; }
+body.font-persian .py-32 { padding-block: 2rem !important; }
+body.font-persian .py-40 { padding-block: 2.5rem !important; }
+
+body.font-persian .mt-6 { margin-top: 0.375rem !important; }
+body.font-persian .mt-10 { margin-top: 0.625rem !important; }
+body.font-persian .mt-12 { margin-top: 0.75rem !important; }
+body.font-persian .mt-16 { margin-top: 1rem !important; }
+body.font-persian .mt-20 { margin-top: 1.25rem !important; }
+body.font-persian .mt-28 { margin-top: 1.75rem !important; }
+
+body.font-persian .mb-6 { margin-bottom: 0.375rem !important; }
+body.font-persian .mb-10 { margin-bottom: 0.625rem !important; }
+body.font-persian .mb-12 { margin-bottom: 0.75rem !important; }
+body.font-persian .mb-16 { margin-bottom: 1rem !important; }
+body.font-persian .mb-20 { margin-bottom: 1.25rem !important; }
+body.font-persian .mb-24 { margin-bottom: 1.5rem !important; }
+body.font-persian .mb-28 { margin-bottom: 1.75rem !important; }
+body.font-persian .mb-32 { margin-bottom: 2rem !important; }
+body.font-persian .mb-40 { margin-bottom: 2.5rem !important; }
+body.font-persian .ms-10 { margin-inline-start: 0.625rem !important; }
+body.font-persian .ms-16 { margin-inline-start: 1rem !important; }
+
+body.font-persian .rounded-6 { border-radius: 6px !important; }
+body.font-persian .rounded-8 { border-radius: 8px !important; }
+body.font-persian .rounded-12 { border-radius: 12px !important; }
+body.font-persian .rounded-16 { border-radius: 16px !important; }
+body.font-persian .rounded-20 { border-radius: 20px !important; }
+body.font-persian .rounded-24 { border-radius: 24px !important; }
+
+body.font-persian .w-24 { width: 1.5rem !important; }
+body.font-persian .h-24 { height: 1.5rem !important; }
+body.font-persian .w-40 { width: 2.5rem !important; }
+body.font-persian .h-40 { height: 2.5rem !important; }
+body.font-persian .w-44 { width: 2.75rem !important; }
+body.font-persian .h-44 { height: 2.75rem !important; }
+body.font-persian .w-54 { width: 3.375rem !important; }
+body.font-persian .h-54 { height: 3.375rem !important; }
+body.font-persian .w-72 { width: 4.5rem !important; }
+body.font-persian .h-72 { height: 4.5rem !important; }
+body.font-persian .w-350 { width: 350px !important; }
+body.font-persian .max-h-270 { max-height: 270px !important; }
+
+body.font-persian .flex-center { display: flex; align-items: center; justify-content: center; }
+body.font-persian .flex-align { display: flex; align-items: center; }
+body.font-persian .flex-between { display: flex; align-items: center; justify-content: space-between; }
+
+body.font-persian .hover-shadow {
+    transition: all 0.2s ease-in-out;
+}
+
+body.font-persian .hover-shadow:hover {
+    box-shadow: 0 12px 30px rgba(79, 70, 229, 0.18);
+    transform: translateY(-2px);
+}
+
+body.font-persian .hover-text-decoration-underline:hover {
+    text-decoration: underline !important;
+}
+
+body.font-persian .badge.bg-main-50,
+body.font-persian .badge.bg-main-100,
+body.font-persian .badge.bg-success-50,
+body.font-persian .badge.bg-success-100 {
+    border: none;
+}
+
+body.font-persian .shadow-sm {
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08) !important;
+}
+
+body.font-persian .table .badge {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.75rem;
+}
+
+body.font-persian .alarm-notify {
+    width: 8px;
+    height: 8px;
+    background-color: var(--legacy-danger-600);
+    border-radius: 50%;
+}

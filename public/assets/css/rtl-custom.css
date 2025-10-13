@@ -1,0 +1,457 @@
+/* RTL Styles for Edmate Dashboard */
+
+/* Font for Persian text */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100..900&display=swap');
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/sahel-font@v3.4.0/dist/font-face.css');
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css');
+
+/* IRANSans Font Face - Best Persian Font */
+@font-face {
+    font-family: 'IRANSans';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/iran-sans@v5.0.0/dist/woff2/IRANSans-Light.woff2') format('woff2');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'IRANSans';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/iran-sans@v5.0.0/dist/woff2/IRANSans-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'IRANSans';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/iran-sans@v5.0.0/dist/woff2/IRANSans-Medium.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'IRANSans';
+    src: url('https://cdn.jsdelivr.net/gh/rastikerdar/iran-sans@v5.0.0/dist/woff2/IRANSans-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Base RTL styles with improved Persian fonts */
+[dir="rtl"] {
+    font-family: 'IRANSans', 'Dana', 'Samim', 'Vazirmatn', 'Vazir', 'Sahel', 'YekanBakh', 'Tahoma', 'Arial', sans-serif;
+}
+
+/* Apply Persian fonts to ALL elements in RTL mode */
+[dir="rtl"] * {
+    font-family: 'IRANSans', 'Dana', 'Samim', 'Vazirmatn', 'Vazir', 'Sahel', 'YekanBakh', 'Tahoma', 'Arial', sans-serif !important;
+}
+
+/* Specific overrides for common elements */
+[dir="rtl"] html,
+[dir="rtl"] body,
+[dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3, [dir="rtl"] h4, [dir="rtl"] h5, [dir="rtl"] h6,
+[dir="rtl"] p, [dir="rtl"] span, [dir="rtl"] div, [dir="rtl"] a, [dir="rtl"] li, [dir="rtl"] td, [dir="rtl"] th,
+[dir="rtl"] button, [dir="rtl"] input, [dir="rtl"] textarea, [dir="rtl"] select, [dir="rtl"] label,
+[dir="rtl"] .btn, [dir="rtl"] .card, [dir="rtl"] .sidebar, [dir="rtl"] .navbar, [dir="rtl"] .dropdown,
+[dir="rtl"] .form-control, [dir="rtl"] .form-select, [dir="rtl"] .form-label,
+[dir="rtl"] .sidebar-menu, [dir="rtl"] .sidebar-submenu,
+[dir="rtl"] .top-navbar, [dir="rtl"] .dashboard-body,
+[dir="rtl"] .notification, [dir="rtl"] .dropdown-menu,
+[dir="rtl"] .calendar, [dir="rtl"] .assignment,
+[dir="rtl"] .course-card, [dir="rtl"] .stat-widget,
+[dir="rtl"] .footer, [dir="rtl"] .preloader {
+    font-family: 'IRANSans', 'Dana', 'Samim', 'Vazirmatn', 'Vazir', 'Sahel', 'YekanBakh', 'Tahoma', 'Arial', sans-serif !important;
+}
+
+/* Specific font weights for Persian text */
+[dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3, [dir="rtl"] h4, [dir="rtl"] h5, [dir="rtl"] h6 {
+    font-family: 'IRANSans', 'Vazirmatn', 'Vazir', sans-serif;
+    font-weight: 600;
+}
+
+[dir="rtl"] .fw-bold, [dir="rtl"] .font-weight-bold {
+    font-weight: 700 !important;
+}
+
+[dir="rtl"] .fw-semibold {
+    font-weight: 600 !important;
+}
+
+[dir="rtl"] .fw-medium {
+    font-weight: 500 !important;
+}
+
+[dir="rtl"] .fw-normal {
+    font-weight: 400 !important;
+}
+
+[dir="rtl"] .fw-light {
+    font-weight: 300 !important;
+}
+
+/* RTL Bootstrap overrides */
+[dir="rtl"] .row {
+    margin-right: -15px;
+    margin-left: -15px;
+}
+
+[dir="rtl"] .col, [dir="rtl"] .col-1, [dir="rtl"] .col-2, [dir="rtl"] .col-3, [dir="rtl"] .col-4, [dir="rtl"] .col-5, [dir="rtl"] .col-6, [dir="rtl"] .col-7, [dir="rtl"] .col-8, [dir="rtl"] .col-9, [dir="rtl"] .col-10, [dir="rtl"] .col-11, [dir="rtl"] .col-12, [dir="rtl"] .col-sm, [dir="rtl"] .col-sm-1, [dir="rtl"] .col-sm-2, [dir="rtl"] .col-sm-3, [dir="rtl"] .col-sm-4, [dir="rtl"] .col-sm-5, [dir="rtl"] .col-sm-6, [dir="rtl"] .col-sm-7, [dir="rtl"] .col-sm-8, [dir="rtl"] .col-sm-9, [dir="rtl"] .col-sm-10, [dir="rtl"] .col-sm-11, [dir="rtl"] .col-sm-12, [dir="rtl"] .col-md, [dir="rtl"] .col-md-1, [dir="rtl"] .col-md-2, [dir="rtl"] .col-md-3, [dir="rtl"] .col-md-4, [dir="rtl"] .col-md-5, [dir="rtl"] .col-md-6, [dir="rtl"] .col-md-7, [dir="rtl"] .col-md-8, [dir="rtl"] .col-md-9, [dir="rtl"] .col-md-10, [dir="rtl"] .col-md-11, [dir="rtl"] .col-md-12, [dir="rtl"] .col-lg, [dir="rtl"] .col-lg-1, [dir="rtl"] .col-lg-2, [dir="rtl"] .col-lg-3, [dir="rtl"] .col-lg-4, [dir="rtl"] .col-lg-5, [dir="rtl"] .col-lg-6, [dir="rtl"] .col-lg-7, [dir="rtl"] .col-lg-8, [dir="rtl"] .col-lg-9, [dir="rtl"] .col-lg-10, [dir="rtl"] .col-lg-11, [dir="rtl"] .col-lg-12, [dir="rtl"] .col-xl, [dir="rtl"] .col-xl-1, [dir="rtl"] .col-xl-2, [dir="rtl"] .col-xl-3, [dir="rtl"] .col-xl-4, [dir="rtl"] .col-xl-5, [dir="rtl"] .col-xl-6, [dir="rtl"] .col-xl-7, [dir="rtl"] .col-xl-8, [dir="rtl"] .col-xl-9, [dir="rtl"] .col-xl-10, [dir="rtl"] .col-xl-11, [dir="rtl"] .col-xl-12, [dir="rtl"] .col-xxl, [dir="rtl"] .col-xxl-1, [dir="rtl"] .col-xxl-2, [dir="rtl"] .col-xxl-3, [dir="rtl"] .col-xxl-4, [dir="rtl"] .col-xxl-5, [dir="rtl"] .col-xxl-6, [dir="rtl"] .col-xxl-7, [dir="rtl"] .col-xxl-8, [dir="rtl"] .col-xxl-9, [dir="rtl"] .col-xxl-10, [dir="rtl"] .col-xxl-11, [dir="rtl"] .col-xxl-12 {
+    padding-right: 15px;
+    padding-left: 15px;
+}
+
+/* Sidebar RTL adjustments */
+[dir="rtl"] .sidebar {
+    right: 0;
+    left: auto;
+}
+
+[dir="rtl"] .sidebar-close-btn {
+    right: 20px;
+    left: auto;
+}
+
+[dir="rtl"] .dashboard-main-wrapper {
+    margin-right: 280px;
+    margin-left: 0;
+}
+
+/* Navigation arrows for RTL */
+[dir="rtl"] .sidebar-menu__item.has-dropdown > .sidebar-menu__link::after {
+    transform: rotate(180deg);
+}
+
+[dir="rtl"] .sidebar-submenu {
+    
+    padding-left: 20px;
+}
+
+/* Form inputs RTL */
+[dir="rtl"] .form-control {
+    text-align: right;
+}
+
+[dir="rtl"] .input-icon {
+    right: 8px;
+    left: auto;
+}
+
+/* Dropdown menus RTL */
+[dir="rtl"] .dropdown-menu {
+    right: 0;
+    left: auto;
+}
+
+/* Calendar RTL */
+[dir="rtl"] .calendar__week {
+    direction: rtl;
+}
+
+[dir="rtl"] .calendar__arrow.left {
+    order: 2;
+}
+
+[dir="rtl"] .calendar__arrow.right {
+    order: 1;
+}
+
+/* Cards and content RTL */
+[dir="rtl"] .flex-align {
+    text-align: right;
+}
+
+[dir="rtl"] .text-end {
+    text-align: right;
+}
+
+[dir="rtl"] .text-start {
+    text-align: left;
+}
+
+/* Badges and pills */
+[dir="rtl"] .rounded-pill {
+    direction: rtl;
+}
+
+/* Progress bars */
+[dir="rtl"] .flex-between {
+    direction: rtl;
+}
+
+/* Chart labels */
+[dir="rtl"] .apexcharts-legend-text {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Notification dropdown */
+[dir="rtl"] .notification-dropdown {
+    right: 0;
+    left: auto;
+}
+
+/* User menu */
+[dir="rtl"] .user-dropdown {
+    right: 0;
+    left: auto;
+}
+
+/* Language selector */
+[dir="rtl"] .language-dropdown {
+    right: 0;
+    left: auto;
+}
+
+/* Toggle button responsive */
+@media (max-width: 1199px) {
+    [dir="rtl"] .dashboard-main-wrapper {
+        margin-right: 0;
+        margin-left: 0;
+    }
+    
+    [dir="rtl"] .sidebar {
+        right: -280px;
+        left: auto;
+    }
+    
+    [dir="rtl"] .sidebar.active {
+        right: 0;
+    }
+}
+
+/* Assignment arrows RTL */
+[dir="rtl"] .assignment-item .ph-caret-right::before {
+    content: "\f0d9";
+}
+
+[dir="rtl"] .assignment-item .ph-caret-left::before {
+    content: "\f0da";
+}
+
+/* Course cards RTL alignment */
+[dir="rtl"] .course-card {
+    text-align: right;
+}
+
+[dir="rtl"] .course-meta {
+    direction: rtl;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    [dir="rtl"] .flex-between {
+        flex-direction: column;
+        align-items: flex-end;
+    }
+    
+    [dir="rtl"] .sidebar-menu__link {
+        justify-content: flex-end;
+    }
+}
+
+/* Search input RTL */
+[dir="rtl"] .search-input {
+    padding-right: 40px;
+    padding-left: 16px;
+    text-align: right;
+}
+
+/* Icon positioning for RTL */
+[dir="rtl"] .icon-left {
+    right: 8px;
+    left: auto;
+}
+
+[dir="rtl"] .icon-right {
+    left: 8px;
+    right: auto;
+}
+
+/* Persian number styles */
+[dir="rtl"] .persian-numbers {
+    font-feature-settings: "ss01";
+}
+
+/* Better text rendering for Persian */
+[dir="rtl"] * {
+    text-rendering: optimizeLegibility;
+    -webkit-font-feature-settings: "liga", "kern";
+    -moz-font-feature-settings: "liga", "kern";
+    font-feature-settings: "liga", "kern";
+}
+
+/* Menu items with better Persian font */
+[dir="rtl"] .sidebar-menu__link,
+[dir="rtl"] .sidebar-submenu__link {
+    font-family: 'IRANSans', 'Vazirmatn', sans-serif;
+    font-weight: 400;
+}
+
+/* Card titles with better Persian font */
+[dir="rtl"] .card-title,
+[dir="rtl"] .card h1,
+[dir="rtl"] .card h2,
+[dir="rtl"] .card h3,
+[dir="rtl"] .card h4,
+[dir="rtl"] .card h5,
+[dir="rtl"] .card h6 {
+    font-family: 'IRANSans', 'Vazirmatn', sans-serif;
+    font-weight: 500;
+}
+
+/* Button text with Persian font */
+[dir="rtl"] .btn {
+    font-family: 'IRANSans', 'Vazirmatn', sans-serif;
+    font-weight: 500;
+}
+
+/* Form labels and inputs */
+[dir="rtl"] label,
+[dir="rtl"] .form-label {
+    font-family: 'IRANSans', 'Vazirmatn', sans-serif;
+    font-weight: 400;
+}
+
+[dir="rtl"] input,
+[dir="rtl"] textarea,
+[dir="rtl"] select {
+    font-family: 'IRANSans', 'Dana', 'Samim', 'Vazirmatn', sans-serif;
+}
+
+/* Special class for Persian headings */
+[dir="rtl"] .persian-heading {
+    font-family: 'IRANSans', 'Dana', sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+/* Navigation menu Persian styling */
+[dir="rtl"] .sidebar-menu .text,
+[dir="rtl"] .top-navbar,
+[dir="rtl"] .dashboard-body {
+    font-family: 'IRANSans', 'Dana', 'Samim', sans-serif;
+}
+
+/* Notification and dropdown text */
+[dir="rtl"] .dropdown-menu,
+[dir="rtl"] .notification-text {
+    font-family: 'IRANSans', 'Dana', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* Statistics numbers styling */
+[dir="rtl"] .stat-number {
+    font-family: 'IRANSans', 'Dana', sans-serif;
+    font-weight: 700;
+}
+
+/* Course card content */
+[dir="rtl"] .course-title,
+[dir="rtl"] .course-description {
+    font-family: 'IRANSans', 'Dana', sans-serif;
+    line-height: 1.7;
+}
+
+/* Calendar Persian styling */
+[dir="rtl"] .calendar {
+    font-family: 'IRANSans', 'Dana', sans-serif;
+}
+
+/* Assignment list styling */
+[dir="rtl"] .assignment-title {
+    font-family: 'IRANSans', 'Dana', sans-serif;
+    font-weight: 500;
+}
+
+/* Force Persian fonts on pseudo elements */
+[dir="rtl"] *::before,
+[dir="rtl"] *::after {
+    font-family: 'IRANSans', 'Dana', 'Samim', 'Vazirmatn', sans-serif !important;
+}
+
+/* Override any existing font specifications */
+[dir="rtl"] .font-heading,
+[dir="rtl"] .font-body,
+[dir="rtl"] .text-heading,
+[dir="rtl"] .text-body {
+    font-family: 'IRANSans', 'Dana', 'Samim', 'Vazirmatn', sans-serif !important;
+}
+
+/* Specific UI components */
+[dir="rtl"] .modal,
+[dir="rtl"] .modal-dialog,
+[dir="rtl"] .modal-content,
+[dir="rtl"] .modal-header,
+[dir="rtl"] .modal-body,
+[dir="rtl"] .modal-footer,
+[dir="rtl"] .tooltip,
+[dir="rtl"] .popover,
+[dir="rtl"] .alert,
+[dir="rtl"] .badge,
+[dir="rtl"] .breadcrumb,
+[dir="rtl"] .pagination {
+    font-family: 'IRANSans', 'Dana', 'Samim', 'Vazirmatn', sans-serif !important;
+}
+
+/* Charts and graphs text */
+[dir="rtl"] .apexcharts-text,
+[dir="rtl"] .apexcharts-legend-text,
+[dir="rtl"] .apexcharts-tooltip,
+[dir="rtl"] .apexcharts-xaxis-label,
+[dir="rtl"] .apexcharts-yaxis-label {
+    font-family: 'IRANSans', 'Dana', sans-serif !important;
+}
+
+/* DataTables elements if any */
+[dir="rtl"] .dataTables_wrapper,
+[dir="rtl"] .dataTables_info,
+[dir="rtl"] .dataTables_paginate,
+[dir="rtl"] .dataTables_length,
+[dir="rtl"] .dataTables_filter {
+    font-family: 'IRANSans', 'Dana', sans-serif !important;
+}
+
+/* Override Bootstrap default fonts */
+[dir="rtl"] .list-group-item,
+[dir="rtl"] .nav-link,
+[dir="rtl"] .nav-item,
+[dir="rtl"] .tab-pane,
+[dir="rtl"] .accordion,
+[dir="rtl"] .collapse {
+    font-family: 'IRANSans', 'Dana', sans-serif !important;
+}
+
+/* Statistics widgets RTL */
+[dir="rtl"] .stat-widget {
+    text-align: right;
+}
+
+/* Footer RTL */
+[dir="rtl"] .footer-links {
+    direction: rtl;
+    justify-content: flex-start;
+}
+
+/* Table RTL if any */
+[dir="rtl"] table {
+    direction: rtl;
+}
+
+[dir="rtl"] th,
+[dir="rtl"] td {
+    text-align: right;
+}
+
+/* Breadcrumb RTL */
+[dir="rtl"] .breadcrumb {
+    direction: rtl;
+}
+
+[dir="rtl"] .breadcrumb-item::before {
+    float: right;
+    margin-right: 0;
+    margin-left: 0.5rem;
+}

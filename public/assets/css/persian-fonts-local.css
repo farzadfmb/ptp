@@ -1,0 +1,88 @@
+/* Persian Fonts – Local helpers */
+
+:root {
+    --persian-font-stack: 'Yekan', 'Vazirmatn', 'IRANYekanX', 'IRANSansX', 'IranSans', 'Sahel', 'Samim', 'Tahoma', 'Segoe UI', 'Arial', sans-serif;
+    --persian-fallback-font: 'Tahoma', 'Segoe UI', 'Arial', sans-serif;
+}
+
+@font-face {
+    font-family: 'Persian-Fallback';
+    src: local('Vazirmatn'), local('IRANSans'), local('Tahoma'), local('Segoe UI'), local('Arial');
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+.font-persian,
+.font-persian * {
+    font-family: var(--persian-font-stack) !important;
+    letter-spacing: -0.01em;
+}
+
+[dir="rtl"] {
+    font-family: var(--persian-font-stack) !important;
+}
+
+[dir="rtl"] *,
+.rtl-enabled body,
+.rtl-enabled body * {
+    font-family: var(--persian-font-stack) !important;
+}
+
+body.font-persian {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+body.font-persian strong,
+body.font-persian b {
+    font-weight: 600;
+}
+
+body.font-persian .fw-light,
+body.font-persian .font-weight-light {
+    font-weight: 300;
+}
+
+body.font-persian .fw-normal,
+body.font-persian .font-weight-normal {
+    font-weight: 400;
+}
+
+body.font-persian .fw-medium {
+    font-weight: 500;
+}
+
+body.font-persian .fw-semibold {
+    font-weight: 600;
+}
+
+body.font-persian .fw-bold,
+body.font-persian .font-weight-bold {
+    font-weight: 700;
+}
+
+body.font-persian h1,
+body.font-persian h2,
+body.font-persian h3,
+body.font-persian h4,
+body.font-persian h5,
+body.font-persian h6 {
+    font-weight: 600;
+    letter-spacing: -0.012em;
+}
+
+body.font-persian p,
+body.font-persian span,
+body.font-persian div {
+    letter-spacing: -0.006em;
+}
+
+body.font-persian .btn,
+body.font-persian input,
+body.font-persian textarea,
+body.font-persian select,
+body.font-persian label {
+    font-family: var(--persian-font-stack);
+}

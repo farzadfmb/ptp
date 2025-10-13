@@ -1,0 +1,159 @@
+/* RTL Styles - LOCAL FONTS VERSION */
+/* This version removes external CDN dependencies */
+
+/* Remove all external font imports */
+/* No more CDN calls that cause 404 errors */
+
+/* Base RTL styles with system Persian fonts */
+[dir="rtl"] {
+    font-family: 'Persian-Fallback', 'B Nazanin', 'Tahoma', 'Arial Unicode MS', 'Segoe UI', 'Helvetica Neue', 'Arial', sans-serif;
+    direction: rtl;
+    text-align: right;
+}
+
+/* Apply system Persian fonts to ALL elements in RTL mode */
+[dir="rtl"] * {
+    font-family: 'Persian-Fallback', 'B Nazanin', 'Tahoma', 'Arial Unicode MS', 'Segoe UI', 'Helvetica Neue', 'Arial', sans-serif !important;
+    direction: inherit;
+}
+
+/* Specific overrides for common elements */
+[dir="rtl"] html,
+[dir="rtl"] body,
+[dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3, [dir="rtl"] h4, [dir="rtl"] h5, [dir="rtl"] h6,
+[dir="rtl"] p, [dir="rtl"] span, [dir="rtl"] div, [dir="rtl"] a, [dir="rtl"] li, [dir="rtl"] td, [dir="rtl"] th,
+[dir="rtl"] button, [dir="rtl"] input, [dir="rtl"] textarea, [dir="rtl"] select, [dir="rtl"] label {
+    font-family: 'Persian-Fallback', 'B Nazanin', 'Tahoma', 'Arial Unicode MS', 'Segoe UI', sans-serif !important;
+}
+
+/* RTL Bootstrap overrides */
+[dir="rtl"] .row {
+    margin-right: -15px;
+    margin-left: -15px;
+}
+
+/* Sidebar RTL adjustments */
+[dir="rtl"] .sidebar {
+    right: 0;
+    left: auto;
+}
+
+[dir="rtl"] .sidebar-close-btn {
+    right: 20px;
+    left: auto;
+}
+
+[dir="rtl"] .dashboard-main-wrapper {
+    margin-right: 280px;
+    margin-left: 0;
+}
+
+/* Form inputs RTL */
+[dir="rtl"] .form-control {
+    text-align: right;
+}
+
+[dir="rtl"] .input-icon {
+    left: auto;
+    right: 8px;
+}
+
+[dir="rtl"] .top-navbar form .input-icon {
+    inset-inline-start: auto !important;
+    inset-inline-end: auto !important;
+    left: 12px !important;
+    right: auto !important;
+    display: flex !important;
+}
+
+[dir="rtl"] .top-navbar form .form-control {
+    padding-left: 40px !important;
+    padding-right: 16px !important;
+}
+
+[dir="rtl"] .top-navbar > .flex-align.gap-16:first-child {
+    justify-content: flex-end !important;
+    gap: 16px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+[dir="rtl"] .top-navbar > .flex-align.gap-16:first-child .toggle-btn {
+    order: -1;
+}
+
+[dir="rtl"] .top-navbar > .flex-align.gap-16:first-child form {
+    order: 0;
+}
+
+/* Dropdown menus RTL */
+[dir="rtl"] .dropdown-menu {
+    right: 0;
+    left: auto;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1199px) {
+    [dir="rtl"] .dashboard-main-wrapper {
+        margin-right: 0;
+        margin-left: 0;
+    }
+    
+    [dir="rtl"] .sidebar {
+        right: -280px;
+        left: auto;
+    }
+    
+    [dir="rtl"] .sidebar.show {
+        right: 0;
+    }
+}
+
+/* Search input RTL */
+[dir="rtl"] .search-input {
+    padding-right: 40px;
+    padding-left: 16px;
+    text-align: right;
+}
+
+/* Better text rendering for Persian */
+[dir="rtl"] * {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Force Persian fonts on pseudo elements */
+[dir="rtl"] *::before,
+[dir="rtl"] *::after {
+    font-family: 'Persian-Fallback', 'B Nazanin', 'Tahoma', sans-serif !important;
+}
+
+/* Flex adjustments for RTL */
+[dir="rtl"] .flex-between {
+    flex-direction: row-reverse;
+    justify-content: space-between;
+}
+
+[dir="rtl"] .flex-align {
+    flex-direction: row-reverse;
+}
+
+/* Icon positioning for RTL */
+[dir="rtl"] .sidebar-menu__link .icon {
+    margin-left: 0;
+    margin-right: 10px;
+}
+
+/* Table RTL */
+[dir="rtl"] table {
+    direction: rtl;
+}
+
+[dir="rtl"] th,
+[dir="rtl"] td {
+    text-align: right;
+}
+
+/* Remove any remaining external font calls */
+/* This prevents 404 errors in browser console */
