@@ -192,6 +192,30 @@ $inline_styles .= <<<'CSS'
         align-items: center;
         gap: 6px;
     }
+    @media (max-width: 991.98px) {
+        .calendar-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .calendar-nav {
+            width: 100%;
+            justify-content: space-between;
+        }
+        .calendar-wrapper {
+            margin-top: 20px;
+        }
+    }
+    @media (max-width: 767.98px) {
+        .calendar-wrapper {
+            overflow-x: auto;
+            padding-bottom: 12px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .calendar-weekdays,
+        .calendar-grid {
+            min-width: 620px;
+        }
+    }
     @media (max-width: 575.98px) {
         .calendar-nav {
             justify-content: center;
@@ -205,6 +229,26 @@ $inline_styles .= <<<'CSS'
         .calendar-nav-current {
             font-size: 0.85rem;
             padding: 6px 16px;
+        }
+        .calendar-day {
+            min-height: 92px;
+            padding: 10px;
+        }
+        .calendar-day-number {
+            font-size: 1rem;
+        }
+        .calendar-day-events li {
+            font-size: 0.74rem;
+            padding: 5px 8px;
+        }
+        .evaluation-table .d-flex.flex-wrap.gap-2 {
+            gap: 10px !important;
+            flex-direction: column;
+        }
+        .evaluation-table .btn {
+            width: 100%;
+            justify-content: center;
+            padding: 8px 14px;
         }
     }
 CSS;
