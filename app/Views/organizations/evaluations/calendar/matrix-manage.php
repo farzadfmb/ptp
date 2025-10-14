@@ -76,6 +76,7 @@ $inline_styles .= <<<'CSS'
         border: 1px solid #e5e7eb;
         border-radius: 20px;
         overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
     }
     .evaluation-matrix-manage-table {
         width: 100%;
@@ -198,6 +199,124 @@ $inline_styles .= <<<'CSS'
         gap: 12px;
         margin-top: 20px;
     }
+    .evaluation-matrix-table-wrapper {
+        width: 100%;
+    }
+    @media (max-width: 1199.98px) {
+        .matrix-summary {
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        }
+    }
+    @media (max-width: 991.98px) {
+        .matrix-manage-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .matrix-manage-header > div:last-child {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .matrix-manage-header .btn {
+            flex: 1 1 auto;
+            justify-content: center;
+        }
+        .matrix-summary {
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+        }
+        .matrix-actions {
+            justify-content: center;
+        }
+    }
+    @media (max-width: 767.98px) {
+        .matrix-summary {
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        }
+        .matrix-table-wrapper {
+            margin: 0 -12px;
+            padding: 0 12px 16px;
+            border-radius: 16px;
+        }
+        .evaluation-matrix-manage-table {
+            min-width: 0;
+        }
+        .evaluation-matrix-manage-table thead {
+            display: none;
+        }
+        .evaluation-matrix-manage-table tbody {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .evaluation-matrix-manage-table tbody tr {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 16px 14px;
+            background: #ffffff;
+            box-shadow: 0 6px 18px -14px rgba(15, 23, 42, 0.35);
+        }
+        .evaluation-matrix-manage-table tbody td {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: start;
+            gap: 8px;
+            padding: 0;
+            white-space: normal;
+        }
+        .evaluation-matrix-manage-table tbody td::before {
+            content: attr(data-label);
+            font-size: 13px;
+            font-weight: 600;
+            color: #475467;
+            display: block;
+        }
+        .evaluation-matrix-manage-table tbody td.tool-cell {
+            gap: 12px;
+        }
+        .tool-info {
+            flex-direction: row;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .tool-info .tool-order {
+            width: 40px;
+            height: 40px;
+        }
+        .evaluation-matrix-manage-table tbody td .matrix-toggle-cell {
+            width: 100%;
+            justify-content: space-between;
+            padding: 14px 16px;
+        }
+        .matrix-actions {
+            width: 100%;
+        }
+        .matrix-actions .btn {
+            flex: 1 1 auto;
+        }
+    }
+    @media (max-width: 575.98px) {
+        .matrix-manage-header > div:last-child {
+            flex-direction: column;
+        }
+        .matrix-manage-header .btn {
+            width: 100%;
+        }
+        .matrix-actions {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+        }
+        .matrix-actions .btn {
+            width: 100%;
+        }
+    }
 CSS;
 
 include __DIR__ . '/../../../layouts/organization-header.php';
@@ -276,9 +395,9 @@ $navbarUser = $user;
                             <?= csrf_field(); ?>
                             <input type="hidden" name="evaluation_id" value="<?= htmlspecialchars((string) ($evaluationMeta['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
 
-                            <div class="matrix-table-wrapper">
+                            <div class="table-responsive evaluation-matrix-table-wrapper matrix-table-wrapper rounded-16 border border-gray-100 mt-3">
                                 <table class="table align-middle evaluation-matrix-manage-table mb-0">
-                                    <thead>
+                                    <thead class="bg-gray-100 text-gray-700">
                                         <tr>
                                             <th scope="col">ابزار</th>
                                             <th scope="col">ارزیاب</th>
@@ -308,7 +427,7 @@ $navbarUser = $user;
                                                     $rowVisibility = $row['visibility'] ?? [];
                                                 ?>
                                                 <tr>
-                                                    <td class="tool-cell">
+                                                    <td class="tool-cell" data-label="ابزار">
                                                         <div class="tool-info">
                                                             <span class="tool-order" aria-label="ترتیب ابزار"><?= $orderDisplay; ?></span>
                                                             <span class="tool-name"><?= $toolNameDisplay; ?></span>
@@ -317,7 +436,7 @@ $navbarUser = $user;
                                                             <?php endif; ?>
                                                         </div>
                                                     </td>
-                                                    <td>
+                                                    <td data-label="ارزیاب">
                                                         <span class="evaluator-badge<?= $isSystemEvaluator ? ' system' : ''; ?>">
                                                             <ion-icon name="person-circle-outline"></ion-icon>
                                                             <?= $evaluatorLabel; ?>
@@ -333,7 +452,7 @@ $navbarUser = $user;
                                                                 $visibleLabel = 'نمایش';
                                                                 $hiddenLabel = 'پنهان';
                                                             ?>
-                                                            <td>
+                                                            <td data-label="<?= htmlspecialchars($evaluatee['label'] ?? 'ارزیاب‌شونده', ENT_QUOTES, 'UTF-8'); ?>">
                                                                 <div class="matrix-toggle-cell <?= $isVisible ? 'is-visible' : 'is-hidden'; ?>"
                                                                      role="button"
                                                                      tabindex="0"
@@ -357,7 +476,7 @@ $navbarUser = $user;
                                                             </td>
                                                         <?php endforeach; ?>
                                                     <?php else: ?>
-                                                        <td><span class="cell-placeholder">—</span></td>
+                                                        <td data-label="ارزیاب‌شونده"><span class="cell-placeholder">—</span></td>
                                                     <?php endif; ?>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -386,70 +505,100 @@ $navbarUser = $user;
         <script>
             document.addEventListener('DOMContentLoaded', function () {
                 var toggleCells = document.querySelectorAll('.matrix-toggle-cell');
-                if (!toggleCells.length) {
-                    return;
-                }
-
-                toggleCells.forEach(function (cell) {
-                    var inputId = cell.getAttribute('data-target-input');
-                    var input = inputId ? document.getElementById(inputId) : null;
-                    if (!input) {
-                        return;
-                    }
-
-                    var dataName = input.getAttribute('data-name');
-                    if (!dataName) {
-                        return;
-                    }
-
-                    var visibleLabel = cell.getAttribute('data-visible-label') || 'نمایش';
-                    var hiddenLabel = cell.getAttribute('data-hidden-label') || 'پنهان';
-                    var textNode = cell.querySelector('.matrix-toggle-text');
-
-                    var isVisible = (cell.getAttribute('data-initial-state') || 'visible') === 'visible';
-
-                    var applyState = function (state) {
-                        isVisible = !!state;
-                        cell.classList.toggle('is-visible', isVisible);
-                        cell.classList.toggle('is-hidden', !isVisible);
-                        cell.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
-                        cell.setAttribute('data-state', isVisible ? 'visible' : 'hidden');
-
-                        if (textNode) {
-                            textNode.textContent = isVisible ? visibleLabel : hiddenLabel;
+                if (toggleCells.length) {
+                    toggleCells.forEach(function (cell) {
+                        var inputId = cell.getAttribute('data-target-input');
+                        var input = inputId ? document.getElementById(inputId) : null;
+                        if (!input) {
+                            return;
                         }
 
-                        if (isVisible) {
-                            if (!input.name) {
-                                input.name = dataName;
-                            }
-                            input.value = '1';
-                        } else {
-                            if (input.name) {
-                                input.removeAttribute('name');
-                            }
-                            input.value = '';
+                        var dataName = input.getAttribute('data-name');
+                        if (!dataName) {
+                            return;
                         }
-                    };
 
-                    applyState(isVisible);
+                        var visibleLabel = cell.getAttribute('data-visible-label') || 'نمایش';
+                        var hiddenLabel = cell.getAttribute('data-hidden-label') || 'پنهان';
+                        var textNode = cell.querySelector('.matrix-toggle-text');
 
-                    var toggleState = function () {
-                        applyState(!isVisible);
-                    };
+                        var isVisible = (cell.getAttribute('data-initial-state') || 'visible') === 'visible';
 
-                    cell.addEventListener('click', function (event) {
-                        event.preventDefault();
-                        toggleState();
-                    });
+                        var applyState = function (state) {
+                            isVisible = !!state;
+                            cell.classList.toggle('is-visible', isVisible);
+                            cell.classList.toggle('is-hidden', !isVisible);
+                            cell.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
+                            cell.setAttribute('data-state', isVisible ? 'visible' : 'hidden');
 
-                    cell.addEventListener('keydown', function (event) {
-                        if (event.key === ' ' || event.key === 'Spacebar' || event.key === 'Enter') {
+                            if (textNode) {
+                                textNode.textContent = isVisible ? visibleLabel : hiddenLabel;
+                            }
+
+                            if (isVisible) {
+                                if (!input.name) {
+                                    input.name = dataName;
+                                }
+                                input.value = '1';
+                            } else {
+                                if (input.name) {
+                                    input.removeAttribute('name');
+                                }
+                                input.value = '';
+                            }
+                        };
+
+                        applyState(isVisible);
+
+                        var toggleState = function () {
+                            applyState(!isVisible);
+                        };
+
+                        cell.addEventListener('click', function (event) {
                             event.preventDefault();
                             toggleState();
-                        }
+                        });
+
+                        cell.addEventListener('keydown', function (event) {
+                            if (event.key === ' ' || event.key === 'Spacebar' || event.key === 'Enter') {
+                                event.preventDefault();
+                                toggleState();
+                            }
+                        });
                     });
-                });
+                }
+
+                var mobileSidebarMedia = window.matchMedia ? window.matchMedia('(max-width: 1023.98px)') : null;
+
+                var closeSidebarIfNeeded = function () {
+                    var wrapper = document.querySelector('.wrapper');
+                    if (!wrapper) {
+                        return;
+                    }
+
+                    var shouldClose = mobileSidebarMedia ? mobileSidebarMedia.matches : window.innerWidth < 1024;
+                    if (shouldClose) {
+                        wrapper.classList.remove('toggled');
+                        wrapper.classList.remove('sidebar-hovered');
+                        var overlay = document.querySelector('.overlay');
+                        if (overlay) {
+                            overlay.style.display = 'none';
+                        }
+                    } else {
+                        var desktopOverlay = document.querySelector('.overlay');
+                        if (desktopOverlay) {
+                            desktopOverlay.style.display = '';
+                        }
+                    }
+                };
+
+                closeSidebarIfNeeded();
+                setTimeout(closeSidebarIfNeeded, 200);
+                window.addEventListener('resize', closeSidebarIfNeeded);
+
+                if (mobileSidebarMedia && typeof mobileSidebarMedia.addEventListener === 'function') {
+                    mobileSidebarMedia.addEventListener('change', closeSidebarIfNeeded);
+                }
             });
         </script>
 
