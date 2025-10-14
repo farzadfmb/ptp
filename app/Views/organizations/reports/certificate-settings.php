@@ -76,6 +76,16 @@ $values = [
   'eleventh_page_title_ribbon_text' => $existing['eleventh_page_title_ribbon_text'] ?? 'نتایج آزمون MBTI',
   'eleventh_page_text' => $existing['eleventh_page_text'] ?? '',
   'eleventh_page_text_align' => $existing['eleventh_page_text_align'] ?? '',
+  // Page 13 defaults (DISC results)
+  'enable_thirteenth_page' => (int)($existing['enable_thirteenth_page'] ?? 0),
+  'thirteenth_page_title_ribbon_text' => $existing['thirteenth_page_title_ribbon_text'] ?? 'نتایج آزمون DISC',
+  'thirteenth_page_text' => $existing['thirteenth_page_text'] ?? '',
+  'thirteenth_page_text_align' => $existing['thirteenth_page_text_align'] ?? '',
+  // Page 15 defaults (Analytical thinking)
+  'enable_fifteenth_page' => (int)($existing['enable_fifteenth_page'] ?? 0),
+  'fifteenth_page_title_ribbon_text' => $existing['fifteenth_page_title_ribbon_text'] ?? 'نتایج تفکر تحلیلی',
+  'fifteenth_page_text' => $existing['fifteenth_page_text'] ?? '',
+  'fifteenth_page_text_align' => $existing['fifteenth_page_text_align'] ?? '',
 ];
 
 include __DIR__ . '/../../layouts/organization-header.php';
@@ -242,15 +252,17 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
   if (!empty($values['enable_seventh_page'])) { $order[] = 'page7'; }
   if (!empty($values['enable_eighth_page'])) { $order[] = 'page8'; }
   if (!empty($values['enable_ninth_page'])) { $order[] = 'page9'; }
-  if (!empty($values['enable_tenth_page'])) { $order[] = 'page10'; }
+                  if (!empty($values['enable_tenth_page'])) { $order[] = 'page10'; }
   if (!empty($values['enable_eleventh_page'])) { $order[] = 'page11'; }
+  if (!empty($values['enable_thirteenth_page'])) { $order[] = 'page13'; }
+  if (!empty($values['enable_fifteenth_page'])) { $order[] = 'page15'; }
                   // اگر رکوردی ذخیره شده باشد از دیتابیس بخوانیم (نیاز به existing)
                   if (!empty($existing['page_order_json'])) {
                       $saved = json_decode((string)$existing['page_order_json'], true);
                       if (is_array($saved)) { $order = $saved; }
                   }
       // نرمال‌سازی: حذف تکراری‌ها/غیرفعال‌ها و افزودن صفحات فعال جدید
-      $allowed = ['details','toc','page4','page5','page6','page7','page8','page9','page10','page11'];
+      $allowed = ['details','toc','page4','page5','page6','page7','page8','page9','page10','page11','page13','page15'];
       $order = array_values(array_unique(array_intersect($order, $allowed)));
       $enabledMap = [
         'details' => !empty($values['enable_second_page']),
@@ -263,6 +275,8 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
         'page9' => !empty($values['enable_ninth_page']),
         'page10' => !empty($values['enable_tenth_page']),
         'page11' => !empty($values['enable_eleventh_page']),
+        'page13' => !empty($values['enable_thirteenth_page']),
+        'page15' => !empty($values['enable_fifteenth_page']),
       ];
       foreach ($allowed as $slug) {
         if ($enabledMap[$slug] && !in_array($slug, $order, true)) { $order[] = $slug; }
@@ -278,7 +292,9 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
         'page8' => 'صفحه هشتم (جدول ابزارها)',
         'page9' => 'صفحه نهم (متن + جدول نتایج)',
         'page10' => 'صفحه دهم (معرفی MBTI)',
-        'page11' => 'صفحه یازدهم (نتایج MBTI)'
+        'page11' => 'صفحه یازدهم (نتایج MBTI)',
+        'page13' => 'صفحه سیزدهم (نتایج DISC)',
+        'page15' => 'صفحه پانزدهم (تفکر تحلیلی)'
       ];
               ?>
               <div id="page-order-list" class="d-flex flex-column gap-8">
@@ -669,6 +685,68 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                 <label class="form-label">چیدمان متن</label>
                 <select name="eleventh_page_text_align" class="form-select" style="max-width:220px;">
                   <?php $opts = ['right' => 'راست‌چین', 'center' => 'وسط‌چین', 'justify' => 'کشیده (Justify)', 'left' => 'چپ‌چین']; $v = $values['eleventh_page_text_align'] ?? ''; foreach ($opts as $k=>$lbl): ?>
+                  <option value="<?= htmlspecialchars($k, ENT_QUOTES, 'UTF-8'); ?>" <?= ($v===$k?'selected':''); ?>><?= htmlspecialchars($lbl, ENT_QUOTES, 'UTF-8'); ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+            </div>
+
+            <div class="col-12 mt-4">
+              <hr>
+              <h5 class="mt-2 mb-12">صفحه سیزدهم (نتایج DISC)</h5>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">فعال‌سازی صفحه سیزدهم</label>
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" name="enable_thirteenth_page" id="enable_thirteenth_page" <?= $values['enable_thirteenth_page'] ? 'checked' : ''; ?> />
+                <label class="form-check-label" for="enable_thirteenth_page">فعال</label>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">عنوان روی روبان (صفحه سیزدهم)</label>
+              <input type="text" name="thirteenth_page_title_ribbon_text" class="form-control" value="<?= htmlspecialchars($values['thirteenth_page_title_ribbon_text'], ENT_QUOTES, 'UTF-8'); ?>" />
+              <?php if (!empty($validationErrors['thirteenth_page_title_ribbon_text'])): ?>
+                <div class="text-danger small mt-2"><?= htmlspecialchars((string)$validationErrors['thirteenth_page_title_ribbon_text'], ENT_QUOTES, 'UTF-8'); ?></div>
+              <?php endif; ?>
+            </div>
+            <div class="col-12">
+              <label class="form-label">متن صفحه سیزدهم</label>
+              <textarea name="thirteenth_page_text" class="form-control" rows="6" placeholder="توضیحات درباره نتایج DISC..."><?= htmlspecialchars($values['thirteenth_page_text'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+              <div class="mt-2">
+                <label class="form-label">چیدمان متن</label>
+                <select name="thirteenth_page_text_align" class="form-select" style="max-width:220px;">
+                  <?php $opts = ['right' => 'راست‌چین', 'center' => 'وسط‌چین', 'justify' => 'کشیده (Justify)', 'left' => 'چپ‌چین']; $v = $values['thirteenth_page_text_align'] ?? ''; foreach ($opts as $k=>$lbl): ?>
+                  <option value="<?= htmlspecialchars($k, ENT_QUOTES, 'UTF-8'); ?>" <?= ($v===$k?'selected':''); ?>><?= htmlspecialchars($lbl, ENT_QUOTES, 'UTF-8'); ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+            </div>
+
+            <div class="col-12 mt-4">
+              <hr>
+              <h5 class="mt-2 mb-12">صفحه پانزدهم (تفکر تحلیلی)</h5>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">فعال‌سازی صفحه پانزدهم</label>
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" name="enable_fifteenth_page" id="enable_fifteenth_page" <?= $values['enable_fifteenth_page'] ? 'checked' : ''; ?> />
+                <label class="form-check-label" for="enable_fifteenth_page">فعال</label>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">عنوان روی روبان (صفحه پانزدهم)</label>
+              <input type="text" name="fifteenth_page_title_ribbon_text" class="form-control" value="<?= htmlspecialchars($values['fifteenth_page_title_ribbon_text'], ENT_QUOTES, 'UTF-8'); ?>" />
+              <?php if (!empty($validationErrors['fifteenth_page_title_ribbon_text'])): ?>
+                <div class="text-danger small mt-2"><?= htmlspecialchars((string)$validationErrors['fifteenth_page_title_ribbon_text'], ENT_QUOTES, 'UTF-8'); ?></div>
+              <?php endif; ?>
+            </div>
+            <div class="col-12">
+              <label class="form-label">متن صفحه پانزدهم</label>
+              <textarea name="fifteenth_page_text" class="form-control" rows="6" placeholder="توضیحات درباره نتایج تفکر تحلیلی..."><?= htmlspecialchars($values['fifteenth_page_text'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+              <div class="mt-2">
+                <label class="form-label">چیدمان متن</label>
+                <select name="fifteenth_page_text_align" class="form-select" style="max-width:220px;">
+                  <?php $opts = ['right' => 'راست‌چین', 'center' => 'وسط‌چین', 'justify' => 'کشیده (Justify)', 'left' => 'چپ‌چین']; $v = $values['fifteenth_page_text_align'] ?? ''; foreach ($opts as $k=>$lbl): ?>
                   <option value="<?= htmlspecialchars($k, ENT_QUOTES, 'UTF-8'); ?>" <?= ($v===$k?'selected':''); ?>><?= htmlspecialchars($lbl, ENT_QUOTES, 'UTF-8'); ?></option>
                   <?php endforeach; ?>
                 </select>

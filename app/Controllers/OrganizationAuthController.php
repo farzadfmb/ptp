@@ -52,10 +52,21 @@ class OrganizationAuthController
         $validationErrors = [];
 
         if ($identifier === '') {
-            $validationErrors['email'] = 'وارد کردن ایمیل یا نام کاربری الزامی است.';
+            $validationErrors['email'] = 'وارد کردن ایمیل، نام کاربری یا کد ملی الزامی است.';
         }
 
+        $identifierEnglish = UtilityHelper::persianToEnglish($identifier);
         $isEmail = strpos($identifier, '@') !== false;
+        $isNationalCodeIdentifier = false;
+        if (!$isEmail) {
+            $digitsOnly = preg_replace('/\D+/u', '', $identifierEnglish);
+            if ($digitsOnly !== '') {
+                $identifierEnglish = $digitsOnly;
+            }
+            if ($digitsOnly !== '' && preg_match('/^\d{8,15}$/', $digitsOnly)) {
+                $isNationalCodeIdentifier = true;
+            }
+        }
 
         if ($isEmail && !filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
             $validationErrors['email'] = 'فرمت ایمیل صحیح نیست.';
@@ -82,7 +93,11 @@ class OrganizationAuthController
             return;
         }
 
-        $organizationUser = $this->fetchOrganizationPortalUser($normalizedIdentifier, $isEmail);
+        $organizationUser = $this->fetchOrganizationPortalUser(
+            $normalizedIdentifier,
+            $isEmail,
+            $isNationalCodeIdentifier ? $identifierEnglish : null
+        );
 
         if (!$organizationUser) {
             ResponseHelper::flashError('کاربری با این مشخصات یافت نشد.');
@@ -109,10 +124,15 @@ class OrganizationAuthController
             UtilityHelper::redirect($redirectUrl);
         }
 
-        $passwordHash = (string)($organizationUser['password_hash'] ?? '');
-        if ($passwordHash === '' || !password_verify($password, $passwordHash)) {
+        [$passwordIsValid, $shouldUpgradePassword] = $this->validateOrganizationUserPassword($organizationUser, $password);
+
+        if (!$passwordIsValid) {
             ResponseHelper::flashError('اطلاعات ورود نادرست است.');
             UtilityHelper::redirect($redirectUrl);
+        }
+
+        if ($shouldUpgradePassword) {
+            $this->upgradeOrganizationUserPasswordHash((int)($organizationUser['id'] ?? 0), $password);
         }
 
         if ((int)($organizationUser['is_active'] ?? 0) !== 1) {
@@ -122,6 +142,16 @@ class OrganizationAuthController
 
         if ((int)($organizationUser['organization_active_lookup'] ?? 1) === 0) {
             ResponseHelper::flashError('سازمان شما غیرفعال شده است. لطفاً با پشتیبانی تماس بگیرید.');
+            UtilityHelper::redirect($redirectUrl);
+        }
+
+        $isSystemAdmin = (int)($organizationUser['is_system_admin'] ?? 0) === 1;
+        $isManager = (int)($organizationUser['is_manager'] ?? 0) === 1;
+        $isEvaluator = (int)($organizationUser['is_evaluator'] ?? 0) === 1;
+        $isEvaluatee = (int)($organizationUser['is_evaluee'] ?? 0) === 1;
+
+        if ($isEvaluatee && !$isSystemAdmin && !$isManager && !$isEvaluator) {
+            ResponseHelper::flashError('دسترسی شما به این بخش مجاز نیست.');
             UtilityHelper::redirect($redirectUrl);
         }
 
@@ -136,7 +166,6 @@ class OrganizationAuthController
             ];
         }
 
-        $isSystemAdmin = (int)($organizationUser['is_system_admin'] ?? 0) === 1;
         $roleId = isset($organizationUser['organization_role_id']) ? (int)$organizationUser['organization_role_id'] : null;
         $permissions = ['dashboard_overview_view'];
         if (class_exists('PermissionHelper')) {
@@ -197,15 +226,34 @@ class OrganizationAuthController
         UtilityHelper::redirect($dashboardUrl);
     }
 
-    private function fetchOrganizationPortalUser(string $identifier, bool $isEmail): ?array
+    private function fetchOrganizationPortalUser(string $identifier, bool $isEmail, ?string $nationalCode = null): ?array
     {
-        if ($identifier === '') {
+        if ($identifier === '' && $nationalCode === null) {
             return null;
         }
 
-        $condition = $isEmail
-            ? 'ou.email IS NOT NULL AND LOWER(ou.email) = :identifier'
-            : 'LOWER(ou.username) = :identifier';
+        $conditions = [];
+        $params = [];
+
+        if ($identifier !== '') {
+            if ($isEmail) {
+                $conditions[] = 'ou.email IS NOT NULL AND LOWER(ou.email) = :identifier';
+            } else {
+                $conditions[] = 'LOWER(ou.username) = :identifier';
+            }
+            $params['identifier'] = $identifier;
+        }
+
+        if ($nationalCode !== null && $nationalCode !== '') {
+            $conditions[] = 'ou.national_code IS NOT NULL AND ou.national_code <> "" AND ou.national_code = :national_code';
+            $params['national_code'] = $nationalCode;
+        }
+
+        if (empty($conditions)) {
+            return null;
+        }
+
+        $whereClause = implode(' OR ', $conditions);
 
         $sql = <<<SQL
 SELECT
@@ -219,14 +267,108 @@ SELECT
 FROM organization_users ou
 LEFT JOIN organizations o ON ou.organization_id = o.id
 LEFT JOIN organization_roles r ON ou.organization_role_id = r.id
-WHERE {$condition}
+WHERE {$whereClause}
 LIMIT 1
 SQL;
 
         try {
-            return DatabaseHelper::fetchOne($sql, ['identifier' => $identifier]);
+            $row = DatabaseHelper::fetchOne($sql, $params);
+            return is_array($row) && !empty($row) ? $row : null;
         } catch (Exception $exception) {
             return null;
+        }
+    }
+
+    private function validateOrganizationUserPassword(array $organizationUser, string $password): array
+    {
+        $candidates = [];
+
+        $primaryHash = (string)($organizationUser['password_hash'] ?? '');
+        if ($primaryHash !== '') {
+            $candidates[] = ['value' => $primaryHash, 'forceUpgrade' => false];
+        }
+
+        $legacyColumns = ['password', 'legacy_password', 'plain_password'];
+        foreach ($legacyColumns as $legacyColumn) {
+            if (!array_key_exists($legacyColumn, $organizationUser)) {
+                continue;
+            }
+
+            $value = (string)$organizationUser[$legacyColumn];
+            if ($value === '' || $value === $primaryHash) {
+                continue;
+            }
+
+            $candidates[] = ['value' => $value, 'forceUpgrade' => true];
+        }
+
+        foreach ($candidates as $candidate) {
+            [$isValid, $shouldUpgrade] = $this->verifyPasswordCandidate($password, $candidate['value']);
+            if ($isValid) {
+                return [true, $shouldUpgrade || $candidate['forceUpgrade']];
+            }
+        }
+
+        return [false, false];
+    }
+
+    private function verifyPasswordCandidate(string $password, string $storedValue): array
+    {
+        $stored = trim($storedValue);
+        if ($stored === '') {
+            return [false, false];
+        }
+
+        $info = password_get_info($stored);
+        if (($info['algo'] ?? 0) !== 0) {
+            if (password_verify($password, $stored)) {
+                return [true, password_needs_rehash($stored, PASSWORD_BCRYPT)];
+            }
+
+            return [false, false];
+        }
+
+        if (preg_match('/^\$2[ayb]\$/', $stored) && password_verify($password, $stored)) {
+            return [true, true];
+        }
+
+        if (preg_match('/^[a-f0-9]{32}$/i', $stored)) {
+            $isValid = hash_equals(strtolower($stored), md5($password));
+            return [$isValid, $isValid];
+        }
+
+        if (preg_match('/^[a-f0-9]{40}$/i', $stored)) {
+            $isValid = hash_equals(strtolower($stored), sha1($password));
+            return [$isValid, $isValid];
+        }
+
+        if (preg_match('/^[a-f0-9]{64}$/i', $stored)) {
+            $isValid = hash_equals(strtolower($stored), hash('sha256', $password));
+            return [$isValid, $isValid];
+        }
+
+        if (hash_equals($stored, $password)) {
+            return [true, true];
+        }
+
+        return [false, false];
+    }
+
+    private function upgradeOrganizationUserPasswordHash(int $organizationUserId, string $plainPassword): void
+    {
+        if ($organizationUserId <= 0) {
+            return;
+        }
+
+        try {
+            DatabaseHelper::update(
+                'organization_users',
+                ['password_hash' => password_hash($plainPassword, PASSWORD_BCRYPT)],
+                'id = :id',
+                ['id' => $organizationUserId]
+            );
+        } catch (Exception $exception) {
+            // silent; login should proceed even if upgrade fails
         }
     }
 

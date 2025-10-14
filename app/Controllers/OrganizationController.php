@@ -169,6 +169,11 @@ class OrganizationController
         $organization = $sessionData['organization'];
         $organizationId = (int) ($organization['id'] ?? 0);
 
+    $this->ensureOrganizationEvaluationsTableExists();
+    $this->ensureOrganizationEvaluationSchedulesTableExists();
+    $this->ensureOrganizationEvaluationExamParticipationsTableExists();
+    $this->ensureOrganizationCompetencyModelsTableExists();
+
         $creditAmount = isset($organization['credit_amount']) && $organization['credit_amount'] !== null
             ? (float) $organization['credit_amount']
             : null;
@@ -239,7 +244,8 @@ class OrganizationController
         $totalUsers = 0;
         $totalEvaluatees = 0;
         $totalEvaluators = 0;
-        $totalExamAssignments = 0;
+    $totalExamAssignments = 0;
+    $totalEvaluations = 0;
 
         if ($organizationId > 0) {
             try {
@@ -274,18 +280,28 @@ class OrganizationController
 
             // Count exam assignments (exam tools assigned across evaluations for this organization)
             try {
-                $row = DatabaseHelper::fetchOne(
-                    'SELECT COUNT(*) AS c
-                     FROM organization_evaluation_tool_assignments a
-                     INNER JOIN organization_evaluation_tools t
-                       ON t.id = a.tool_id AND t.organization_id = :organization_id AND t.is_exam = 1
-                     INNER JOIN organization_evaluations e
-                       ON e.id = a.evaluation_id AND e.organization_id = :organization_id',
-                    ['organization_id' => $organizationId]
-                );
+                            $row = DatabaseHelper::fetchOne(
+                                    'SELECT COUNT(*) AS c
+                                     FROM organization_evaluation_tool_assignments a
+                                     INNER JOIN organization_evaluation_tools t
+                                         ON t.id = a.tool_id AND t.organization_id = :organization_id AND COALESCE(t.is_exam, 1) = 1
+                                     INNER JOIN organization_evaluations e
+                                         ON e.id = a.evaluation_id AND e.organization_id = :organization_id',
+                                    ['organization_id' => $organizationId]
+                            );
                 $totalExamAssignments = (int) ($row['c'] ?? 0);
             } catch (Exception $exception) {
                 $totalExamAssignments = 0;
+            }
+
+            try {
+                $row = DatabaseHelper::fetchOne(
+                    'SELECT COUNT(*) AS c FROM organization_evaluations WHERE organization_id = :organization_id',
+                    ['organization_id' => $organizationId]
+                );
+                $totalEvaluations = (int) ($row['c'] ?? 0);
+            } catch (Exception $exception) {
+                $totalEvaluations = 0;
             }
         }
 
@@ -303,35 +319,213 @@ class OrganizationController
                 'value' => UtilityHelper::englishToPersian(number_format($totalEvaluators, 0)) . ' نفر',
             ],
             [
-                'label' => 'آزمون‌ها',
-                'value' => UtilityHelper::englishToPersian(number_format($totalExamAssignments, 0)),
+                'label' => 'ارزیابی‌ها',
+                'value' => UtilityHelper::englishToPersian(number_format($totalEvaluations, 0)) . ' برنامه',
             ],
         ];
 
         // Prepend user stats to summary cards for display
         $summaryCards = array_merge($userStatsCards, $summaryCards);
 
-        $baselineCredit = $creditAmount !== null
-            ? max($creditAmount * 1.35, $creditAmount)
-            : 10000000;
+        $examCoveragePercent = 0;
+        if ($totalEvaluations > 0) {
+            $examCoveragePercent = min(100, max(0, round(($totalExamAssignments / max(1, $totalEvaluations)) * 100)));
+        } elseif ($totalExamAssignments > 0) {
+            $examCoveragePercent = 100;
+        }
 
-        $creditUsed = $creditAmount !== null
-            ? max(0, $baselineCredit - $creditAmount)
-            : $baselineCredit * 0.45;
+        $summaryCards[] = [
+            'label' => 'آزمون‌های اختصاص داده‌شده',
+            'value' => UtilityHelper::englishToPersian(number_format($totalExamAssignments, 0)) . ' آزمون',
+            'trend' => $totalExamAssignments > 0 ? '+' . UtilityHelper::englishToPersian(number_format($totalExamAssignments, 0)) : 'بدون تغییر',
+            'trend_type' => $totalExamAssignments > 0 ? 'up' : 'neutral',
+            'percent' => $examCoveragePercent,
+        ];
+
+        $completedParticipations = 0;
+        if ($organizationId > 0) {
+                        try {
+                                $completedParticipations = (int) (DatabaseHelper::fetchOne(
+                                        'SELECT COUNT(*) AS total
+                                         FROM organization_evaluation_exam_participations
+                                         WHERE organization_id = :organization_id
+                                             AND (
+                                                        (is_completed IS NOT NULL AND is_completed = 1)
+                                                 OR completed_at IS NOT NULL
+                                                 OR (answered_questions IS NOT NULL AND total_questions IS NOT NULL AND total_questions > 0 AND answered_questions >= total_questions)
+                                             )',
+                                        ['organization_id' => $organizationId]
+                                )['total'] ?? 0);
+            } catch (Exception $exception) {
+                $completedParticipations = 0;
+            }
+        }
+
+        $creditSpent = null;
+        if ($examFee !== null && $examFee > 0 && $completedParticipations > 0) {
+            $creditSpent = max(0.0, $examFee * $completedParticipations);
+        }
+
+        $creditRemaining = $creditAmount !== null ? max(0.0, $creditAmount) : null;
+        $creditTotal = null;
+        if ($creditRemaining !== null && $creditSpent !== null) {
+            $creditTotal = max(0.0, $creditRemaining + $creditSpent);
+        } elseif ($creditRemaining !== null) {
+            $creditTotal = max(0.0, $creditRemaining);
+        } elseif ($creditSpent !== null) {
+            $creditTotal = max(0.0, $creditSpent);
+        }
+
+        $creditUsed = $creditSpent !== null ? max(0.0, $creditSpent) : 0.0;
+        if ($creditTotal !== null && $creditTotal > 0 && $creditUsed > $creditTotal) {
+            $creditUsed = $creditTotal;
+        }
+
+        $creditRemainingForChart = $creditRemaining !== null
+            ? max(0.0, $creditRemaining)
+            : ($creditTotal !== null ? max(0.0, $creditTotal - $creditUsed) : 0.0);
 
         $creditUsageChart = [
             'used' => $creditUsed,
-            'remaining' => $creditAmount ?? ($baselineCredit - $creditUsed),
+            'remaining' => $creditRemainingForChart,
+            'total' => $creditTotal,
+            'used_display' => $creditSpent,
+            'remaining_display' => $creditRemaining,
+            'completed_participations' => $completedParticipations,
         ];
 
-        $monthlyOverview = [
-            ['label' => 'فروردین', 'participants' => 96, 'average_score' => 71],
-            ['label' => 'اردیبهشت', 'participants' => 124, 'average_score' => 74],
-            ['label' => 'خرداد', 'participants' => 118, 'average_score' => 76],
-            ['label' => 'تیر', 'participants' => 135, 'average_score' => 79],
-            ['label' => 'مرداد', 'participants' => 150, 'average_score' => 82],
-            ['label' => 'شهریور', 'participants' => 163, 'average_score' => 84],
-        ];
+        $monthlyOverview = [];
+        $participantsByMonth = [];
+        $scoresByMonth = [];
+
+        if ($organizationId > 0) {
+            $now = new DateTime('now', new DateTimeZone('Asia/Tehran'));
+            $startPointer = (clone $now)->modify('first day of this month')->modify('-5 months');
+            $startDate = $startPointer->format('Y-m-01 00:00:00');
+
+            try {
+                $rows = DatabaseHelper::fetchAll(
+                    'SELECT DATE_FORMAT(COALESCE(participated_at, completed_at, created_at), "%Y-%m") AS ym,
+                            COUNT(DISTINCT evaluatee_id) AS total
+                     FROM organization_evaluation_exam_participations
+                     WHERE organization_id = :organization_id
+                       AND COALESCE(participated_at, completed_at, created_at) IS NOT NULL
+                       AND COALESCE(participated_at, completed_at, created_at) >= :start_date
+                     GROUP BY ym
+                     ORDER BY ym ASC',
+                    [
+                        'organization_id' => $organizationId,
+                        'start_date' => $startDate,
+                    ]
+                );
+            } catch (Exception $exception) {
+                $rows = [];
+            }
+
+            foreach ($rows as $row) {
+                $ym = (string) ($row['ym'] ?? '');
+                if ($ym === '') {
+                    continue;
+                }
+
+                $participantsByMonth[$ym] = (int) ($row['total'] ?? 0);
+            }
+
+            try {
+                $scoreRows = DatabaseHelper::fetchAll(
+                    'SELECT DATE_FORMAT(updated_at, "%Y-%m") AS ym,
+                            AVG(score_value) AS avg_score
+                     FROM organization_evaluation_tool_scores
+                     WHERE organization_id = :organization_id
+                       AND scorer_id = evaluatee_id
+                       AND updated_at >= :start_date
+                     GROUP BY ym
+                     ORDER BY ym ASC',
+                    [
+                        'organization_id' => $organizationId,
+                        'start_date' => $startDate,
+                    ]
+                );
+            } catch (Exception $exception) {
+                $scoreRows = [];
+            }
+
+            foreach ($scoreRows as $row) {
+                $ym = (string) ($row['ym'] ?? '');
+                if ($ym === '') {
+                    continue;
+                }
+
+                $scoresByMonth[$ym] = isset($row['avg_score']) ? (float) $row['avg_score'] : 0.0;
+            }
+
+            $monthFormatter = null;
+            if (class_exists('IntlDateFormatter')) {
+                $dateType = defined('IntlDateFormatter::NONE') ? constant('IntlDateFormatter::NONE') : 0;
+                $calendarType = defined('IntlDateFormatter::TRADITIONAL') ? constant('IntlDateFormatter::TRADITIONAL') : null;
+
+                $monthFormatter = new IntlDateFormatter(
+                    'fa_IR',
+                    $dateType,
+                    $dateType,
+                    'Asia/Tehran',
+                    $calendarType,
+                    'MMMM'
+                );
+            }
+
+            $fallbackMonths = [
+                1 => 'فروردین',
+                2 => 'اردیبهشت',
+                3 => 'خرداد',
+                4 => 'تیر',
+                5 => 'مرداد',
+                6 => 'شهریور',
+                7 => 'مهر',
+                8 => 'آبان',
+                9 => 'آذر',
+                10 => 'دی',
+                11 => 'بهمن',
+                12 => 'اسفند',
+            ];
+
+            $monthCursor = clone $startPointer;
+            for ($i = 0; $i < 6; $i++) {
+                $ym = $monthCursor->format('Y-m');
+                $label = '';
+
+                if ($monthFormatter instanceof IntlDateFormatter) {
+                    $labelFormatted = $monthFormatter->format($monthCursor);
+                    if ($labelFormatted !== false) {
+                        $label = (string) $labelFormatted;
+                    }
+                }
+
+                if ($label === '') {
+                    $monthIndex = (int) $monthCursor->format('n');
+                    $label = $fallbackMonths[$monthIndex] ?? UtilityHelper::englishToPersian($monthCursor->format('m'));
+                }
+
+                $participantsCount = $participantsByMonth[$ym] ?? 0;
+                $avgScore = $scoresByMonth[$ym] ?? 0.0;
+
+                if ($avgScore > 0) {
+                    $avgScore = round($avgScore, 1);
+                }
+
+                $monthlyOverview[] = [
+                    'label' => UtilityHelper::englishToPersian($label),
+                    'participants' => $participantsCount,
+                    'average_score' => $avgScore,
+                ];
+
+                $monthCursor->modify('+1 month');
+            }
+        }
+
+        if (empty($monthlyOverview)) {
+            $monthlyOverview = [];
+        }
 
         // Charts: Periodic exams over last 6 months and exams conducted in current month
         $periodicExamsLabels = [];
@@ -354,16 +548,22 @@ class OrganizationController
             }
 
             // Periodic exams: count exam assignments grouped by evaluation_date month
+            $periodStart = (clone $now)->modify('first day of this month')->modify('-5 months')->setTime(0, 0, 0);
+            $periodStartValue = $periodStart->format('Y-m-d 00:00:00');
+
             try {
                 $rows = DatabaseHelper::fetchAll(
-                    'SELECT DATE_FORMAT(e.evaluation_date, "%Y-%m") AS ym, COUNT(*) AS total
-                     FROM organization_evaluation_tool_assignments a
-                     INNER JOIN organization_evaluation_tools t ON t.id = a.tool_id AND t.organization_id = :organization_id AND t.is_exam = 1
-                     INNER JOIN organization_evaluations e ON e.id = a.evaluation_id AND e.organization_id = :organization_id
-                     WHERE e.evaluation_date IS NOT NULL AND e.evaluation_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                    'SELECT DATE_FORMAT(COALESCE(participated_at, completed_at, created_at), "%Y-%m") AS ym,
+                            COUNT(*) AS total
+                     FROM organization_evaluation_exam_participations
+                     WHERE organization_id = :organization_id
+                       AND COALESCE(participated_at, completed_at, created_at) >= :period_start
                      GROUP BY ym
                      ORDER BY ym ASC',
-                    ['organization_id' => $organizationId]
+                    [
+                        'organization_id' => $organizationId,
+                        'period_start' => $periodStartValue,
+                    ]
                 );
             } catch (Exception $exception) {
                 $rows = [];
@@ -384,12 +584,15 @@ class OrganizationController
                 $periodicExamsSeries[] = (int) ($rowsByMonth[$ym] ?? 0);
             }
 
+            $dailyCounts = [];
+
             try {
                 $rows2 = DatabaseHelper::fetchAll(
-                    'SELECT DATE(participated_at) AS d, COUNT(*) AS total
+                    'SELECT DATE(COALESCE(participated_at, completed_at, created_at)) AS d,
+                            COUNT(*) AS total
                      FROM organization_evaluation_exam_participations
                      WHERE organization_id = :organization_id
-                       AND participated_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                       AND COALESCE(participated_at, completed_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
                      GROUP BY d
                      ORDER BY d ASC',
                     ['organization_id' => $organizationId]
@@ -401,51 +604,200 @@ class OrganizationController
             foreach ($rows2 as $row) {
                 $d = (string) ($row['d'] ?? '');
                 if ($d === '') { continue; }
-                // show day-of-month label
-                $day = (int) substr($d, -2);
-                $monthlyExamsLabels[] = UtilityHelper::englishToPersian((string) $day);
-                $monthlyExamsSeries[] = (int) ($row['total'] ?? 0);
+                $dailyCounts[$d] = (int) ($row['total'] ?? 0);
+            }
+
+            $rangeStart = (clone $now)->setTime(0, 0, 0)->modify('-29 days');
+            $rangeDays = max(1, $now->diff($rangeStart)->days + 1);
+
+            for ($i = 0; $i < $rangeDays; $i++) {
+                $currentDay = (clone $rangeStart)->modify('+' . $i . ' day');
+                $key = $currentDay->format('Y-m-d');
+                $dayLabel = UtilityHelper::englishToPersian($currentDay->format('m/d'));
+
+                $monthlyExamsLabels[] = $dayLabel;
+                $monthlyExamsSeries[] = (int) ($dailyCounts[$key] ?? 0);
             }
         }
 
-        $upcomingEvaluations = [
-            [
-                'title' => 'ارزیابی عملکرد فصلی',
-                'date' => UtilityHelper::englishToPersian(date('Y/m/d', strtotime('+7 days'))),
-                'status' => 'در حال آماده‌سازی',
-                'type' => 'performance',
-            ],
-            [
-                'title' => 'آزمون تخصصی مهارت‌ها',
-                'date' => UtilityHelper::englishToPersian(date('Y/m/d', strtotime('+14 days'))),
-                'status' => 'در حال ثبت نام',
-                'type' => 'exam',
-            ],
-            [
-                'title' => 'جلسه بازخورد ۴۵ روزه',
-                'date' => UtilityHelper::englishToPersian(date('Y/m/d', strtotime('+21 days'))),
-                'status' => 'برنامه‌ریزی شده',
-                'type' => 'meeting',
-            ],
-        ];
+    $upcomingEvaluations = [];
+    $recentActivities = [];
+    $competencyModelShowcase = [];
 
-        $recentActivities = [
-            [
-                'time' => UtilityHelper::englishToPersian(date('H:i', strtotime('-2 hours'))),
-                'description' => 'ثبت نتایج ارزیابی تیم فروش',
-                'type' => 'success',
-            ],
-            [
-                'time' => UtilityHelper::englishToPersian(date('H:i', strtotime('-5 hours'))),
-                'description' => 'افزایش اعتبار سازمان به مبلغ ۱۵۰,۰۰۰,۰۰۰ تومان',
-                'type' => 'info',
-            ],
-            [
-                'time' => UtilityHelper::englishToPersian(date('H:i', strtotime('-1 day'))),
-                'description' => 'ایجاد آزمون جدید برای واحد فناوری',
-                'type' => 'warning',
-            ],
-        ];
+        if ($organizationId > 0) {
+            $tehranTz = new DateTimeZone('Asia/Tehran');
+            $nowTehran = new DateTime('now', $tehranTz);
+            $todayDate = $nowTehran->format('Y-m-d');
+
+            // Upcoming evaluations from schedules (preferred source)
+            try {
+                $scheduleRows = DatabaseHelper::fetchAll(
+                    'SELECT evaluation_title, evaluation_date, status
+                     FROM organization_evaluation_schedules
+                     WHERE organization_id = :organization_id
+                       AND evaluation_date >= :today
+                     ORDER BY evaluation_date ASC
+                     LIMIT 5',
+                    [
+                        'organization_id' => $organizationId,
+                        'today' => $todayDate,
+                    ]
+                );
+            } catch (Exception $exception) {
+                $scheduleRows = [];
+            }
+
+            foreach ($scheduleRows as $row) {
+                $rawDate = $row['evaluation_date'] ?? null;
+                $formattedDate = 'نامشخص';
+                if (!empty($rawDate)) {
+                    try {
+                        $dateObj = new DateTime($rawDate, $tehranTz);
+                        $formattedDate = UtilityHelper::englishToPersian($dateObj->format('Y/m/d'));
+                    } catch (Exception $exception) {
+                        $formattedDate = UtilityHelper::englishToPersian(date('Y/m/d', strtotime($rawDate)));
+                    }
+                }
+
+                $status = trim((string) ($row['status'] ?? ''));
+                if ($status === '') {
+                    $status = 'برنامه‌ریزی شده';
+                }
+
+                $upcomingEvaluations[] = [
+                    'title' => trim((string) ($row['evaluation_title'] ?? 'برنامه ارزیابی بدون عنوان')),
+                    'date' => $formattedDate,
+                    'status' => UtilityHelper::englishToPersian($status),
+                ];
+            }
+
+            // Fallback to evaluations table if no schedules found
+            if (empty($upcomingEvaluations)) {
+                try {
+                    $evaluationRows = DatabaseHelper::fetchAll(
+                        'SELECT title, evaluation_date, created_at
+                         FROM organization_evaluations
+                         WHERE organization_id = :organization_id
+                           AND (evaluation_date IS NULL OR evaluation_date >= :today)
+                         ORDER BY (evaluation_date IS NULL), evaluation_date ASC, created_at DESC
+                         LIMIT 5',
+                        [
+                            'organization_id' => $organizationId,
+                            'today' => $todayDate,
+                        ]
+                    );
+                } catch (Exception $exception) {
+                    $evaluationRows = [];
+                }
+
+                foreach ($evaluationRows as $row) {
+                    $title = trim((string) ($row['title'] ?? 'ارزیابی بدون عنوان'));
+                    $rawDate = $row['evaluation_date'] ?? $row['created_at'] ?? null;
+                    $formattedDate = 'نامشخص';
+                    if (!empty($rawDate)) {
+                        try {
+                            $dateObj = new DateTime($rawDate, $tehranTz);
+                            $formattedDate = UtilityHelper::englishToPersian($dateObj->format('Y/m/d'));
+                        } catch (Exception $exception) {
+                            $formattedDate = UtilityHelper::englishToPersian(date('Y/m/d', strtotime($rawDate)));
+                        }
+                    }
+
+                    $statusLabel = !empty($row['evaluation_date']) ? 'برنامه‌ریزی شده' : 'نیازمند زمان‌بندی';
+
+                    $upcomingEvaluations[] = [
+                        'title' => $title,
+                        'date' => $formattedDate,
+                        'status' => UtilityHelper::englishToPersian($statusLabel),
+                    ];
+                }
+            }
+
+            // Recent activities from exam participations
+            try {
+                $activityRows = DatabaseHelper::fetchAll(
+                    'SELECT p.tool_name, p.evaluatee_id, p.is_completed,
+                            COALESCE(p.completed_at, p.participated_at, p.updated_at, p.created_at) AS event_at,
+                            e.title AS evaluation_title,
+                            u.first_name, u.last_name, u.username
+                     FROM organization_evaluation_exam_participations p
+                     LEFT JOIN organization_evaluations e ON e.id = p.evaluation_id
+                     LEFT JOIN organization_users u ON u.id = p.evaluatee_id
+                     WHERE p.organization_id = :organization_id
+                     ORDER BY event_at DESC
+                     LIMIT 6',
+                    ['organization_id' => $organizationId]
+                );
+            } catch (Exception $exception) {
+                $activityRows = [];
+            }
+
+            foreach ($activityRows as $row) {
+                $eventRaw = $row['event_at'] ?? null;
+                $eventDisplay = '---';
+                if (!empty($eventRaw)) {
+                    try {
+                        $event = new DateTime($eventRaw, $tehranTz);
+                        $eventDisplay = UtilityHelper::englishToPersian($event->format('Y/m/d H:i'));
+                    } catch (Exception $exception) {
+                        $eventDisplay = UtilityHelper::englishToPersian(date('Y/m/d H:i', strtotime($eventRaw)));
+                    }
+                }
+
+                $evaluateeName = trim(((string) ($row['first_name'] ?? '')) . ' ' . ((string) ($row['last_name'] ?? '')));
+                if ($evaluateeName === '') {
+                    $evaluateeName = trim((string) ($row['username'] ?? 'کاربر ناشناس'));
+                }
+
+                $toolName = trim((string) ($row['tool_name'] ?? 'آزمون بدون عنوان'));
+                $evaluationTitle = trim((string) ($row['evaluation_title'] ?? 'ارزیابی'));
+                $actionText = ((int) ($row['is_completed'] ?? 0) === 1) ? 'تکمیل شد' : 'ثبت شد';
+
+                $description = sprintf('آزمون «%s» برای %s در برنامه «%s» %s.', $toolName, $evaluateeName, $evaluationTitle, $actionText);
+
+                $recentActivities[] = [
+                    'time' => $eventDisplay,
+                    'description' => UtilityHelper::englishToPersian($description),
+                    'type' => 'exam',
+                ];
+            }
+
+            // Competency model gallery (models with images)
+            try {
+                $modelRows = DatabaseHelper::fetchAll(
+                    'SELECT id, title, code, image_path, updated_at
+                     FROM organization_competency_models
+                     WHERE organization_id = :organization_id
+                       AND image_path IS NOT NULL
+                       AND image_path <> ""
+                     ORDER BY updated_at DESC
+                     LIMIT 6',
+                    ['organization_id' => $organizationId]
+                );
+            } catch (Exception $exception) {
+                $modelRows = [];
+            }
+
+            foreach ($modelRows as $row) {
+                $rawImagePath = trim((string) ($row['image_path'] ?? ''));
+                if ($rawImagePath === '') {
+                    continue;
+                }
+
+                $isExternal = stripos($rawImagePath, 'http://') === 0 || stripos($rawImagePath, 'https://') === 0;
+                if (!$isExternal && !FileHelper::fileExists($rawImagePath)) {
+                    continue;
+                }
+
+                $competencyModelShowcase[] = [
+                    'title' => trim((string) ($row['title'] ?? 'مدل بدون عنوان')),
+                    'code' => trim((string) ($row['code'] ?? '')),
+                    'image_path' => $rawImagePath,
+                    'is_external' => $isExternal,
+                    'updated_at' => $row['updated_at'] ?? null,
+                ];
+            }
+        }
 
         $quickLinks = [
             [
@@ -4154,29 +4506,32 @@ class OrganizationController
                     continue;
                 }
 
-                $features = [];
-                if (!empty($preset['features']) && is_array($preset['features'])) {
-                    $features = $preset['features'];
-                }
+                $rangeStart = (clone $now)->setTime(0, 0, 0)->modify('-29 days');
+                $rangeStartValue = $rangeStart->format('Y-m-d 00:00:00');
+                $dailyCounts = [];
 
                 try {
-                    $featureCountRows = DatabaseHelper::fetchAll(
-                        'SELECT category, COUNT(*) AS total FROM organization_mbti_type_features WHERE organization_id = :organization_id AND mbti_type_id = :mbti_type_id GROUP BY category',
+                    $rows2 = DatabaseHelper::fetchAll(
+                        'SELECT DATE(COALESCE(participated_at, completed_at, created_at)) AS d,
+                                COUNT(*) AS total
+                         FROM organization_evaluation_exam_participations
+                         WHERE organization_id = :organization_id
+                           AND COALESCE(participated_at, completed_at, created_at) >= :daily_start
+                         GROUP BY d
+                         ORDER BY d ASC',
                         [
                             'organization_id' => $organizationId,
-                            'mbti_type_id' => $typeId,
+                            'daily_start' => $rangeStartValue,
                         ]
                     );
-                    $existingFeatureCounts = [];
-                    foreach ($featureCountRows as $countRow) {
-                        $categoryKeyFromDb = (string) ($countRow['category'] ?? '');
-                        if ($categoryKeyFromDb === '') {
-                            continue;
-                        }
-                        $existingFeatureCounts[$categoryKeyFromDb] = (int) ($countRow['total'] ?? 0);
-                    }
                 } catch (Exception $exception) {
-                    $existingFeatureCounts = [];
+                    $rows2 = [];
+                }
+
+                foreach ($rows2 as $row) {
+                    $d = (string) ($row['d'] ?? '');
+                    if ($d === '') { continue; }
+                    $dailyCounts[$d] = (int) ($row['total'] ?? 0);
                 }
 
                 foreach ($features as $index => $featureDefinition) {
@@ -10494,8 +10849,24 @@ class OrganizationController
             $certificateSettings['eleventh_page_text'] = $settingsRow['eleventh_page_text'] ?? null;
             $certificateSettings['eleventh_page_text_align'] = $settingsRow['eleventh_page_text_align'] ?? null;
 
+            // Thirteenth page (DISC results)
+            $certificateSettings['enable_thirteenth_page'] = (int)($settingsRow['enable_thirteenth_page'] ?? 0);
+            if (!empty($settingsRow['thirteenth_page_title_ribbon_text'])) {
+                $certificateSettings['thirteenth_page_title_ribbon_text'] = (string)$settingsRow['thirteenth_page_title_ribbon_text'];
+            }
+            $certificateSettings['thirteenth_page_text'] = $settingsRow['thirteenth_page_text'] ?? null;
+            $certificateSettings['thirteenth_page_text_align'] = $settingsRow['thirteenth_page_text_align'] ?? null;
+
+            // Fifteenth page (Analytical Thinking results)
+            $certificateSettings['enable_fifteenth_page'] = (int)($settingsRow['enable_fifteenth_page'] ?? 0);
+            if (!empty($settingsRow['fifteenth_page_title_ribbon_text'])) {
+                $certificateSettings['fifteenth_page_title_ribbon_text'] = (string)$settingsRow['fifteenth_page_title_ribbon_text'];
+            }
+            $certificateSettings['fifteenth_page_text'] = $settingsRow['fifteenth_page_text'] ?? null;
+            $certificateSettings['fifteenth_page_text_align'] = $settingsRow['fifteenth_page_text_align'] ?? null;
+
             // Normalize page order: allow only enabled pages, and append missing enabled ones
-            $allowedSlugs = ['details', 'toc', 'page4', 'page5', 'page6', 'page7', 'page8', 'page9', 'page10', 'page11'];
+            $allowedSlugs = ['details', 'toc', 'page4', 'page5', 'page6', 'page7', 'page8', 'page9', 'page10', 'page11', 'page13', 'page15'];
             $enabled = [
                 'details' => ((int)($certificateSettings['enable_second_page'] ?? 0) === 1),
                 'toc' => ((int)($certificateSettings['enable_third_page'] ?? 0) === 1),
@@ -10507,6 +10878,8 @@ class OrganizationController
                 'page9' => ((int)($certificateSettings['enable_ninth_page'] ?? 0) === 1),
                 'page10' => ((int)($certificateSettings['enable_tenth_page'] ?? 0) === 1),
                 'page11' => ((int)($certificateSettings['enable_eleventh_page'] ?? 0) === 1),
+                'page13' => ((int)($certificateSettings['enable_thirteenth_page'] ?? 0) === 1),
+                'page15' => ((int)($certificateSettings['enable_fifteenth_page'] ?? 0) === 1),
             ];
             $currentOrder = isset($certificateSettings['page_order']) && is_array($certificateSettings['page_order']) ? $certificateSettings['page_order'] : [];
             $normalized = [];
@@ -10900,7 +11273,7 @@ class OrganizationController
     // dynamic items: arrays of titles and pages
     // page order: array of slugs
     $orderInput = isset($_POST['page_order']) && is_array($_POST['page_order']) ? $_POST['page_order'] : [];
-    $allowedSlugs = ['details','toc','page4','page5','page6','page7','page8','page9','page10','page11'];
+    $allowedSlugs = ['details','toc','page4','page5','page6','page7','page8','page9','page10','page11','page13','page15'];
     $orderClean = [];
     foreach ($orderInput as $slug) {
         $slug = trim((string)$slug);
@@ -11045,6 +11418,16 @@ class OrganizationController
     $eleventhPageTitle = trim((string)($_POST['eleventh_page_title_ribbon_text'] ?? ''));
     $eleventhPageText = trim((string)($_POST['eleventh_page_text'] ?? ''));
     $eleventhPageAlign = trim((string)($_POST['eleventh_page_text_align'] ?? ''));
+    // Thirteenth page (DISC) inputs
+    $enableThirteenthPage = in_array(($_POST['enable_thirteenth_page'] ?? ''), ['1','on','true'], true) ? 1 : 0;
+    $thirteenthPageTitle = trim((string)($_POST['thirteenth_page_title_ribbon_text'] ?? ''));
+    $thirteenthPageText = trim((string)($_POST['thirteenth_page_text'] ?? ''));
+    $thirteenthPageAlign = trim((string)($_POST['thirteenth_page_text_align'] ?? ''));
+    // Fifteenth page (Analytical) inputs
+    $enableFifteenthPage = in_array(($_POST['enable_fifteenth_page'] ?? ''), ['1','on','true'], true) ? 1 : 0;
+    $fifteenthPageTitle = trim((string)($_POST['fifteenth_page_title_ribbon_text'] ?? ''));
+    $fifteenthPageText = trim((string)($_POST['fifteenth_page_text'] ?? ''));
+    $fifteenthPageAlign = trim((string)($_POST['fifteenth_page_text_align'] ?? ''));
         if ($fourthImgWmm !== null && ($fourthImgWmm <= 0 || $fourthImgWmm > 280)) {
             $validationErrors['fourth_page_image_width_mm'] = 'عرض تصویر باید بین 1 تا 280 میلی‌متر باشد.';
         }
@@ -11075,6 +11458,12 @@ class OrganizationController
         if (mb_strlen($eleventhPageTitle) > 191) {
             $validationErrors['eleventh_page_title_ribbon_text'] = 'طول عنوان صفحه یازدهم نباید بیش از ۱۹۱ کاراکتر باشد.';
         }
+        if (mb_strlen($thirteenthPageTitle) > 191) {
+            $validationErrors['thirteenth_page_title_ribbon_text'] = 'طول عنوان صفحه سیزدهم نباید بیش از ۱۹۱ کاراکتر باشد.';
+        }
+        if (mb_strlen($fifteenthPageTitle) > 191) {
+            $validationErrors['fifteenth_page_title_ribbon_text'] = 'طول عنوان صفحه پانزدهم نباید بیش از ۱۹۱ کاراکتر باشد.';
+        }
 
         if (!empty($validationErrors)) {
             $_SESSION['validation_errors'] = $validationErrors;
@@ -11089,7 +11478,9 @@ class OrganizationController
     if (!in_array($seventhPageAlign, $validAlign, true)) { $seventhPageAlign = null; }
         if (!in_array($ninthPageAlign, $validAlign, true)) { $ninthPageAlign = null; }
         if (!in_array($tenthPageAlign, $validAlign, true)) { $tenthPageAlign = null; }
-        if (!in_array($eleventhPageAlign, $validAlign, true)) { $eleventhPageAlign = null; }
+    if (!in_array($eleventhPageAlign, $validAlign, true)) { $eleventhPageAlign = null; }
+    if (!in_array($thirteenthPageAlign, $validAlign, true)) { $thirteenthPageAlign = null; }
+    if (!in_array($fifteenthPageAlign, $validAlign, true)) { $fifteenthPageAlign = null; }
 
         if ($organizationId <= 0 || $userIdentifier === '') {
             ResponseHelper::flashError('امکان ثبت تنظیمات در حال حاضر وجود ندارد.');
@@ -11163,6 +11554,16 @@ class OrganizationController
                 'eleventh_page_title_ribbon_text' => $eleventhPageTitle !== '' ? $eleventhPageTitle : null,
                 'eleventh_page_text' => $eleventhPageText !== '' ? $eleventhPageText : null,
                 'eleventh_page_text_align' => $eleventhPageAlign !== null ? $eleventhPageAlign : null,
+                // thirteenth page payload (DISC)
+                'enable_thirteenth_page' => $enableThirteenthPage,
+                'thirteenth_page_title_ribbon_text' => $thirteenthPageTitle !== '' ? $thirteenthPageTitle : null,
+                'thirteenth_page_text' => $thirteenthPageText !== '' ? $thirteenthPageText : null,
+                'thirteenth_page_text_align' => $thirteenthPageAlign !== null ? $thirteenthPageAlign : null,
+                // fifteenth page payload (Analytical)
+                'enable_fifteenth_page' => $enableFifteenthPage,
+                'fifteenth_page_title_ribbon_text' => $fifteenthPageTitle !== '' ? $fifteenthPageTitle : null,
+                'fifteenth_page_text' => $fifteenthPageText !== '' ? $fifteenthPageText : null,
+                'fifteenth_page_text_align' => $fifteenthPageAlign !== null ? $fifteenthPageAlign : null,
                 // set image path only if uploaded this request; otherwise keep previous
                 'organization_id' => $organizationId,
                 'user_id' => $userIdentifier,
@@ -23845,6 +24246,48 @@ SQL;
             $eleventh4->execute();
             if (!$eleventh4->fetch()) {
                 DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN eleventh_page_text_align VARCHAR(20) NULL AFTER eleventh_page_text");
+            }
+            // THIRTEENTH PAGE (DISC results)
+            $thirteenth1 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'enable_thirteenth_page'");
+            $thirteenth1->execute();
+            if (!$thirteenth1->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN enable_thirteenth_page TINYINT(1) DEFAULT 0 AFTER eleventh_page_text_align");
+            }
+            $thirteenth2 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'thirteenth_page_title_ribbon_text'");
+            $thirteenth2->execute();
+            if (!$thirteenth2->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN thirteenth_page_title_ribbon_text VARCHAR(191) NULL AFTER enable_thirteenth_page");
+            }
+            $thirteenth3 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'thirteenth_page_text'");
+            $thirteenth3->execute();
+            if (!$thirteenth3->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN thirteenth_page_text LONGTEXT NULL AFTER thirteenth_page_title_ribbon_text");
+            }
+            $thirteenth4 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'thirteenth_page_text_align'");
+            $thirteenth4->execute();
+            if (!$thirteenth4->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN thirteenth_page_text_align VARCHAR(20) NULL AFTER thirteenth_page_text");
+            }
+            // FIFTEENTH PAGE (Analytical Thinking results)
+            $fifteenth1 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'enable_fifteenth_page'");
+            $fifteenth1->execute();
+            if (!$fifteenth1->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN enable_fifteenth_page TINYINT(1) DEFAULT 0 AFTER thirteenth_page_text_align");
+            }
+            $fifteenth2 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'fifteenth_page_title_ribbon_text'");
+            $fifteenth2->execute();
+            if (!$fifteenth2->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN fifteenth_page_title_ribbon_text VARCHAR(191) NULL AFTER enable_fifteenth_page");
+            }
+            $fifteenth3 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'fifteenth_page_text'");
+            $fifteenth3->execute();
+            if (!$fifteenth3->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN fifteenth_page_text LONGTEXT NULL AFTER fifteenth_page_title_ribbon_text");
+            }
+            $fifteenth4 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'fifteenth_page_text_align'");
+            $fifteenth4->execute();
+            if (!$fifteenth4->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN fifteenth_page_text_align VARCHAR(20) NULL AFTER fifteenth_page_text");
             }
             // enable_second_page
             $col = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'enable_second_page'");

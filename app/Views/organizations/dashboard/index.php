@@ -13,8 +13,16 @@ $additional_js = $additional_js ?? [];
 $inline_styles = $inline_styles ?? '';
 $inline_scripts = $inline_scripts ?? '';
 
-$additional_css[] = 'public/assets/css/apexcharts.css';
-$additional_js[] = 'public/assets/js/apexcharts.min.js';
+$accountSourceRaw = (string)($user['account_source'] ?? '');
+$accountSource = $accountSourceRaw !== '' && function_exists('mb_strtolower')
+    ? mb_strtolower($accountSourceRaw, 'UTF-8')
+    : strtolower($accountSourceRaw);
+$isOwnerAccount = ($accountSource === 'organizations');
+
+if ($isOwnerAccount) {
+    $additional_css[] = 'public/assets/css/apexcharts.css';
+    $additional_js[] = 'public/assets/js/apexcharts.min.js';
+}
 
 $inline_styles .= "\n    body {\n        background: #f5f7fb;\n    }\n";
 
@@ -32,16 +40,21 @@ $formatMoney = $formatMoney ?? function ($value) {
     return UtilityHelper::englishToPersian($formatted) . ' تومان';
 };
 
-$creditUsageChart = $creditUsageChart ?? ['used' => 0, 'remaining' => 0];
+$creditUsageChart = $creditUsageChart ?? ['used' => 0, 'remaining' => 0, 'total' => 0];
 $summaryCards = $summaryCards ?? [];
 $monthlyOverview = $monthlyOverview ?? [];
 $upcomingEvaluations = $upcomingEvaluations ?? [];
 $recentActivities = $recentActivities ?? [];
 $quickLinks = $quickLinks ?? [];
+$competencyModelShowcase = $competencyModelShowcase ?? [];
 $organization = $organization ?? ['name' => 'سازمان نمونه'];
 $organizationSubtitle = $organizationSubtitle ?? 'Organization Dashboard';
 $organizationCode = $organizationCode ?? 'ORG-000';
 $organizationSubdomain = $organizationSubdomain ?? '---';
+
+$creditUsedDisplay = $creditUsageChart['used_display'] ?? $creditUsageChart['used'] ?? null;
+$creditRemainingDisplay = $creditUsageChart['remaining_display'] ?? $creditUsageChart['remaining'] ?? null;
+$creditParticipantsCompleted = (int) ($creditUsageChart['completed_participations'] ?? 0);
 
 $creditSeriesJson = json_encode([
     (float) ($creditUsageChart['used'] ?? 0),
@@ -57,9 +70,11 @@ $periodicExamsSeriesJson = json_encode($periodicExamsSeries ?? [], JSON_UNESCAPE
 $monthlyExamsLabelsJson = json_encode($monthlyExamsLabels ?? [], JSON_UNESCAPED_UNICODE);
 $monthlyExamsSeriesJson = json_encode($monthlyExamsSeries ?? [], JSON_UNESCAPED_UNICODE);
 
+if ($isOwnerAccount) {
 $inline_scripts .= <<<JS
     document.addEventListener('DOMContentLoaded', function () {
-        const creditUsageSeries = $creditSeriesJson;
+    const creditUsageRaw = $creditSeriesJson;
+    const creditUsageSeries = Array.isArray(creditUsageRaw) ? creditUsageRaw : [];
         const creditUsageOptions = {
             chart: {
                 type: 'donut',
@@ -80,14 +95,26 @@ $inline_scripts .= <<<JS
             }
         };
 
-        if (document.querySelector('#credit-usage-chart')) {
-            const creditChart = new ApexCharts(document.querySelector('#credit-usage-chart'), creditUsageOptions);
-            creditChart.render();
+        const creditChartContainer = document.querySelector('#credit-usage-chart');
+        if (creditChartContainer) {
+            const hasCreditData = Array.isArray(creditUsageSeries) && creditUsageSeries.some((value) => Number(value) > 0);
+
+            if (hasCreditData) {
+                const creditChart = new ApexCharts(creditChartContainer, creditUsageOptions);
+                creditChart.render();
+            } else {
+                creditChartContainer.classList.add('d-flex', 'align-items-center', 'justify-content-center', 'text-gray-400');
+                creditChartContainer.innerHTML = '<span>داده‌ای برای نمایش نمودار اعتباری وجود ندارد.</span>';
+            }
         }
 
-        const participantLabels = $participantLabelsJson;
-        const participantSeries = $participantSeriesJson;
-        const scoreSeries = $scoreSeriesJson;
+    const participantLabelsRaw = $participantLabelsJson;
+    const participantSeriesRaw = $participantSeriesJson;
+    const scoreSeriesRaw = $scoreSeriesJson;
+
+    const participantLabels = Array.isArray(participantLabelsRaw) ? participantLabelsRaw : [];
+    const participantSeries = Array.isArray(participantSeriesRaw) ? participantSeriesRaw : [];
+    const scoreSeries = Array.isArray(scoreSeriesRaw) ? scoreSeriesRaw : [];
 
         const participantsOptions = {
             chart: {
@@ -116,53 +143,86 @@ $inline_scripts .= <<<JS
             }
         };
 
-        if (document.querySelector('#participants-chart')) {
-            const participantsChart = new ApexCharts(document.querySelector('#participants-chart'), participantsOptions);
-            participantsChart.render();
+        const participantsChartContainer = document.querySelector('#participants-chart');
+        if (participantsChartContainer) {
+            const participantNumbers = participantSeries.map((value) => Number(value));
+            const scoreNumbers = scoreSeries.map((value) => Number(value));
+            const hasParticipantData = participantLabels.length > 0 && (
+                participantNumbers.some((value) => value > 0) ||
+                scoreNumbers.some((value) => value > 0)
+            );
+
+            if (hasParticipantData) {
+                const participantsChart = new ApexCharts(participantsChartContainer, participantsOptions);
+                participantsChart.render();
+            } else {
+                participantsChartContainer.classList.add('d-flex', 'align-items-center', 'justify-content-center', 'text-gray-400');
+                participantsChartContainer.innerHTML = '<span>داده‌ای برای روند مشارکت کارکنان ثبت نشده است.</span>';
+            }
         }
 
         // Periodic exams (last 6 months)
-        const periodicLabels = $periodicExamsLabelsJson;
-        const periodicSeries = $periodicExamsSeriesJson;
-        if (document.querySelector('#periodic-exams-chart')) {
-            const options = {
-                chart: { type: 'bar', height: 280, fontFamily: 'IRANSans, Tahoma, sans-serif', toolbar: { show: false } },
-                series: [{ name: 'آزمون‌های دوره‌ای', data: periodicSeries }],
-                colors: ['#10b981'],
-                xaxis: { categories: periodicLabels },
-                dataLabels: { enabled: false },
-                plotOptions: { bar: { borderRadius: 6, columnWidth: '40%' } },
-                tooltip: { y: { formatter: (v) => (typeof v === 'number' ? v : Number(v || 0)).toLocaleString('fa-IR') } }
-            };
-            const chart = new ApexCharts(document.querySelector('#periodic-exams-chart'), options);
-            chart.render();
+        const periodicLabelsRaw = $periodicExamsLabelsJson;
+        const periodicSeriesRaw = $periodicExamsSeriesJson;
+        const periodicLabels = Array.isArray(periodicLabelsRaw) ? periodicLabelsRaw : [];
+        const periodicSeries = Array.isArray(periodicSeriesRaw) ? periodicSeriesRaw.map((value) => Number(value)) : [];
+
+        const periodicChartContainer = document.querySelector('#periodic-exams-chart');
+        if (periodicChartContainer) {
+            if (periodicLabels.length > 0) {
+                const options = {
+                    chart: { type: 'bar', height: 280, fontFamily: 'IRANSans, Tahoma, sans-serif', toolbar: { show: false } },
+                    series: [{ name: 'آزمون‌های دوره‌ای', data: periodicSeries }],
+                    colors: ['#10b981'],
+                    xaxis: { categories: periodicLabels },
+                    dataLabels: { enabled: false },
+                    plotOptions: { bar: { borderRadius: 6, columnWidth: '40%' } },
+                    tooltip: { y: { formatter: (v) => (typeof v === 'number' ? v : Number(v || 0)).toLocaleString('fa-IR') } }
+                };
+                const chart = new ApexCharts(periodicChartContainer, options);
+                chart.render();
+            } else {
+                periodicChartContainer.classList.add('d-flex', 'align-items-center', 'justify-content-center', 'text-gray-400');
+                periodicChartContainer.innerHTML = '<span>اطلاعاتی برای نمودار آزمون‌های دوره‌ای موجود نیست.</span>';
+            }
         }
 
         // Exams conducted this month (per day)
-        const monthlyLabels = $monthlyExamsLabelsJson;
-        const monthlySeries = $monthlyExamsSeriesJson;
-        if (document.querySelector('#monthly-exams-chart')) {
-            const options = {
-                chart: { type: 'line', height: 280, fontFamily: 'IRANSans, Tahoma, sans-serif', toolbar: { show: false } },
-                series: [{ name: 'آزمون‌های برگزار شده', data: monthlySeries }],
-                colors: ['#8b5cf6'],
-                stroke: { width: 3, curve: 'smooth' },
-                xaxis: { categories: monthlyLabels },
-                dataLabels: { enabled: false },
-                markers: { size: 4 },
-                tooltip: { y: { formatter: (v) => (typeof v === 'number' ? v : Number(v || 0)).toLocaleString('fa-IR') } }
-            };
-            const chart = new ApexCharts(document.querySelector('#monthly-exams-chart'), options);
-            chart.render();
+        const monthlyLabelsRaw = $monthlyExamsLabelsJson;
+        const monthlySeriesRaw = $monthlyExamsSeriesJson;
+        const monthlyLabels = Array.isArray(monthlyLabelsRaw) ? monthlyLabelsRaw : [];
+        const monthlySeries = Array.isArray(monthlySeriesRaw) ? monthlySeriesRaw.map((value) => Number(value)) : [];
+
+        const monthlyChartContainer = document.querySelector('#monthly-exams-chart');
+        if (monthlyChartContainer) {
+            if (monthlyLabels.length > 0) {
+                const options = {
+                    chart: { type: 'line', height: 280, fontFamily: 'IRANSans, Tahoma, sans-serif', toolbar: { show: false } },
+                    series: [{ name: 'آزمون‌های برگزار شده', data: monthlySeries }],
+                    colors: ['#8b5cf6'],
+                    stroke: { width: 3, curve: 'smooth' },
+                    xaxis: { categories: monthlyLabels },
+                    dataLabels: { enabled: false },
+                    markers: { size: 4 },
+                    tooltip: { y: { formatter: (v) => (typeof v === 'number' ? v : Number(v || 0)).toLocaleString('fa-IR') } }
+                };
+                const chart = new ApexCharts(monthlyChartContainer, options);
+                chart.render();
+            } else {
+                monthlyChartContainer.classList.add('d-flex', 'align-items-center', 'justify-content-center', 'text-gray-400');
+                monthlyChartContainer.innerHTML = '<span>برای این ماه داده‌ای جهت نمایش نمودار ثبت نشده است.</span>';
+            }
         }
     });
 JS;
+}
 ?>
 
 <?php include __DIR__ . '/../../layouts/organization-navbar.php'; ?>
 
 <div class="page-content-wrapper">
     <div class="page-content">
+        <?php if ($isOwnerAccount): ?>
         <div class="row g-4">
             <!-- KPI: Users/Evaluations summary -->
             <?php if (!empty($summaryCards)): ?>
@@ -178,37 +238,7 @@ JS;
                 <?php endforeach; ?>
             <?php endif; ?>
 
-            <div class="col-12">
-                <div class="card border-0 shadow-sm rounded-24">
-                    <div class="card-body p-24">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-24">
-                            <div class="d-flex align-items-center gap-16">
-                                <div class="d-flex flex-wrap gap-12">
-                                    <a href="<?= UtilityHelper::baseUrl('supperadmin/organizations/edit?id=' . ($organization['id'] ?? 0)); ?>" class="btn btn-outline-main rounded-pill px-20 d-flex align-items-center gap-8">
-                                        <i class="fas fa-edit"></i>
-                                        مدیریت سازمان
-                                    </a>
-                                    <a href="<?= UtilityHelper::baseUrl('user/logout'); ?>" class="btn btn-danger rounded-pill px-20 d-flex align-items-center gap-8">
-                                        <i class="fas fa-sign-out-alt"></i>
-                                        خروج
-                                    </a>
-                                </div>
-                                <div class="text-end">
-                                    <h2 class="mb-4 text-gray-900">داشبورد سازمانی - <?= htmlspecialchars($organization['name']); ?></h2>
-                                    <p class="mb-0 text-gray-500">
-                                        کد سازمان: <span class="fw-semibold text-gray-700"><?= UtilityHelper::englishToPersian($organizationCode); ?></span>
-                                        <span class="mx-12">|</span>
-                                        ساب‌دومین: <span class="fw-semibold text-gray-700"><?= UtilityHelper::englishToPersian($organizationSubdomain); ?></span>
-                                    </p>
-                                </div>
-                                <div class="w-72 h-72 rounded-20 bg-main-100 text-main-600 flex-center fs-2 fw-bold">
-                                    <?= UtilityHelper::englishToPersian(mb_substr($organization['name'] ?? 'سازمان', 0, 1)); ?>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+
 
             <?php if (!empty($summaryCards)): ?>
                 <?php foreach (array_slice($summaryCards, 4) as $card): ?>
@@ -255,7 +285,7 @@ JS;
                                     <span class="w-12 h-12 rounded-circle bg-danger-500 d-inline-block"></span>
                                     <div>
                                         <p class="mb-1 text-gray-500 text-sm">اعتبار مصرف‌شده</p>
-                                        <h6 class="mb-0 text-gray-900"><?= $formatMoney($creditUsageChart['used'] ?? 0); ?></h6>
+                                        <h6 class="mb-0 text-gray-900"><?= $formatMoney($creditUsedDisplay); ?></h6>
                                     </div>
                                 </div>
                             </div>
@@ -264,11 +294,17 @@ JS;
                                     <span class="w-12 h-12 rounded-circle bg-success-500 d-inline-block"></span>
                                     <div>
                                         <p class="mb-1 text-gray-500 text-sm">اعتبار باقی‌مانده</p>
-                                        <h6 class="mb-0 text-gray-900"><?= $formatMoney($creditUsageChart['remaining'] ?? 0); ?></h6>
+                                        <h6 class="mb-0 text-gray-900"><?= $formatMoney($creditRemainingDisplay); ?></h6>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                        <?php if ($creditParticipantsCompleted > 0): ?>
+                            <div class="text-gray-400 text-sm mt-16 text-end">
+                                <i class="fas fa-user-check ms-6"></i>
+                                <?= UtilityHelper::englishToPersian(number_format($creditParticipantsCompleted, 0)); ?> آزمون تکمیل شده در این دوره محاسبه شده است.
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -392,6 +428,79 @@ JS;
                     <div class="card-body p-24">
                         <div class="d-flex justify-content-between align-items-center mb-16">
                             <h4 class="mb-0 text-gray-900">
+                                <i class="fas fa-layer-group ms-10 text-main-500"></i>
+                                گالری مدل‌های شایستگی
+                            </h4>
+                            <a href="<?= UtilityHelper::baseUrl('organizations/competency-models'); ?>" class="btn btn-sm btn-outline-main rounded-pill px-16">
+                                مدیریت مدل‌ها
+                            </a>
+                        </div>
+                        <?php if (!empty($competencyModelShowcase)): ?>
+                            <div class="row g-16">
+                                <?php foreach ($competencyModelShowcase as $model): ?>
+                                    <?php
+                                    $rawImagePath = trim((string) ($model['image_path'] ?? ''));
+                                    $imageUrl = $rawImagePath;
+                                    if (!empty($rawImagePath) && empty($model['is_external'])) {
+                                        $normalizedPath = ltrim($rawImagePath, '/');
+                                        if (stripos($normalizedPath, 'public/') === 0) {
+                                            $publicPath = $normalizedPath;
+                                        } else {
+                                            $publicPath = 'public/' . $normalizedPath;
+                                        }
+                                        $imageUrl = UtilityHelper::baseUrl($publicPath);
+                                    }
+
+                                    $codeLabel = trim((string) ($model['code'] ?? ''));
+                                    $updatedLabel = '';
+                                    $updatedRaw = $model['updated_at'] ?? null;
+                                    if (!empty($updatedRaw)) {
+                                        try {
+                                            $updatedDate = new DateTime($updatedRaw, new DateTimeZone('Asia/Tehran'));
+                                            $updatedLabel = UtilityHelper::englishToPersian($updatedDate->format('Y/m/d'));
+                                        } catch (Exception $exception) {
+                                            $updatedLabel = UtilityHelper::englishToPersian(date('Y/m/d', strtotime($updatedRaw)));
+                                        }
+                                    }
+                                    ?>
+                                    <div class="col-xl-4 col-md-6">
+                                        <div class="h-100 border border-gray-100 rounded-24 p-16 d-flex flex-column gap-12">
+                                            <div class="w-100" style="height: 200px; border-radius: 18px; overflow: hidden; background: #f1f5f9;">
+                                                <?php if (!empty($imageUrl)): ?>
+                                                    <img src="<?= htmlspecialchars($imageUrl); ?>" alt="<?= htmlspecialchars($model['title']); ?>" class="w-100 h-100" style="object-fit: cover;">
+                                                <?php else: ?>
+                                                    <div class="w-100 h-100 d-flex align-items-center justify-content-center text-gray-400">
+                                                        تصویری ثبت نشده است.
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="flex-grow-1 text-end">
+                                                <h6 class="mb-6 text-gray-900 fw-bold"><?= htmlspecialchars($model['title']); ?></h6>
+                                                <?php if ($codeLabel !== ''): ?>
+                                                    <p class="mb-2 text-gray-400 text-sm">کد مدل: <?= htmlspecialchars(UtilityHelper::englishToPersian($codeLabel)); ?></p>
+                                                <?php endif; ?>
+                                                <?php if ($updatedLabel !== ''): ?>
+                                                    <p class="mb-0 text-gray-400 text-xs">آخرین بروزرسانی: <?= htmlspecialchars($updatedLabel); ?></p>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="text-center text-gray-400 py-40">
+                                تاکنون تصویری برای مدل‌های شایستگی ثبت نشده است.
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <div class="card border-0 shadow-sm rounded-24">
+                    <div class="card-body p-24">
+                        <div class="d-flex justify-content-between align-items-center mb-16">
+                            <h4 class="mb-0 text-gray-900">
                                 <i class="fas fa-th-large ms-10 text-main-500"></i>
                                 میانبرهای سریع
                             </h4>
@@ -421,7 +530,21 @@ JS;
                 </div>
             </div>
         </div>
-
+        <?php else: ?>
+        <div class="row justify-content-center">
+            <div class="col-xl-8 col-lg-9">
+                <div class="card border-0 shadow-sm rounded-24">
+                    <div class="card-body p-32 text-center">
+                        <h3 class="text-gray-900 fw-bold mb-16">به پنل سازمان خوش آمدید</h3>
+                        <p class="text-gray-600 mb-0" style="line-height:1.9;">
+                            این بخش شامل آمار، نمودارها و گزارش‌های مدیریتی است و تنها برای مالک سازمان در دسترس می‌باشد.
+                            در صورتی که نیاز به مشاهده این اطلاعات دارید، لطفاً با مالک سازمان هماهنگ کنید یا از او بخواهید دسترسی لازم را برای شما فعال کند.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
     <?php include __DIR__ . '/../../layouts/organization-footer.php'; ?>
 </div>
 

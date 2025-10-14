@@ -78,6 +78,16 @@ $_enableEleventh = (int)($certificateSettings['enable_eleventh_page'] ?? 0) === 
 $_eleventhText = isset($certificateSettings['eleventh_page_text']) ? ltrim((string)$certificateSettings['eleventh_page_text']) : '';
 $_eleventhAlign = (string)($certificateSettings['eleventh_page_text_align'] ?? '');
 $_mbti = isset($certificateSettings['mbti']) && is_array($certificateSettings['mbti']) ? $certificateSettings['mbti'] : ['has_mbti'=>false];
+// Thirteenth page (DISC)
+$_enableThirteenth = (int)($certificateSettings['enable_thirteenth_page'] ?? 0) === 1;
+$_thirteenthText = isset($certificateSettings['thirteenth_page_text']) ? ltrim((string)$certificateSettings['thirteenth_page_text']) : '';
+$_thirteenthAlign = (string)($certificateSettings['thirteenth_page_text_align'] ?? '');
+$_disc = isset($certificateSettings['disc']) && is_array($certificateSettings['disc']) ? $certificateSettings['disc'] : ['has_disc'=>false];
+// Fifteenth page (Analytical)
+$_enableFifteenth = (int)($certificateSettings['enable_fifteenth_page'] ?? 0) === 1;
+$_fifteenthText = isset($certificateSettings['fifteenth_page_text']) ? ltrim((string)$certificateSettings['fifteenth_page_text']) : '';
+$_fifteenthAlign = (string)($certificateSettings['fifteenth_page_text_align'] ?? '');
+$_analytical = isset($certificateSettings['analytical']) && is_array($certificateSettings['analytical']) ? $certificateSettings['analytical'] : ['has_analytical'=>false];
 // Page order from settings (slugs: 'details' => page 2, 'toc' => page 3). If not set, use enabled ones in default order
 $_pageOrder = isset($certificateSettings['page_order']) && is_array($certificateSettings['page_order']) ? $certificateSettings['page_order'] : [];
 if (empty($_pageOrder)) {
@@ -91,6 +101,8 @@ if (empty($_pageOrder)) {
     if ($_enableNinth) { $_pageOrder[] = 'page9'; }
     if ($_enableTenth) { $_pageOrder[] = 'page10'; }
     if ($_enableEleventh) { $_pageOrder[] = 'page11'; }
+    if ($_enableThirteenth) { $_pageOrder[] = 'page13'; }
+    if ($_enableFifteenth) { $_pageOrder[] = 'page15'; }
 }
 
 ?><!DOCTYPE html>
@@ -214,10 +226,9 @@ if (empty($_pageOrder)) {
             display: flex; justify-content: space-between; align-items: center; padding: 0 22mm; color: var(--muted); font-size: 11px;
         }
 
-        .actions { position: fixed; top: 12px; right: 12px; display: none; gap:8px; }
+    .actions { position: fixed; top: 12px; right: 12px; display: inline-flex; gap:8px; }
         .btn-print { background: var(--accent); color:#fff; border:none; padding:8px 14px; border-radius:10px; cursor:pointer; box-shadow:0 8px 16px rgba(14,165,233,0.25); }
         .btn-print:hover{ filter: brightness(1.05); }
-        @media screen { .actions { display: inline-flex; } }
         @media print { body { background: #fff; } .page { box-shadow: none; border-radius: 0; } .actions { display: none !important; } }
 
         /* Simplified look for PDF export to prevent layout shifts */
@@ -306,7 +317,7 @@ if (empty($_pageOrder)) {
             </div>
         </div>
     </div>
-    <?php $pageIndex = 2; foreach ($_pageOrder as $slug): if ($slug==='details' && !$_enableSecond) continue; if ($slug==='toc' && !$_enableThird) continue; if ($slug==='page4' && !$_enableFourth) continue; if ($slug==='page5' && !$_enableFifth) continue; if ($slug==='page6' && !$_enableSixth) continue; if ($slug==='page7' && !$_enableSeventh) continue; if ($slug==='page8' && !$_enableEighth) continue; if ($slug==='page9' && !$_enableNinth) continue; if ($slug==='page10' && !$_enableTenth) continue; if ($slug==='page11' && !$_enableEleventh) continue; ?>
+    <?php $pageIndex = 2; foreach ($_pageOrder as $slug): if ($slug==='details' && !$_enableSecond) continue; if ($slug==='toc' && !$_enableThird) continue; if ($slug==='page4' && !$_enableFourth) continue; if ($slug==='page5' && !$_enableFifth) continue; if ($slug==='page6' && !$_enableSixth) continue; if ($slug==='page7' && !$_enableSeventh) continue; if ($slug==='page8' && !$_enableEighth) continue; if ($slug==='page9' && !$_enableNinth) continue; if ($slug==='page10' && !$_enableTenth) continue; if ($slug==='page11' && !$_enableEleventh) continue; if ($slug==='page13' && !$_enableThirteenth) continue; if ($slug==='page15' && !$_enableFifteenth) continue; ?>
     <?php if ($slug !== 'page8' && $slug !== 'page6' && $slug !== 'page9'): ?>
     <div class="page<?= $_decor ? ' decor' : ''; ?> certificate-page" data-page-index="<?= (int)$pageIndex; ?>">
         <?php if ($_showLogo): ?>
@@ -364,6 +375,16 @@ if (empty($_pageOrder)) {
                         <?php $page11Ribbon = trim((string)($certificateSettings['eleventh_page_title_ribbon_text'] ?? '')); if ($page11Ribbon==='') { $page11Ribbon='نتایج آزمون MBTI'; } echo htmlspecialchars($page11Ribbon, ENT_QUOTES, 'UTF-8'); ?>
                     </div>
                     <div class="subtitle">تیپ شخصیتی و غلبه ترجیحات</div>
+                <?php elseif ($slug==='page13'): ?>
+                    <div class="title-ribbon">
+                        <?php $page13Ribbon = trim((string)($certificateSettings['thirteenth_page_title_ribbon_text'] ?? '')); if ($page13Ribbon==='') { $page13Ribbon='نتایج آزمون DISC'; } echo htmlspecialchars($page13Ribbon, ENT_QUOTES, 'UTF-8'); ?>
+                    </div>
+                    <div class="subtitle">مرور ترجیحات غالب (BEST) و کمترین (LEAST)</div>
+                <?php elseif ($slug==='page15'): ?>
+                    <div class="title-ribbon">
+                        <?php $page15Ribbon = trim((string)($certificateSettings['fifteenth_page_title_ribbon_text'] ?? '')); if ($page15Ribbon==='') { $page15Ribbon='نتایج تفکر تحلیلی'; } echo htmlspecialchars($page15Ribbon, ENT_QUOTES, 'UTF-8'); ?>
+                    </div>
+                    <div class="subtitle">پاسخ‌های درست/نادرست و درصد موفقیت</div>
                 <?php endif; ?>
             </div>
             <div class="certificate-body">
@@ -647,6 +668,91 @@ if (empty($_pageOrder)) {
                             </div>
                         </div>
                         <?php endif; ?>
+                    </div>
+                <?php elseif ($slug==='page13'): ?>
+                    <?php $ta13 = $_thirteenthAlign==='center'?'center':($_thirteenthAlign==='justify'?'justify':($_thirteenthAlign==='left'?'left':'right')); ?>
+                    <?php $hasDisc = !empty($_disc['has_disc']); $best = $_disc['best_counts'] ?? ['D'=>0,'I'=>0,'S'=>0,'C'=>0]; $least = $_disc['least_counts'] ?? ['D'=>0,'I'=>0,'S'=>0,'C'=>0]; ?>
+                    <div style="display:grid; grid-template-rows:auto auto auto; gap:8mm;">
+                        <div>
+                            <div style="font-weight:800; color:#0f172a;">خلاصه تیپ DISC</div>
+                            <div style="margin-top:2mm; color:#334155;">
+                                <?php $pc = (string)($_disc['primary_code'] ?? ''); $pl = (string)($_disc['primary_label'] ?? ''); $sc = (string)($_disc['secondary_code'] ?? ''); $sl = (string)($_disc['secondary_label'] ?? '');
+                                $summary = '—'; if ($pc !== '') { $summary = 'غالب: ' . ($pl !== '' ? $pl . " ($pc)" : $pc); if ($sc !== '') { $summary .= ' | ثانویه: ' . ($sl !== '' ? $sl . " ($sc)" : $sc); } } echo htmlspecialchars($summary, ENT_QUOTES, 'UTF-8'); ?>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display:grid; grid-template-columns: repeat(4,1fr); gap:8px;">
+                                <?php foreach (['D','I','S','C'] as $letter): $v = (int)($best[$letter] ?? 0); ?>
+                                <div>
+                                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#64748b;">
+                                        <span>BEST - <?= $letter; ?></span><span><?= UtilityHelper::englishToPersian((string)$v); ?></span>
+                                    </div>
+                                    <div style="height:10px; background:#e2e8f0; border-radius:999px; overflow:hidden;"><div style="height:100%; width:<?= min(100, $v*8); ?>%; background:linear-gradient(90deg, var(--accent), var(--accent-2));"></div></div>
+                                </div>
+                                <?php endforeach; ?>
+                                <?php foreach (['D','I','S','C'] as $letter): $v = (int)($least[$letter] ?? 0); ?>
+                                <div>
+                                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#64748b;">
+                                        <span>LEAST - <?= $letter; ?></span><span><?= UtilityHelper::englishToPersian((string)$v); ?></span>
+                                    </div>
+                                    <div style="height:10px; background:#e2e8f0; border-radius:999px; overflow:hidden;"><div style="height:100%; width:<?= min(100, $v*8); ?>%; background:#94a3b8;"></div></div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="content-text" style="white-space:pre-wrap; line-height:1.9; color:#0f172a; font-size:14px; text-align: <?= htmlspecialchars($ta13, ENT_QUOTES, 'UTF-8'); ?>; padding:0; margin:0;">
+                                <?= nl2br(htmlspecialchars((string)$_thirteenthText, ENT_QUOTES, 'UTF-8')); ?>
+                            </div>
+                            <?php if ($hasDisc): ?>
+                                <?php $pm = $_disc['primary_meta'] ?? null; $sm = $_disc['secondary_meta'] ?? null; ?>
+                                <?php if ($pm && !empty($pm['description'])): ?>
+                                    <div style="margin-top:6mm; color:#334155; font-size:14px; white-space:pre-wrap;">
+                                        <div style="font-weight:800; color:#0f172a;">توضیحات تیپ غالب</div>
+                                        <?= nl2br(htmlspecialchars((string)$pm['description'], ENT_QUOTES, 'UTF-8')); ?>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if ($sm && !empty($sm['description'])): ?>
+                                    <div style="margin-top:6mm; color:#334155; font-size:14px; white-space:pre-wrap;">
+                                        <div style="font-weight:800; color:#0f172a;">توضیحات تیپ ثانویه</div>
+                                        <?= nl2br(htmlspecialchars((string)$sm['description'], ENT_QUOTES, 'UTF-8')); ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php elseif ($slug==='page15'): ?>
+                    <?php $ta15 = $_fifteenthAlign==='center'?'center':($_fifteenthAlign==='justify'?'justify':($_fifteenthAlign==='left'?'left':'right')); ?>
+                    <?php $hasAn = !empty($_analytical['has_analytical']); $answered = (int)($_analytical['answered'] ?? 0); $correct = (int)($_analytical['correct'] ?? 0); $incorrect = (int)($_analytical['incorrect'] ?? 0); $percent = (int)($_analytical['percent'] ?? 0); ?>
+                    <div style="display:grid; grid-template-rows:auto auto; gap:8mm;">
+                        <div>
+                            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px;">
+                                <div class="card" style="border:1px solid var(--border); border-radius:12px; padding:10px; text-align:center;">
+                                    <div style="color:#64748b; font-size:12px;">تعداد پاسخ‌ها</div>
+                                    <div style="font-weight:800; color:#0f172a; font-size:18px;"><?= UtilityHelper::englishToPersian((string)$answered); ?></div>
+                                </div>
+                                <div class="card" style="border:1px solid var(--border); border-radius:12px; padding:10px; text-align:center;">
+                                    <div style="color:#64748b; font-size:12px;">پاسخ درست</div>
+                                    <div style="font-weight:800; color:#16a34a; font-size:18px;"><?= UtilityHelper::englishToPersian((string)$correct); ?></div>
+                                </div>
+                                <div class="card" style="border:1px solid var(--border); border-radius:12px; padding:10px; text-align:center;">
+                                    <div style="color:#64748b; font-size:12px;">پاسخ نادرست</div>
+                                    <div style="font-weight:800; color:#dc2626; font-size:18px;"><?= UtilityHelper::englishToPersian((string)$incorrect); ?></div>
+                                </div>
+                                <div class="card" style="border:1px solid var(--border); border-radius:12px; padding:10px; text-align:center;">
+                                    <div style="color:#64748b; font-size:12px;">درصد موفقیت</div>
+                                    <div style="font-weight:800; color:#0f172a; font-size:18px;"><?= UtilityHelper::englishToPersian((string)$percent); ?>%</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="content-text" style="white-space:pre-wrap; line-height:1.9; color:#0f172a; font-size:14px; text-align: <?= htmlspecialchars($ta15, ENT_QUOTES, 'UTF-8'); ?>; padding:0; margin:0;">
+                                <?= nl2br(htmlspecialchars((string)$_fifteenthText, ENT_QUOTES, 'UTF-8')); ?>
+                            </div>
+                            <?php if (!$hasAn): ?>
+                                <div style="margin-top:6mm; color:#64748b;">اطلاعاتی برای تفکر تحلیلی یافت نشد.</div>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -971,6 +1077,8 @@ if (empty($_pageOrder)) {
         }
 
         async function exportCertificatePdf(){
+            let tempImageContainer = null;
+            const tempImageResources = [];
             try {
                 const { jsPDF } = window.jspdf || window.jspPDF || {};
                 if (!jsPDF) {
@@ -991,6 +1099,18 @@ if (empty($_pageOrder)) {
                 const pageWidth = pdf.internal.pageSize.getWidth();
                 const pageHeight = pdf.internal.pageSize.getHeight();
 
+                tempImageContainer = document.createElement('div');
+                tempImageContainer.style.cssText = 'position:fixed; top:-9999px; width:1px; height:1px; overflow:hidden;';
+                document.body.appendChild(tempImageContainer);
+
+                const createTempImage = (dataUrl) => new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.decoding = 'sync';
+                    img.onload = () => resolve(img);
+                    img.onerror = (err) => reject(err || new Error('خطا در بارگذاری تصویر موقت'));
+                    img.src = dataUrl;
+                });
+
                 for (let i = 0; i < pages.length; i++) {
                     if (useSimple) document.body.classList.add('pdf-export');
                     const canvas = await html2canvas(pages[i], {
@@ -1001,12 +1121,15 @@ if (empty($_pageOrder)) {
                         foreignObjectRendering: true,
                         removeContainer: true,
                     });
-                    const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                    const dataUrl = canvas.toDataURL('image/png', 0.98);
+                    const imageElement = await createTempImage(dataUrl);
+                    tempImageContainer.appendChild(imageElement);
+                    tempImageResources.push({ image: imageElement, objectUrl: null });
                     if (i === 0) {
-                        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+                        pdf.addImage(dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
                     } else {
                         pdf.addPage('a4', 'landscape');
-                        pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+                        pdf.addImage(dataUrl, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
                     }
                     if (useSimple) document.body.classList.remove('pdf-export');
                 }
@@ -1017,6 +1140,23 @@ if (empty($_pageOrder)) {
                 console.error(e);
                 alert('خطا در تولید PDF. لطفاً دوباره تلاش کنید.');
             } finally {
+                if (tempImageResources.length) {
+                    tempImageResources.forEach(({ image, objectUrl }) => {
+                        if (image && image.parentNode) {
+                            image.parentNode.removeChild(image);
+                        }
+                        if (image) {
+                            image.src = '';
+                        }
+                        if (objectUrl) {
+                            try { URL.revokeObjectURL(objectUrl); } catch (cleanupError) { console.warn(cleanupError); }
+                        }
+                    });
+                    tempImageResources.length = 0;
+                }
+                if (tempImageContainer && tempImageContainer.parentNode) {
+                    tempImageContainer.parentNode.removeChild(tempImageContainer);
+                }
                 const actionsEl = document.querySelector('.actions');
                 if (actionsEl) actionsEl.style.display = '';
                 document.body.classList.remove('pdf-export');

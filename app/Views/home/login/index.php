@@ -33,6 +33,27 @@ $rightIllustrationUrl = $rightIllustrationUrl ?? UtilityHelper::baseUrl('public/
 include __DIR__ . '/../../layouts/home-login-header.php';
 ?>
 
+<style>
+    .auth-right__inner h2,
+    .auth-right__inner p,
+    .auth-right__inner .text-block-start,
+    .auth-right__inner .form-label,
+    .auth-right__inner .form-check-label {
+        display: block;
+        text-align: right;
+    }
+
+    @media (max-width: 991.98px) {
+        .auth {
+            flex-direction: column;
+        }
+
+        .auth-left {
+            display: none !important;
+        }
+    }
+</style>
+
 <section class="auth d-flex flex-row-reverse">
     <div class="auth-left bg-main-50 flex-center p-24">
         <img src="<?= htmlspecialchars($rightIllustrationUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="ورود کاربران" style="max-width: 100%; height: auto;">
@@ -90,7 +111,9 @@ include __DIR__ . '/../../layouts/home-login-header.php';
                 <button type="submit" class="btn btn-main rounded-pill w-100">ورود به حساب کاربری</button>
             </form>
 
-            <div class="text-center mt-24 text-gray-600 text-15">
+            <a href="<?= UtilityHelper::baseUrl('organizations/login'); ?>" class="btn btn-outline-main rounded-pill w-100 mt-16">ورود سازمان</a>
+
+            <div class="text-end mt-24 text-gray-600 text-15 text-block-start">
                 هنوز ثبت‌نام نکرده‌اید؟
                 <a href="<?= UtilityHelper::baseUrl('user/register'); ?>" class="text-main-600 fw-semibold">ایجاد حساب جدید</a>
             </div>

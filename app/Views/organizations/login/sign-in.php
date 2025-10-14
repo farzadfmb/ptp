@@ -27,6 +27,24 @@ $rightIllustrationUrl = UtilityHelper::baseUrl('public/images/superAdmin/admin-c
 include __DIR__ . '/../../../Views/layouts/auth-header.php';
 ?>
 
+<style>
+    @media (max-width: 991.98px) {
+        .auth {
+            flex-direction: column;
+        }
+
+        .auth-left {
+            display: none !important;
+        }
+    }
+
+    .auth-right__inner .form-label,
+    .auth-right__inner .form-check-label {
+        display: block;
+        text-align: right;
+    }
+</style>
+
 <section class="auth d-flex flex-row-reverse">
     <div class="auth-left bg-main-50 flex-center p-24">
         <img src="<?= htmlspecialchars($rightIllustrationUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="ورود سازمان" style="max-width: 100%; height: auto;">
@@ -36,8 +54,8 @@ include __DIR__ . '/../../../Views/layouts/auth-header.php';
             <div class="text-center mb-24">
                 <img src="<?= htmlspecialchars($systemLogoUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="لوگوی سامانه" style="max-height: 96px; object-fit: contain;">
             </div>
-            <h2 class="mb-8">به پنل سازمانی سامانه مدیریت عملکرد خوش آمدید</h2>
-            <p class="text-gray-600 text-15 mb-32">برای ورود به پنل سازمان، اطلاعات حساب سازمانی خود را وارد کنید.</p>
+            <h2 class="mb-8 text-start">به پنل سازمانی سامانه مدیریت عملکرد خوش آمدید</h2>
+            <p class="text-gray-600 text-15 mb-32 text-start">برای ورود به پنل سازمان، اطلاعات حساب سازمانی خود را وارد کنید.</p>
 
             <?php if (!empty($authSuccess)): ?>
                 <div class="alert alert-success text-end" role="alert">
@@ -54,9 +72,9 @@ include __DIR__ . '/../../../Views/layouts/auth-header.php';
             <form action="<?= UtilityHelper::baseUrl('organizations/login'); ?>" method="post" class="text-end">
                 <?= csrf_field(); ?>
                 <div class="mb-24">
-                    <label for="identifier" class="form-label mb-8 h6">ایمیل یا نام کاربری سازمانی</label>
+                    <label for="identifier" class="form-label mb-8 h6">ایمیل، نام کاربری یا کد ملی سازمانی</label>
                     <div class="position-relative">
-                        <input type="text" name="email" class="form-control py-11 ps-40" id="identifier" placeholder="example@organization.com یا org.admin" value="<?= htmlspecialchars(old('email', $oldInput['email'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" required>
+                        <input type="text" name="email" class="form-control py-11 ps-40" id="identifier" placeholder="example@organization.com ، org.admin یا 0012345678" value="<?= htmlspecialchars(old('email', $oldInput['email'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" required>
                         <span class="position-absolute top-50 translate-middle-y ms-16 text-gray-600 d-flex"><i class="ph ph-user"></i></span>
                     </div>
                     <?php if (!empty($validationErrors['email'])): ?>
