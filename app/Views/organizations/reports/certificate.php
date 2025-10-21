@@ -113,7 +113,7 @@ if (empty($_pageOrder)) {
     <title><?= htmlspecialchars($baseTitle, ENT_QUOTES, 'UTF-8'); ?></title>
     <!-- Persian webfont: Vazirmatn -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.1/Vazirmatn-font-face.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
     <!-- Client-side PDF libs -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -226,10 +226,43 @@ if (empty($_pageOrder)) {
             display: flex; justify-content: space-between; align-items: center; padding: 0 22mm; color: var(--muted); font-size: 11px;
         }
 
-    .actions { position: fixed; top: 12px; right: 12px; display: inline-flex; gap:8px; }
-        .btn-print { background: var(--accent); color:#fff; border:none; padding:8px 14px; border-radius:10px; cursor:pointer; box-shadow:0 8px 16px rgba(14,165,233,0.25); }
-        .btn-print:hover{ filter: brightness(1.05); }
-        @media print { body { background: #fff; } .page { box-shadow: none; border-radius: 0; } .actions { display: none !important; } }
+        /* Download button - always visible at top right */
+        .download-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 99999;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.5);
+        }
+        .download-btn:active {
+            transform: translateY(-1px);
+        }
+        .download-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+        @media print {
+            body { background: #fff; }
+            .page { box-shadow: none; border-radius: 0; }
+            .download-btn { display: none !important; }
+        }
 
         /* Simplified look for PDF export to prevent layout shifts */
         .pdf-export .page {
@@ -249,16 +282,35 @@ if (empty($_pageOrder)) {
         window.addEventListener('load', function() {
             // Auto-open print dialog (optional). Comment out if not desired.
             // window.print();
+            
+            // Debug: Check if libraries are loaded
+            console.log('📦 Page loaded');
+            console.log('html2canvas:', typeof html2canvas);
+            console.log('jspdf:', typeof window.jspdf);
+            console.log('Actions button:', document.querySelector('.actions'));
+            console.log('Certificate pages:', document.querySelectorAll('.certificate-page').length);
         });
     </script>
     </head>
 <body>
+    <script>
+        // IMMEDIATE TEST - If you see this alert, the page is loading!
+        alert('✅ صفحه certificate.php لود شد!');
+        console.log('✅✅✅ PAGE LOADED - certificate.php');
+    </script>
+
+    <!-- Download PDF Button - Always visible -->
+    <button class="download-btn" onclick="downloadCertificateAsPDF()" title="دانلود گواهی به صورت PDF">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>دانلود PDF</span>
+    </button>
+
     <div class="template-<?= htmlspecialchars($_templateKey, ENT_QUOTES, 'UTF-8'); ?>">
     <div class="page<?= $_decor ? ' decor' : ''; ?> certificate-page" data-page-index="1">
-        <div class="actions">
-            <button class="btn-print" onclick="window.print()">چاپ</button>
-            <button class="btn-print" style="background:#10b981" onclick="exportCertificatePdf()">دانلود PDF</button>
-        </div>
         <?php if ($_showLogo): ?>
         <div class="brand">
             <img src="<?= htmlspecialchars($orgLogoUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="Organization Logo" crossorigin="anonymous" />
@@ -1077,16 +1129,41 @@ if (empty($_pageOrder)) {
         }
 
         async function exportCertificatePdf(){
+            console.log('🚀 Starting PDF export...');
+            
             let tempImageContainer = null;
             const tempImageResources = [];
+            
+            // Find download button and update its state
+            const downloadBtn = document.querySelector('.actions button[onclick*="exportCertificatePdf"]');
+            let originalHTML = '';
+            
+            if (downloadBtn) {
+                originalHTML = downloadBtn.innerHTML;
+                downloadBtn.disabled = true;
+                downloadBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>در حال تولید...</span>';
+                downloadBtn.style.opacity = '0.7';
+            }
+            
             try {
                 const { jsPDF } = window.jspdf || window.jspPDF || {};
                 if (!jsPDF) {
+                    console.error('❌ jsPDF library not found');
                     alert('کتابخانه PDF در دسترس نیست. لطفاً اتصال اینترنت را بررسی کنید.');
                     return;
                 }
 
+                if (typeof html2canvas !== 'function') {
+                    console.error('❌ html2canvas library not found');
+                    alert('کتابخانه html2canvas در دسترس نیست. لطفاً اتصال اینترنت را بررسی کنید.');
+                    return;
+                }
+
+                console.log('✅ Libraries loaded successfully');
+
                 const pages = Array.from(document.querySelectorAll('.certificate-page'));
+                console.log('📄 Found', pages.length, 'pages to export');
+                
                 const actionsEl = document.querySelector('.actions');
                 if (actionsEl) actionsEl.style.display = 'none';
 
@@ -1135,10 +1212,29 @@ if (empty($_pageOrder)) {
                 }
 
                 const fileName = 'feedback-report-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-') + '.pdf';
+                console.log('💾 Saving PDF:', fileName);
                 pdf.save(fileName);
+                console.log('✅ PDF exported successfully!');
+                
+                // Update button to show success
+                if (downloadBtn) {
+                    downloadBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span>دانلود موفق</span>';
+                    setTimeout(() => {
+                        downloadBtn.innerHTML = originalHTML;
+                        downloadBtn.style.opacity = '1';
+                        downloadBtn.disabled = false;
+                    }, 2000);
+                }
             } catch (e) {
-                console.error(e);
-                alert('خطا در تولید PDF. لطفاً دوباره تلاش کنید.');
+                console.error('❌ PDF generation failed:', e);
+                alert('خطا در تولید PDF: ' + e.message + '\n\nلطفاً کنسول مرورگر را بررسی کنید.');
+                
+                // Restore button
+                if (downloadBtn) {
+                    downloadBtn.innerHTML = originalHTML;
+                    downloadBtn.style.opacity = '1';
+                    downloadBtn.disabled = false;
+                }
             } finally {
                 if (tempImageResources.length) {
                     tempImageResources.forEach(({ image, objectUrl }) => {
@@ -1162,6 +1258,137 @@ if (empty($_pageOrder)) {
                 document.body.classList.remove('pdf-export');
             }
         }
+
+        /**
+         * Download the entire certificate page as PDF
+         * Captures all pages from top to bottom and converts to PDF
+         */
+        async function downloadCertificateAsPDF() {
+            console.log('🚀 Starting PDF download...');
+            
+            // Check if libraries are loaded
+            if (typeof html2canvas !== 'function') {
+                alert('❌ خطا: کتابخانه html2canvas بارگذاری نشده است!');
+                console.error('html2canvas is not loaded');
+                return;
+            }
+            
+            if (!window.jspdf || typeof window.jspdf.jsPDF !== 'function') {
+                alert('❌ خطا: کتابخانه jsPDF بارگذاری نشده است!');
+                console.error('jsPDF is not loaded');
+                return;
+            }
+
+            const button = document.querySelector('.download-btn');
+            if (!button) return;
+
+            // Save original button text
+            const originalHTML = button.innerHTML;
+            
+            try {
+                // Update button to show loading state
+                button.innerHTML = '<svg style="width:20px;height:20px;animation:spin 1s linear infinite" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg><span>در حال تولید PDF...</span>';
+                button.disabled = true;
+                button.style.opacity = '0.7';
+
+                console.log('📸 Capturing page screenshot...');
+                
+                // Capture the entire body as canvas
+                const canvas = await html2canvas(document.body, {
+                    scale: 2, // Higher quality
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: '#eef2f7',
+                    logging: false,
+                    windowWidth: document.body.scrollWidth,
+                    windowHeight: document.body.scrollHeight
+                });
+
+                console.log('✅ Screenshot captured:', canvas.width, 'x', canvas.height);
+
+                // Create PDF from canvas
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                const { jsPDF } = window.jspdf;
+                
+                // Calculate PDF dimensions (A4 landscape)
+                const pdfWidth = 297; // mm
+                const pdfHeight = 210; // mm
+                const imgWidth = canvas.width;
+                const imgHeight = canvas.height;
+                const ratio = imgWidth / imgHeight;
+                
+                let finalWidth = pdfWidth;
+                let finalHeight = pdfWidth / ratio;
+                
+                // If image is taller than A4, use multiple pages
+                const pdf = new jsPDF({
+                    orientation: finalHeight > pdfWidth ? 'portrait' : 'landscape',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                if (finalHeight <= pdfHeight) {
+                    // Single page
+                    pdf.addImage(imgData, 'JPEG', 0, 0, finalWidth, finalHeight);
+                } else {
+                    // Multiple pages
+                    let heightLeft = finalHeight;
+                    let position = 0;
+                    let page = 0;
+                    
+                    while (heightLeft > 0) {
+                        if (page > 0) {
+                            pdf.addPage();
+                        }
+                        pdf.addImage(imgData, 'JPEG', 0, position, finalWidth, finalHeight);
+                        heightLeft -= pdfHeight;
+                        position -= pdfHeight;
+                        page++;
+                    }
+                }
+
+                console.log('💾 Saving PDF...');
+                
+                // Generate filename with timestamp
+                const now = new Date();
+                const timestamp = now.getFullYear() + 
+                    String(now.getMonth() + 1).padStart(2, '0') + 
+                    String(now.getDate()).padStart(2, '0') + '_' +
+                    String(now.getHours()).padStart(2, '0') + 
+                    String(now.getMinutes()).padStart(2, '0');
+                const filename = `certificate_${timestamp}.pdf`;
+                
+                pdf.save(filename);
+                console.log('✅ PDF downloaded successfully:', filename);
+                
+                // Restore button
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+                button.style.opacity = '1';
+
+            } catch (error) {
+                console.error('❌ Error generating PDF:', error);
+                alert('خطا در تولید PDF: ' + error.message);
+                
+                // Restore button on error
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+                button.style.opacity = '1';
+            }
+        }
+
+        // Add CSS animation for loading spinner
+        const style = document.createElement('style');
+        style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+        document.head.appendChild(style);
+
+        // Log when page is ready
+        window.addEventListener('load', function() {
+            console.log('✅ Page loaded successfully');
+            console.log('📦 html2canvas:', typeof html2canvas);
+            console.log('📦 jsPDF:', typeof window.jspdf);
+            console.log('🔘 Download button:', document.querySelector('.download-btn') ? 'Found' : 'Not found');
+        });
     </script>
     </body>
     </html>

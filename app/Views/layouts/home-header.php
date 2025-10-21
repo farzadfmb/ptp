@@ -39,7 +39,7 @@ $assetBase = UtilityHelper::baseUrl('public/assets');
 
     <link rel="preconnect" href="//fdn.fontcdn.ir">
     <link rel="preconnect" href="//v1.fontapi.ir">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vazirmatn@33/dist/font-face.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
     <link rel="stylesheet" href="https://v1.fontapi.ir/css/Yekan">
     <link rel="stylesheet" href="<?= $assetBase; ?>/css/persian-fonts-local.css">
     <link rel="stylesheet" href="<?= $assetBase; ?>/css/theme-rtl.css">

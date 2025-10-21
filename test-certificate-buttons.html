@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تست دکمه‌های گواهی</title>
+    <style>
+        :root{
+            --ink:#0f172a;
+            --muted:#64748b;
+            --border:#e2e8f0;
+            --accent:#0ea5e9;
+            --accent-2:#10b981;
+            --gold:#eab308;
+        }
+        
+        body {
+            font-family: Tahoma, Arial, sans-serif;
+            background: #eef2f7;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .actions { 
+            position: fixed; 
+            top: 20px; 
+            right: 20px; 
+            display: inline-flex; 
+            gap: 12px; 
+            z-index: 9999;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+        }
+        
+        .btn-print { 
+            background: var(--accent); 
+            color: #fff; 
+            border: none; 
+            padding: 12px 20px; 
+            border-radius: 10px; 
+            cursor: pointer; 
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-print:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(14, 165, 233, 0.4);
+        }
+        
+        .page {
+            width: 800px;
+            background: white;
+            padding: 40px;
+            margin: 80px auto 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .test-info {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h2>✅ صفحه تست - دکمه‌های گواهی</h2>
+        <p><strong>اگر این صفحه را می‌بینید:</strong></p>
+        <ul>
+            <li>دکمه‌ها باید در گوشه بالا سمت راست باشند</li>
+            <li>F12 را بزنید و به Console بروید</li>
+            <li>باید پیام‌های لود شدن کتابخانه‌ها را ببینید</li>
+        </ul>
+    </div>
+
+    <div class="actions">
+        <button class="btn-print" onclick="testPrint()" title="چاپ گواهی">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            <span>چاپ</span>
+        </button>
+        <button class="btn-print" style="background:#10b981" onclick="testPdf()" title="دانلود فایل PDF">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>دانلود PDF</span>
+        </button>
+    </div>
+
+    <div class="page">
+        <h1>صفحه تست گواهی</h1>
+        <p>این یک صفحه تست است برای بررسی دکمه‌های گواهی.</p>
+        
+        <h2>بررسی کنسول:</h2>
+        <div id="console-output" style="background: #f8f9fa; padding: 15px; border-radius: 5px; font-family: monospace; white-space: pre-wrap;"></div>
+    </div>
+
+    <!-- Load libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+    <script>
+        const output = document.getElementById('console-output');
+        
+        function log(msg) {
+            console.log(msg);
+            output.textContent += msg + '\n';
+        }
+        
+        // Check on load
+        window.addEventListener('load', function() {
+            log('✅ صفحه لود شد');
+            log('html2canvas: ' + typeof html2canvas);
+            log('jspdf: ' + typeof window.jspdf);
+            log('دکمه‌ها: ' + (document.querySelector('.actions') ? '✅ پیدا شد' : '❌ پیدا نشد'));
+            
+            if (typeof html2canvas !== 'function') {
+                log('❌ خطا: html2canvas لود نشده است!');
+            }
+            
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                log('❌ خطا: jsPDF لود نشده است!');
+            }
+        });
+        
+        function testPrint() {
+            log('🖨️ دکمه چاپ کلیک شد');
+            alert('دکمه چاپ کار می‌کند!');
+        }
+        
+        function testPdf() {
+            log('📥 دکمه PDF کلیک شد');
+            
+            if (typeof html2canvas !== 'function') {
+                alert('❌ html2canvas لود نشده است!');
+                return;
+            }
+            
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                alert('❌ jsPDF لود نشده است!');
+                return;
+            }
+            
+            alert('✅ همه چیز آماده است! در صفحه اصلی باید کار کند.');
+        }
+    </script>
+</body>
+</html>

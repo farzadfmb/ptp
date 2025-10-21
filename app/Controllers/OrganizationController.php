@@ -145,6 +145,10 @@ class OrganizationController
     // Reports - Certificate settings
     'organizationCertificateSettings' => ['reports_settings_manage'],
     'updateOrganizationCertificateSettings' => ['reports_settings_manage'],
+    'organizationCertificateBuilder' => ['reports_settings_manage'],
+    'updateOrganizationCertificateBuilder' => ['reports_settings_manage'],
+        'uploadOrganizationCertificateBuilderImage' => ['reports_settings_manage'],
+        'organizationCertificatePreview' => ['reports_settings_manage'],
     ];
 
     private $currentAction = null;
@@ -160,644 +164,34 @@ class OrganizationController
         $this->ensureOrganizationSession($requiredPermissions);
     }
 
-    public function dashboard()
+    public function dashboard(): void
     {
-        $sessionData = $this->ensureOrganizationSession();
+        $sessionData = $this->ensureOrganizationSession(['dashboard_overview_view']);
+
+        $organization = $sessionData['organization'];
+        $user = $sessionData['user'];
+        $organizationId = isset($organization['id']) ? (int) $organization['id'] : 0;
 
         $title = 'داشبورد سازمان';
-        $user = $sessionData['user'];
-        $organization = $sessionData['organization'];
-        $organizationId = (int) ($organization['id'] ?? 0);
-
-    $this->ensureOrganizationEvaluationsTableExists();
-    $this->ensureOrganizationEvaluationSchedulesTableExists();
-    $this->ensureOrganizationEvaluationExamParticipationsTableExists();
-    $this->ensureOrganizationCompetencyModelsTableExists();
-
-        $creditAmount = isset($organization['credit_amount']) && $organization['credit_amount'] !== null
-            ? (float) $organization['credit_amount']
-            : null;
-
-        $examFee = isset($organization['exam_fee_per_participant']) && $organization['exam_fee_per_participant'] !== null
-            ? (float) $organization['exam_fee_per_participant']
-            : null;
-
-        $formatMoney = function (?float $value) {
-            if ($value === null) {
-                return 'نامشخص';
-            }
-
-            $formatted = number_format($value, 0, '.', ',');
-            return UtilityHelper::englishToPersian($formatted) . ' تومان';
-        };
-
-        $creditDisplay = $formatMoney($creditAmount);
-        $examFeeDisplay = $formatMoney($examFee);
-
-        $participantsCapacity = null;
-        if ($creditAmount !== null && $examFee !== null && $examFee > 0) {
-            $participantsCapacity = (int) floor($creditAmount / $examFee);
-        }
-
-        $participantsCapacityDisplay = $participantsCapacity !== null
-            ? UtilityHelper::englishToPersian(number_format($participantsCapacity, 0)) . ' نفر'
-            : 'نامشخص';
-
-        $recentUpdate = $organization['updated_at'] ?? null;
-        $recentUpdateDisplay = $recentUpdate
-            ? UtilityHelper::englishToPersian(date('H:i Y/m/d', strtotime($recentUpdate)))
-            : 'نامشخص';
-
-        // Basic finance/info summary cards
-        $summaryCards = [
-            [
-                'label' => 'اعتبار باقی‌مانده',
-                'value' => $creditDisplay,
-                'icon' => 'ph-wallet',
-                'trend' => '+12%',
-                'trend_type' => 'up',
-            ],
-            [
-                'label' => 'هزینه هر آزمون',
-                'value' => $examFeeDisplay,
-                'icon' => 'ph-coin-duotone',
-                'trend' => $examFee !== null ? 'ثابت' : 'نامشخص',
-                'trend_type' => 'neutral',
-            ],
-            [
-                'label' => 'ظرفیت قابل تخصیص',
-                'value' => $participantsCapacityDisplay,
-                'icon' => 'ph-users-three',
-                'trend' => $participantsCapacity !== null ? '+5%' : 'نامشخص',
-                'trend_type' => $participantsCapacity !== null ? 'up' : 'neutral',
-            ],
-            [
-                'label' => 'آخرین بروزرسانی',
-                'value' => $recentUpdateDisplay,
-                'icon' => 'ph-clock-afternoon',
-                'trend' => 'خودکار',
-                'trend_type' => 'neutral',
-            ],
-        ];
-
-        // Organization Users/Exams KPIs
-        $totalUsers = 0;
-        $totalEvaluatees = 0;
-        $totalEvaluators = 0;
-    $totalExamAssignments = 0;
-    $totalEvaluations = 0;
-
-        if ($organizationId > 0) {
-            try {
-                $row = DatabaseHelper::fetchOne(
-                    'SELECT COUNT(*) AS c FROM organization_users WHERE organization_id = :organization_id',
-                    ['organization_id' => $organizationId]
-                );
-                $totalUsers = (int) ($row['c'] ?? 0);
-            } catch (Exception $exception) {
-                $totalUsers = 0;
-            }
-
-            try {
-                $row = DatabaseHelper::fetchOne(
-                    'SELECT COUNT(*) AS c FROM organization_users WHERE organization_id = :organization_id AND is_evaluee = 1',
-                    ['organization_id' => $organizationId]
-                );
-                $totalEvaluatees = (int) ($row['c'] ?? 0);
-            } catch (Exception $exception) {
-                $totalEvaluatees = 0;
-            }
-
-            try {
-                $row = DatabaseHelper::fetchOne(
-                    'SELECT COUNT(*) AS c FROM organization_users WHERE organization_id = :organization_id AND is_evaluator = 1',
-                    ['organization_id' => $organizationId]
-                );
-                $totalEvaluators = (int) ($row['c'] ?? 0);
-            } catch (Exception $exception) {
-                $totalEvaluators = 0;
-            }
-
-            // Count exam assignments (exam tools assigned across evaluations for this organization)
-            try {
-                            $row = DatabaseHelper::fetchOne(
-                                    'SELECT COUNT(*) AS c
-                                     FROM organization_evaluation_tool_assignments a
-                                     INNER JOIN organization_evaluation_tools t
-                                         ON t.id = a.tool_id AND t.organization_id = :organization_id AND COALESCE(t.is_exam, 1) = 1
-                                     INNER JOIN organization_evaluations e
-                                         ON e.id = a.evaluation_id AND e.organization_id = :organization_id',
-                                    ['organization_id' => $organizationId]
-                            );
-                $totalExamAssignments = (int) ($row['c'] ?? 0);
-            } catch (Exception $exception) {
-                $totalExamAssignments = 0;
-            }
-
-            try {
-                $row = DatabaseHelper::fetchOne(
-                    'SELECT COUNT(*) AS c FROM organization_evaluations WHERE organization_id = :organization_id',
-                    ['organization_id' => $organizationId]
-                );
-                $totalEvaluations = (int) ($row['c'] ?? 0);
-            } catch (Exception $exception) {
-                $totalEvaluations = 0;
-            }
-        }
-
-        $userStatsCards = [
-            [
-                'label' => 'کاربران سیستم',
-                'value' => UtilityHelper::englishToPersian(number_format($totalUsers, 0)) . ' نفر',
-            ],
-            [
-                'label' => 'ارزیابی‌شونده',
-                'value' => UtilityHelper::englishToPersian(number_format($totalEvaluatees, 0)) . ' نفر',
-            ],
-            [
-                'label' => 'ارزیاب',
-                'value' => UtilityHelper::englishToPersian(number_format($totalEvaluators, 0)) . ' نفر',
-            ],
-            [
-                'label' => 'ارزیابی‌ها',
-                'value' => UtilityHelper::englishToPersian(number_format($totalEvaluations, 0)) . ' برنامه',
-            ],
-        ];
-
-        // Prepend user stats to summary cards for display
-        $summaryCards = array_merge($userStatsCards, $summaryCards);
-
-        $examCoveragePercent = 0;
-        if ($totalEvaluations > 0) {
-            $examCoveragePercent = min(100, max(0, round(($totalExamAssignments / max(1, $totalEvaluations)) * 100)));
-        } elseif ($totalExamAssignments > 0) {
-            $examCoveragePercent = 100;
-        }
-
-        $summaryCards[] = [
-            'label' => 'آزمون‌های اختصاص داده‌شده',
-            'value' => UtilityHelper::englishToPersian(number_format($totalExamAssignments, 0)) . ' آزمون',
-            'trend' => $totalExamAssignments > 0 ? '+' . UtilityHelper::englishToPersian(number_format($totalExamAssignments, 0)) : 'بدون تغییر',
-            'trend_type' => $totalExamAssignments > 0 ? 'up' : 'neutral',
-            'percent' => $examCoveragePercent,
-        ];
-
-        $completedParticipations = 0;
-        if ($organizationId > 0) {
-                        try {
-                                $completedParticipations = (int) (DatabaseHelper::fetchOne(
-                                        'SELECT COUNT(*) AS total
-                                         FROM organization_evaluation_exam_participations
-                                         WHERE organization_id = :organization_id
-                                             AND (
-                                                        (is_completed IS NOT NULL AND is_completed = 1)
-                                                 OR completed_at IS NOT NULL
-                                                 OR (answered_questions IS NOT NULL AND total_questions IS NOT NULL AND total_questions > 0 AND answered_questions >= total_questions)
-                                             )',
-                                        ['organization_id' => $organizationId]
-                                )['total'] ?? 0);
-            } catch (Exception $exception) {
-                $completedParticipations = 0;
-            }
-        }
-
-        $creditSpent = null;
-        if ($examFee !== null && $examFee > 0 && $completedParticipations > 0) {
-            $creditSpent = max(0.0, $examFee * $completedParticipations);
-        }
-
-        $creditRemaining = $creditAmount !== null ? max(0.0, $creditAmount) : null;
-        $creditTotal = null;
-        if ($creditRemaining !== null && $creditSpent !== null) {
-            $creditTotal = max(0.0, $creditRemaining + $creditSpent);
-        } elseif ($creditRemaining !== null) {
-            $creditTotal = max(0.0, $creditRemaining);
-        } elseif ($creditSpent !== null) {
-            $creditTotal = max(0.0, $creditSpent);
-        }
-
-        $creditUsed = $creditSpent !== null ? max(0.0, $creditSpent) : 0.0;
-        if ($creditTotal !== null && $creditTotal > 0 && $creditUsed > $creditTotal) {
-            $creditUsed = $creditTotal;
-        }
-
-        $creditRemainingForChart = $creditRemaining !== null
-            ? max(0.0, $creditRemaining)
-            : ($creditTotal !== null ? max(0.0, $creditTotal - $creditUsed) : 0.0);
 
         $creditUsageChart = [
-            'used' => $creditUsed,
-            'remaining' => $creditRemainingForChart,
-            'total' => $creditTotal,
-            'used_display' => $creditSpent,
-            'remaining_display' => $creditRemaining,
-            'completed_participations' => $completedParticipations,
+            'used' => 0,
+            'remaining' => 0,
+            'total' => 0,
+            'used_display' => 0,
+            'remaining_display' => 0,
+            'completed_participations' => 0,
         ];
 
+        $summaryCards = [];
         $monthlyOverview = [];
-        $participantsByMonth = [];
-        $scoresByMonth = [];
-
-        if ($organizationId > 0) {
-            $now = new DateTime('now', new DateTimeZone('Asia/Tehran'));
-            $startPointer = (clone $now)->modify('first day of this month')->modify('-5 months');
-            $startDate = $startPointer->format('Y-m-01 00:00:00');
-
-            try {
-                $rows = DatabaseHelper::fetchAll(
-                    'SELECT DATE_FORMAT(COALESCE(participated_at, completed_at, created_at), "%Y-%m") AS ym,
-                            COUNT(DISTINCT evaluatee_id) AS total
-                     FROM organization_evaluation_exam_participations
-                     WHERE organization_id = :organization_id
-                       AND COALESCE(participated_at, completed_at, created_at) IS NOT NULL
-                       AND COALESCE(participated_at, completed_at, created_at) >= :start_date
-                     GROUP BY ym
-                     ORDER BY ym ASC',
-                    [
-                        'organization_id' => $organizationId,
-                        'start_date' => $startDate,
-                    ]
-                );
-            } catch (Exception $exception) {
-                $rows = [];
-            }
-
-            foreach ($rows as $row) {
-                $ym = (string) ($row['ym'] ?? '');
-                if ($ym === '') {
-                    continue;
-                }
-
-                $participantsByMonth[$ym] = (int) ($row['total'] ?? 0);
-            }
-
-            try {
-                $scoreRows = DatabaseHelper::fetchAll(
-                    'SELECT DATE_FORMAT(updated_at, "%Y-%m") AS ym,
-                            AVG(score_value) AS avg_score
-                     FROM organization_evaluation_tool_scores
-                     WHERE organization_id = :organization_id
-                       AND scorer_id = evaluatee_id
-                       AND updated_at >= :start_date
-                     GROUP BY ym
-                     ORDER BY ym ASC',
-                    [
-                        'organization_id' => $organizationId,
-                        'start_date' => $startDate,
-                    ]
-                );
-            } catch (Exception $exception) {
-                $scoreRows = [];
-            }
-
-            foreach ($scoreRows as $row) {
-                $ym = (string) ($row['ym'] ?? '');
-                if ($ym === '') {
-                    continue;
-                }
-
-                $scoresByMonth[$ym] = isset($row['avg_score']) ? (float) $row['avg_score'] : 0.0;
-            }
-
-            $monthFormatter = null;
-            if (class_exists('IntlDateFormatter')) {
-                $dateType = defined('IntlDateFormatter::NONE') ? constant('IntlDateFormatter::NONE') : 0;
-                $calendarType = defined('IntlDateFormatter::TRADITIONAL') ? constant('IntlDateFormatter::TRADITIONAL') : null;
-
-                $monthFormatter = new IntlDateFormatter(
-                    'fa_IR',
-                    $dateType,
-                    $dateType,
-                    'Asia/Tehran',
-                    $calendarType,
-                    'MMMM'
-                );
-            }
-
-            $fallbackMonths = [
-                1 => 'فروردین',
-                2 => 'اردیبهشت',
-                3 => 'خرداد',
-                4 => 'تیر',
-                5 => 'مرداد',
-                6 => 'شهریور',
-                7 => 'مهر',
-                8 => 'آبان',
-                9 => 'آذر',
-                10 => 'دی',
-                11 => 'بهمن',
-                12 => 'اسفند',
-            ];
-
-            $monthCursor = clone $startPointer;
-            for ($i = 0; $i < 6; $i++) {
-                $ym = $monthCursor->format('Y-m');
-                $label = '';
-
-                if ($monthFormatter instanceof IntlDateFormatter) {
-                    $labelFormatted = $monthFormatter->format($monthCursor);
-                    if ($labelFormatted !== false) {
-                        $label = (string) $labelFormatted;
-                    }
-                }
-
-                if ($label === '') {
-                    $monthIndex = (int) $monthCursor->format('n');
-                    $label = $fallbackMonths[$monthIndex] ?? UtilityHelper::englishToPersian($monthCursor->format('m'));
-                }
-
-                $participantsCount = $participantsByMonth[$ym] ?? 0;
-                $avgScore = $scoresByMonth[$ym] ?? 0.0;
-
-                if ($avgScore > 0) {
-                    $avgScore = round($avgScore, 1);
-                }
-
-                $monthlyOverview[] = [
-                    'label' => UtilityHelper::englishToPersian($label),
-                    'participants' => $participantsCount,
-                    'average_score' => $avgScore,
-                ];
-
-                $monthCursor->modify('+1 month');
-            }
-        }
-
-        if (empty($monthlyOverview)) {
-            $monthlyOverview = [];
-        }
-
-        // Charts: Periodic exams over last 6 months and exams conducted in current month
+        $upcomingEvaluations = [];
+        $recentActivities = [];
+        $competencyModelShowcase = [];
         $periodicExamsLabels = [];
         $periodicExamsSeries = [];
         $monthlyExamsLabels = [];
         $monthlyExamsSeries = [];
-
-        if ($organizationId > 0) {
-            // Build last 6 months buckets
-            $now = new DateTime('now', new DateTimeZone('Asia/Tehran'));
-            $startMonths = [];
-            for ($i = 5; $i >= 0; $i--) {
-                $clone = (clone $now)->modify("-{$i} month")->setDate((int)$now->format('Y'), (int)$now->format('m'), 1);
-                // Normalize month start for each offset
-                $monthStart = (clone $now)->modify("-{$i} month");
-                $year = (int) $monthStart->format('Y');
-                $month = (int) $monthStart->format('m');
-                $key = sprintf('%04d-%02d', $year, $month);
-                $startMonths[] = $key;
-            }
-
-            // Periodic exams: count exam assignments grouped by evaluation_date month
-            $periodStart = (clone $now)->modify('first day of this month')->modify('-5 months')->setTime(0, 0, 0);
-            $periodStartValue = $periodStart->format('Y-m-d 00:00:00');
-
-            try {
-                $rows = DatabaseHelper::fetchAll(
-                    'SELECT DATE_FORMAT(COALESCE(participated_at, completed_at, created_at), "%Y-%m") AS ym,
-                            COUNT(*) AS total
-                     FROM organization_evaluation_exam_participations
-                     WHERE organization_id = :organization_id
-                       AND COALESCE(participated_at, completed_at, created_at) >= :period_start
-                     GROUP BY ym
-                     ORDER BY ym ASC',
-                    [
-                        'organization_id' => $organizationId,
-                        'period_start' => $periodStartValue,
-                    ]
-                );
-            } catch (Exception $exception) {
-                $rows = [];
-            }
-
-            $rowsByMonth = [];
-            foreach ($rows as $row) {
-                $ym = (string) ($row['ym'] ?? '');
-                if ($ym === '') {
-                    continue;
-                }
-                $rowsByMonth[$ym] = (int) ($row['total'] ?? 0);
-            }
-
-            foreach ($startMonths as $ym) {
-                $label = str_replace('-', '/', $ym);
-                $periodicExamsLabels[] = UtilityHelper::englishToPersian($label);
-                $periodicExamsSeries[] = (int) ($rowsByMonth[$ym] ?? 0);
-            }
-
-            $dailyCounts = [];
-
-            try {
-                $rows2 = DatabaseHelper::fetchAll(
-                    'SELECT DATE(COALESCE(participated_at, completed_at, created_at)) AS d,
-                            COUNT(*) AS total
-                     FROM organization_evaluation_exam_participations
-                     WHERE organization_id = :organization_id
-                       AND COALESCE(participated_at, completed_at, created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                     GROUP BY d
-                     ORDER BY d ASC',
-                    ['organization_id' => $organizationId]
-                );
-            } catch (Exception $exception) {
-                $rows2 = [];
-            }
-
-            foreach ($rows2 as $row) {
-                $d = (string) ($row['d'] ?? '');
-                if ($d === '') { continue; }
-                $dailyCounts[$d] = (int) ($row['total'] ?? 0);
-            }
-
-            $rangeStart = (clone $now)->setTime(0, 0, 0)->modify('-29 days');
-            $rangeDays = max(1, $now->diff($rangeStart)->days + 1);
-
-            for ($i = 0; $i < $rangeDays; $i++) {
-                $currentDay = (clone $rangeStart)->modify('+' . $i . ' day');
-                $key = $currentDay->format('Y-m-d');
-                $dayLabel = UtilityHelper::englishToPersian($currentDay->format('m/d'));
-
-                $monthlyExamsLabels[] = $dayLabel;
-                $monthlyExamsSeries[] = (int) ($dailyCounts[$key] ?? 0);
-            }
-        }
-
-    $upcomingEvaluations = [];
-    $recentActivities = [];
-    $competencyModelShowcase = [];
-
-        if ($organizationId > 0) {
-            $tehranTz = new DateTimeZone('Asia/Tehran');
-            $nowTehran = new DateTime('now', $tehranTz);
-            $todayDate = $nowTehran->format('Y-m-d');
-
-            // Upcoming evaluations from schedules (preferred source)
-            try {
-                $scheduleRows = DatabaseHelper::fetchAll(
-                    'SELECT evaluation_title, evaluation_date, status
-                     FROM organization_evaluation_schedules
-                     WHERE organization_id = :organization_id
-                       AND evaluation_date >= :today
-                     ORDER BY evaluation_date ASC
-                     LIMIT 5',
-                    [
-                        'organization_id' => $organizationId,
-                        'today' => $todayDate,
-                    ]
-                );
-            } catch (Exception $exception) {
-                $scheduleRows = [];
-            }
-
-            foreach ($scheduleRows as $row) {
-                $rawDate = $row['evaluation_date'] ?? null;
-                $formattedDate = 'نامشخص';
-                if (!empty($rawDate)) {
-                    try {
-                        $dateObj = new DateTime($rawDate, $tehranTz);
-                        $formattedDate = UtilityHelper::englishToPersian($dateObj->format('Y/m/d'));
-                    } catch (Exception $exception) {
-                        $formattedDate = UtilityHelper::englishToPersian(date('Y/m/d', strtotime($rawDate)));
-                    }
-                }
-
-                $status = trim((string) ($row['status'] ?? ''));
-                if ($status === '') {
-                    $status = 'برنامه‌ریزی شده';
-                }
-
-                $upcomingEvaluations[] = [
-                    'title' => trim((string) ($row['evaluation_title'] ?? 'برنامه ارزیابی بدون عنوان')),
-                    'date' => $formattedDate,
-                    'status' => UtilityHelper::englishToPersian($status),
-                ];
-            }
-
-            // Fallback to evaluations table if no schedules found
-            if (empty($upcomingEvaluations)) {
-                try {
-                    $evaluationRows = DatabaseHelper::fetchAll(
-                        'SELECT title, evaluation_date, created_at
-                         FROM organization_evaluations
-                         WHERE organization_id = :organization_id
-                           AND (evaluation_date IS NULL OR evaluation_date >= :today)
-                         ORDER BY (evaluation_date IS NULL), evaluation_date ASC, created_at DESC
-                         LIMIT 5',
-                        [
-                            'organization_id' => $organizationId,
-                            'today' => $todayDate,
-                        ]
-                    );
-                } catch (Exception $exception) {
-                    $evaluationRows = [];
-                }
-
-                foreach ($evaluationRows as $row) {
-                    $title = trim((string) ($row['title'] ?? 'ارزیابی بدون عنوان'));
-                    $rawDate = $row['evaluation_date'] ?? $row['created_at'] ?? null;
-                    $formattedDate = 'نامشخص';
-                    if (!empty($rawDate)) {
-                        try {
-                            $dateObj = new DateTime($rawDate, $tehranTz);
-                            $formattedDate = UtilityHelper::englishToPersian($dateObj->format('Y/m/d'));
-                        } catch (Exception $exception) {
-                            $formattedDate = UtilityHelper::englishToPersian(date('Y/m/d', strtotime($rawDate)));
-                        }
-                    }
-
-                    $statusLabel = !empty($row['evaluation_date']) ? 'برنامه‌ریزی شده' : 'نیازمند زمان‌بندی';
-
-                    $upcomingEvaluations[] = [
-                        'title' => $title,
-                        'date' => $formattedDate,
-                        'status' => UtilityHelper::englishToPersian($statusLabel),
-                    ];
-                }
-            }
-
-            // Recent activities from exam participations
-            try {
-                $activityRows = DatabaseHelper::fetchAll(
-                    'SELECT p.tool_name, p.evaluatee_id, p.is_completed,
-                            COALESCE(p.completed_at, p.participated_at, p.updated_at, p.created_at) AS event_at,
-                            e.title AS evaluation_title,
-                            u.first_name, u.last_name, u.username
-                     FROM organization_evaluation_exam_participations p
-                     LEFT JOIN organization_evaluations e ON e.id = p.evaluation_id
-                     LEFT JOIN organization_users u ON u.id = p.evaluatee_id
-                     WHERE p.organization_id = :organization_id
-                     ORDER BY event_at DESC
-                     LIMIT 6',
-                    ['organization_id' => $organizationId]
-                );
-            } catch (Exception $exception) {
-                $activityRows = [];
-            }
-
-            foreach ($activityRows as $row) {
-                $eventRaw = $row['event_at'] ?? null;
-                $eventDisplay = '---';
-                if (!empty($eventRaw)) {
-                    try {
-                        $event = new DateTime($eventRaw, $tehranTz);
-                        $eventDisplay = UtilityHelper::englishToPersian($event->format('Y/m/d H:i'));
-                    } catch (Exception $exception) {
-                        $eventDisplay = UtilityHelper::englishToPersian(date('Y/m/d H:i', strtotime($eventRaw)));
-                    }
-                }
-
-                $evaluateeName = trim(((string) ($row['first_name'] ?? '')) . ' ' . ((string) ($row['last_name'] ?? '')));
-                if ($evaluateeName === '') {
-                    $evaluateeName = trim((string) ($row['username'] ?? 'کاربر ناشناس'));
-                }
-
-                $toolName = trim((string) ($row['tool_name'] ?? 'آزمون بدون عنوان'));
-                $evaluationTitle = trim((string) ($row['evaluation_title'] ?? 'ارزیابی'));
-                $actionText = ((int) ($row['is_completed'] ?? 0) === 1) ? 'تکمیل شد' : 'ثبت شد';
-
-                $description = sprintf('آزمون «%s» برای %s در برنامه «%s» %s.', $toolName, $evaluateeName, $evaluationTitle, $actionText);
-
-                $recentActivities[] = [
-                    'time' => $eventDisplay,
-                    'description' => UtilityHelper::englishToPersian($description),
-                    'type' => 'exam',
-                ];
-            }
-
-            // Competency model gallery (models with images)
-            try {
-                $modelRows = DatabaseHelper::fetchAll(
-                    'SELECT id, title, code, image_path, updated_at
-                     FROM organization_competency_models
-                     WHERE organization_id = :organization_id
-                       AND image_path IS NOT NULL
-                       AND image_path <> ""
-                     ORDER BY updated_at DESC
-                     LIMIT 6',
-                    ['organization_id' => $organizationId]
-                );
-            } catch (Exception $exception) {
-                $modelRows = [];
-            }
-
-            foreach ($modelRows as $row) {
-                $rawImagePath = trim((string) ($row['image_path'] ?? ''));
-                if ($rawImagePath === '') {
-                    continue;
-                }
-
-                $isExternal = stripos($rawImagePath, 'http://') === 0 || stripos($rawImagePath, 'https://') === 0;
-                if (!$isExternal && !FileHelper::fileExists($rawImagePath)) {
-                    continue;
-                }
-
-                $competencyModelShowcase[] = [
-                    'title' => trim((string) ($row['title'] ?? 'مدل بدون عنوان')),
-                    'code' => trim((string) ($row['code'] ?? '')),
-                    'image_path' => $rawImagePath,
-                    'is_external' => $isExternal,
-                    'updated_at' => $row['updated_at'] ?? null,
-                ];
-            }
-        }
 
         $quickLinks = [
             [
@@ -825,12 +219,6 @@ class OrganizationController
         $organizationSubtitle = $organization['latin_name'] ?? 'Organization Dashboard';
         $organizationCode = $organization['code'] ?? 'ORG-000';
         $organizationSubdomain = $organization['subdomain'] ?? '---';
-
-        // Expose chart data to the view
-        $periodicExamsLabels = $periodicExamsLabels;
-        $periodicExamsSeries = $periodicExamsSeries;
-        $monthlyExamsLabels = $monthlyExamsLabels;
-        $monthlyExamsSeries = $monthlyExamsSeries;
 
         include __DIR__ . '/../Views/organizations/dashboard/index.php';
     }
@@ -10636,6 +10024,35 @@ class OrganizationController
                     if (!$completedFlag) { $allOk = false; break; }
                 }
             }
+            
+            // Also check if WashUp is completed (at least one agreed score exists)
+            if ($allOk) {
+                $this->ensureOrganizationEvaluationAgreedScoresTableExists();
+                try {
+                    $washupCount = DatabaseHelper::fetchOne(
+                        'SELECT COUNT(*) AS cnt
+                         FROM organization_evaluation_agreed_scores
+                         WHERE organization_id = :organization_id
+                           AND evaluation_id = :evaluation_id
+                           AND evaluatee_id = :evaluatee_id
+                           AND agreed_score IS NOT NULL
+                         LIMIT 1',
+                        [
+                            'organization_id' => $organizationId,
+                            'evaluation_id' => $evaluationId,
+                            'evaluatee_id' => $evaluateeId,
+                        ]
+                    );
+                    $washupDone = isset($washupCount['cnt']) && (int) $washupCount['cnt'] > 0;
+                } catch (Exception $exception) {
+                    $washupDone = false;
+                }
+                
+                if (!$washupDone) {
+                    $allOk = false;
+                }
+            }
+            
             $canView = $allOk;
         }
 
@@ -10655,7 +10072,7 @@ class OrganizationController
         }
 
         if (!$canView) {
-            ResponseHelper::flashWarning('این گواهی تنها پس از تکمیل تمامی آزمون‌های این برنامه در دسترس است.');
+            ResponseHelper::flashWarning('این گواهی تنها پس از تکمیل تمامی آزمون‌ها و WashUp این برنامه ارزیابی در دسترس است.');
             UtilityHelper::redirect($redirectUrl);
         }
 
@@ -10686,6 +10103,8 @@ class OrganizationController
         $competencyModelImagePath = null;
         $modelCompetenciesForPage6 = [];
         if ($competencyModelId > 0) {
+            // Ensure table exists before reading image path (defensive in new installs)
+            $this->ensureOrganizationCompetencyModelsTableExists();
             try {
                 $modelRow = DatabaseHelper::fetchOne(
                     'SELECT image_path FROM organization_competency_models WHERE id = :id AND organization_id = :organization_id LIMIT 1',
@@ -10707,8 +10126,8 @@ class OrganizationController
 
         $dateMeta = $this->formatEvaluationPersianDate($evaluation['evaluation_date'] ?? null);
 
-        $orgName = (string) ($organization['name'] ?? '');
-        $orgLogoUrl = null;
+    $orgName = (string) ($organization['name'] ?? '');
+    $orgLogoUrl = null;
         try {
             $orgRecord = $this->fetchOrganization($organizationId);
         } catch (Exception $exception) {
@@ -10726,8 +10145,25 @@ class OrganizationController
             $orgLogoUrl = UtilityHelper::baseUrl('public/assets/images/logo/logo.png');
         }
 
+        // Resolve system logo url from settings for builder logo components (system source)
+        $systemLogoUrl = UtilityHelper::baseUrl('public/assets/images/logo/logo.png');
+        try {
+            $sysRow = DatabaseHelper::fetchOne('SELECT site_name, system_logo_path FROM system_settings ORDER BY id ASC LIMIT 1');
+            if ($sysRow && !empty($sysRow['system_logo_path'])) {
+                $rel = ltrim((string) $sysRow['system_logo_path'], '/');
+                if (strpos($rel, 'public/') === 0) {
+                    $systemLogoUrl = UtilityHelper::baseUrl($rel);
+                } else {
+                    $systemLogoUrl = UtilityHelper::baseUrl('public/' . $rel);
+                }
+            }
+        } catch (Exception $e) {
+            // keep default
+        }
+
         // Load per-organization certificate settings
-        $this->ensureOrganizationCertificateSettingsTableExists();
+    $this->ensureOrganizationCertificateSettingsTableExists();
+    $this->ensureOrganizationEvaluationToolsTableExists();
         $certificateSettings = [
             'title_ribbon_text' => 'گواهی پایان دوره',
             'statement_text' => 'گزارش بازخورد',
@@ -11136,6 +10572,11 @@ class OrganizationController
             }
         }
         $certificateSettings['disc'] = $discData;
+
+        $publicProfileDataset = $this->buildPublicProfileDatasetFromAnswers($organizationId, $evaluationId, $evaluateeId);
+        if (!empty($publicProfileDataset)) {
+            $certificateSettings['public_profile'] = $publicProfileDataset;
+        }
         
         // Build Analytical Thinking data for page 15
         $analyticalData = [
@@ -11144,6 +10585,8 @@ class OrganizationController
             'correct' => 0,
             'incorrect' => 0,
             'percent' => 0,
+            'score' => 0,
+            'total_questions' => 0,
         ];
         try {
             $rowsAnalytical = DatabaseHelper::fetchAll(
@@ -11158,6 +10601,11 @@ class OrganizationController
                    AND (
                         LOWER(t.calculation_formula) LIKE "%analytical%"
                         OR LOWER(t.question_type) LIKE "%analytical%"
+                        OR LOWER(t.code) LIKE "%analytical%"
+                        OR LOWER(t.name) LIKE "%analytical%"
+                        OR t.name LIKE "%تحلیلی%"
+                        OR t.code LIKE "%تحلیلی%"
+                        OR t.name LIKE "%تفکر تحلیلی%"
                    )',
                 [
                     'organization_id' => $organizationId,
@@ -11177,13 +10625,236 @@ class OrganizationController
                     if ((int)($r['is_correct'] ?? 0) === 1) { $correct++; }
                 }
             }
+
+            // Determine analytical tool IDs for this evaluation
+            $analyticalToolIds = [];
+            try {
+                $toolRows = DatabaseHelper::fetchAll(
+                    'SELECT a.tool_id, t.name AS tool_name
+                     FROM organization_evaluation_tool_assignments a
+                     INNER JOIN organization_evaluation_tools t ON t.id = a.tool_id AND t.organization_id = a.organization_id
+                     WHERE a.organization_id = :organization_id AND a.evaluation_id = :evaluation_id
+                       AND (
+                            LOWER(t.calculation_formula) LIKE "%analytical%"
+                            OR LOWER(t.question_type) LIKE "%analytical%"
+                            OR LOWER(t.code) LIKE "%analytical%"
+                            OR LOWER(t.name) LIKE "%analytical%"
+                            OR t.name LIKE "%تحلیلی%"
+                            OR t.code LIKE "%تحلیلی%"
+                            OR t.name LIKE "%تفکر تحلیلی%"
+                       )',
+                    [
+                        'organization_id' => $organizationId,
+                        'evaluation_id' => $evaluationId,
+                    ]
+                ) ?: [];
+            } catch (Exception $e) {
+                $toolRows = [];
+            }
+            foreach ($toolRows as $tr) {
+                $tid = (int) ($tr['tool_id'] ?? 0);
+                if ($tid > 0) { $analyticalToolIds[$tid] = true; }
+            }
+            $analyticalToolIds = array_keys($analyticalToolIds);
+
+            // If exactly one analytical tool matched, expose its name for display/debugging
+            if (count($toolRows) === 1) {
+                $toolName = trim((string) ($toolRows[0]['tool_name'] ?? ''));
+                if ($toolName !== '') {
+                    $analyticalData['source_tool'] = $toolName;
+                }
+            }
+
+            // Count total questions across analytical tools (for proper scoring base)
+            $totalQuestions = 0;
+            if (!empty($analyticalToolIds)) {
+                $placeholders = implode(',', array_fill(0, count($analyticalToolIds), '?'));
+                try {
+                    $qRowsAnalytical = DatabaseHelper::fetchAll(
+                        "SELECT evaluation_tool_id AS tool_id, COUNT(*) AS total_q FROM organization_evaluation_tool_questions WHERE evaluation_tool_id IN ({$placeholders}) GROUP BY evaluation_tool_id",
+                        $analyticalToolIds
+                    );
+                } catch (Exception $e) {
+                    $qRowsAnalytical = [];
+                }
+                foreach ($qRowsAnalytical as $qr) {
+                    $totalQuestions += (int) ($qr['total_q'] ?? 0);
+                }
+            }
+
+            // Compute percent based on totalQuestions when available; fallback to answered-based percent
+            $percent = 0;
+            if ($totalQuestions > 0) {
+                $percent = (int) round(($correct * 100) / $totalQuestions);
+            } elseif ($answered > 0) {
+                $percent = (int) round(($correct * 100) / $answered);
+            }
+
             $analyticalData['answered'] = $answered;
             $analyticalData['correct'] = $correct;
             $analyticalData['incorrect'] = max(0, $answered - $correct);
-            $analyticalData['percent'] = $answered > 0 ? (int) round($correct * 100 / $answered) : 0;
-            $analyticalData['has_analytical'] = $answered > 0;
+            $analyticalData['total_questions'] = $totalQuestions;
+            $analyticalData['percent'] = max(0, min(100, $percent));
+            $analyticalData['score'] = $analyticalData['percent'];
+            $analyticalData['has_analytical'] = ($answered > 0 || $totalQuestions > 0);
         }
         $certificateSettings['analytical'] = $analyticalData;
+
+        // If advanced builder template is configured, render certificate using builder pages/components
+        $hasBuilder = isset($settingsRow) && is_array($settingsRow) && !empty($settingsRow['builder_state_json']);
+        if ($hasBuilder) {
+            $builderStateRaw = (string) $settingsRow['builder_state_json'];
+            $decodedState = json_decode($builderStateRaw, true);
+            if (is_array($decodedState)) {
+                $builderState = $this->sanitizeCertificateBuilderState($decodedState);
+                $pages = isset($builderState['pages']) && is_array($builderState['pages']) ? $builderState['pages'] : [];
+                if (!empty($pages)) {
+                    // Prepare component library map
+                    $componentLibrary = $this->getCertificateBuilderComponentLibrary();
+                    $componentMap = [];
+                    foreach ($componentLibrary as $component) {
+                        $typeKey = isset($component['type']) ? (string) $component['type'] : '';
+                        if ($typeKey !== '') { $componentMap[$typeKey] = $component; }
+                    }
+
+                    // Prepare sample data baseline then enrich with real subject/org/evaluation
+                    $sampleData = $this->getCertificatePreviewSampleData($organization, $user);
+                    // Organization & evaluation meta
+                    $sampleData['organization_name'] = $orgName;
+                    // Ensure logo urls are available to builder components
+                    $sampleData['organization_logo_url'] = $orgLogoUrl;
+                    $sampleData['system_logo_url'] = $systemLogoUrl;
+                    // Also attach to organization object for components reading from $organization
+                    if (is_array($organization)) {
+                        $organization['logo_url'] = $orgLogoUrl;
+                    }
+                    $sampleData['evaluation_title'] = $evaluationTitle;
+                    if (!empty($dateMeta['display'])) {
+                        $sampleData['evaluation_period'] = (string) $dateMeta['display'];
+                    }
+                    $sampleData['issued_at'] = UtilityHelper::englishToPersian(date('Y/m/d'));
+                    $sampleData['competency_model_name'] = $competencyModelDisplay;
+                    // If competency model image exists for this evaluation, expose it explicitly for dynamic image component
+                    if (!empty($competencyModelImagePath)) {
+                        $sampleData['competency_model_image_path'] = $competencyModelImagePath;
+                        $rel = ltrim((string) $competencyModelImagePath, '/');
+                        $normalized = stripos($rel, 'public/') === 0 ? $rel : ('public/' . $rel);
+                        $sampleData['competency_model_image_url'] = UtilityHelper::baseUrl($normalized);
+                    }
+                    // User fields for profile components
+                    $firstName = trim((string) ($evaluatee['first_name'] ?? ''));
+                    $lastName = trim((string) ($evaluatee['last_name'] ?? ''));
+                    $displayFull = trim($firstName . ' ' . $lastName);
+                    if ($displayFull === '') { $displayFull = $fullName; }
+                    $sampleData['user_first_name'] = $firstName;
+                    $sampleData['user_last_name'] = $lastName;
+                    $sampleData['user_full_name'] = $displayFull !== '' ? $displayFull : 'ارزیاب‌شونده';
+                    if (!empty($evaluatee['username'])) { $sampleData['user_username'] = (string) $evaluatee['username']; }
+                    if (!empty($evaluatee['national_code'])) { $sampleData['user_national_id'] = UtilityHelper::englishToPersian((string) $evaluatee['national_code']); }
+                    if (!empty($evaluatee['personnel_code'])) { $sampleData['user_personnel_code'] = UtilityHelper::englishToPersian((string) $evaluatee['personnel_code']); }
+                    if (!empty($evaluatee['organization_post'])) { $sampleData['user_organization_post'] = (string) $evaluatee['organization_post']; }
+                    if (!empty($evaluatee['service_location'])) { $sampleData['user_service_location'] = (string) $evaluatee['service_location']; }
+
+                    // Competency model items as sample dataset for components that display them
+                    if (!empty($modelCompetenciesForPage6)) {
+                        $competencies = [];
+                        foreach ($modelCompetenciesForPage6 as $compRow) {
+                            if (!is_array($compRow)) { continue; }
+                            $name = trim((string) ($compRow['name'] ?? ($compRow['title'] ?? '')));
+                            $definition = trim((string) ($compRow['definition'] ?? ($compRow['description'] ?? '')));
+                            if ($name === '') { continue; }
+                            $competencies[] = ['name' => $name, 'definition' => $definition];
+                        }
+                        if (!empty($competencies)) {
+                            $sampleData['competencies'] = $competencies;
+                        }
+                    }
+
+                    // Evaluation tools list as sample dataset for components that list tools
+                    if (!empty($certificateSettings['page8_tools'])) {
+                        $toolsSample = [];
+                        foreach ($certificateSettings['page8_tools'] as $toolRow) {
+                            if (!is_array($toolRow)) { continue; }
+                            $toolsSample[] = [
+                                'name' => trim((string) ($toolRow['tool_name'] ?? '')),
+                                'description' => trim((string) ($toolRow['tool_description'] ?? '')),
+                                'category' => '',
+                                'estimatedTime' => '',
+                                'difficulty' => '',
+                                'icon' => 'flask-outline',
+                            ];
+                        }
+                        if (!empty($toolsSample)) {
+                            $sampleData['evaluation_tools'] = $toolsSample;
+                        }
+                    }
+
+                    // Runtime datasets bound to this evaluation/evaluatee
+                    $runtimeDatasets = [];
+                    // Assessment tools with completion/score/status for this evaluatee
+                    $evaluateeToolSummary = $this->getCertificatePreviewEvaluateeAssessmentTools($organizationId, $evaluationId, $evaluateeId);
+                    if (!empty($evaluateeToolSummary)) {
+                        $runtimeDatasets['assessment_tools'] = $evaluateeToolSummary;
+                    }
+
+                    // MBTI runtime dataset (enrich with preference percents if available)
+                    $mbtiRuntime = $mbtiData;
+                    if (isset($mbtiRuntime['axes']) && is_array($mbtiRuntime['axes'])) {
+                        $mbtiRuntime['preferenceEI'] = $this->resolveMbtiPreferencePercent($mbtiRuntime, 'EI', 'E');
+                        $mbtiRuntime['preferenceSN'] = $this->resolveMbtiPreferencePercent($mbtiRuntime, 'SN', 'S');
+                        $mbtiRuntime['preferenceTF'] = $this->resolveMbtiPreferencePercent($mbtiRuntime, 'TF', 'T');
+                        $mbtiRuntime['preferenceJP'] = $this->resolveMbtiPreferencePercent($mbtiRuntime, 'JP', 'J');
+                    }
+                    if (!empty($mbtiRuntime['has_mbti'])) {
+                        $runtimeDatasets['mbti_profile'] = $mbtiRuntime;
+                    }
+
+                    // DISC runtime dataset
+                    if (!empty($discData['has_disc'])) {
+                        $runtimeDatasets['disc_profile'] = $discData;
+                    }
+
+                    // Analytical runtime dataset
+                    if (!empty($analyticalData['has_analytical'])) {
+                        $runtimeDatasets['analytical'] = $analyticalData;
+                    }
+
+                    // Public profile dataset
+                    if (!empty($publicProfileDataset)) {
+                        $runtimeDatasets['public_profile'] = $publicProfileDataset;
+                    }
+
+                    // Wash-Up agreed competencies dataset
+                    $washupPreviewDataset = $this->getCertificatePreviewWashupDataset($organizationId, $sampleData);
+                    if (!empty($washupPreviewDataset)) {
+                        $runtimeDatasets['washup_agreed'] = $washupPreviewDataset;
+                        $existingWashupSample = isset($sampleData['washup_agreed']) && is_array($sampleData['washup_agreed'])
+                            ? $sampleData['washup_agreed']
+                            : [];
+                        $sampleData['washup_agreed'] = array_merge($existingWashupSample, $washupPreviewDataset);
+                    }
+
+                    // View variables expected by builder preview
+                    $title = 'گواهی پایان دوره';
+                    $activePageId = isset($builderState['activePageId']) ? (string) $builderState['activePageId'] : '';
+                    $builderStateJson = htmlspecialchars(json_encode($builderState, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+                    // Hide preview toolbars/navigation
+                    $isEmbedded = true;
+                    // Prevent selection UI
+                    $evaluationOptions = [];
+                    $evaluateeOptions = [];
+                    $selectedEvaluation = null;
+                    $selectedEvaluatee = null;
+                    $selectedEvaluationId = 0;
+                    $selectedEvaluateeId = 0;
+                    $totalEvaluations = 0;
+                    $hasRuntimeData = true;
+
+                    include __DIR__ . '/../Views/organizations/reports/certificate-preview.php';
+                    return;
+                }
+            }
+        }
 
         $title = 'گواهی پایان دوره';
 
@@ -11219,6 +10890,365 @@ class OrganizationController
         $errorMessage = flash('error');
 
         include __DIR__ . '/../Views/organizations/reports/certificate-settings.php';
+    }
+
+    public function organizationCertificateBuilder(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_settings_manage']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCertificateSettingsTableExists();
+
+        $title = 'سازنده گواهی پیشرفته';
+        $user = $sessionData['user'];
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $existing = null;
+        if ($organizationId > 0) {
+            try {
+                $existing = DatabaseHelper::fetchOne(
+                    'SELECT * FROM organization_certificate_settings WHERE organization_id = :organization_id LIMIT 1',
+                    ['organization_id' => $organizationId]
+                );
+            } catch (Exception $exception) {
+                $existing = null;
+            }
+        }
+
+        $defaultState = $this->getCertificateBuilderDefaultState();
+
+        $builderState = $defaultState;
+        if ($existing && !empty($existing['builder_state_json'])) {
+            $decoded = json_decode((string) $existing['builder_state_json'], true);
+            if (is_array($decoded)) {
+                $builderState = $this->sanitizeCertificateBuilderState($decoded);
+            }
+        }
+
+        if (empty($builderState['pages'])) {
+            $builderState = $defaultState;
+        }
+
+        $componentLibrary = $this->getCertificateBuilderComponentLibrary();
+        $templateOptions = $this->getCertificateBuilderTemplateOptions();
+
+        $assessmentToolOptions = [];
+        $assessmentToolsForBuilder = $organizationId > 0
+            ? $this->getCertificatePreviewAssessmentTools($organizationId)
+            : [];
+
+        $sampleData = $this->getCertificatePreviewSampleData($organization, $user);
+        $mbtiSample = [];
+        if (isset($sampleData['mbti_profile']) && is_array($sampleData['mbti_profile'])) {
+            $mbtiSample = $sampleData['mbti_profile'];
+        }
+        $discSample = [];
+        if (isset($sampleData['disc_profile']) && is_array($sampleData['disc_profile'])) {
+            $discSample = $sampleData['disc_profile'];
+        }
+        $analyticalSample = [];
+        if (isset($sampleData['analytical']) && is_array($sampleData['analytical'])) {
+            $analyticalSample = $sampleData['analytical'];
+        }
+        $washupSample = [];
+        if (isset($sampleData['washup_agreed']) && is_array($sampleData['washup_agreed'])) {
+            $washupSample = $sampleData['washup_agreed'];
+        }
+
+        $mbtiPreviewDataset = $this->getCertificatePreviewMbtiDataset($organizationId, $sampleData);
+        if (!empty($mbtiPreviewDataset)) {
+            $mbtiSample = $mbtiPreviewDataset;
+            $sampleData['mbti_profile'] = $mbtiPreviewDataset;
+        }
+
+        $discPreviewDataset = $this->getCertificatePreviewDiscDataset($organizationId, $sampleData);
+        if (!empty($discPreviewDataset)) {
+            $discSample = array_merge($discSample, $discPreviewDataset);
+            $sampleData['disc_profile'] = $discSample;
+        }
+
+        $analyticalPreviewDataset = $this->getCertificatePreviewAnalyticalDataset($organizationId, $sampleData);
+        if (!empty($analyticalPreviewDataset)) {
+            $analyticalSample = array_merge($analyticalSample, $analyticalPreviewDataset);
+            $sampleData['analytical'] = $analyticalSample;
+        }
+
+        $washupPreviewDataset = $this->getCertificatePreviewWashupDataset($organizationId, $sampleData);
+        if (!empty($washupPreviewDataset)) {
+            $washupSample = array_merge($washupSample, $washupPreviewDataset);
+            $sampleData['washup_agreed'] = $washupSample;
+        }
+
+        if (!empty($assessmentToolsForBuilder)) {
+            foreach ($assessmentToolsForBuilder as $toolRow) {
+                if (!is_array($toolRow)) {
+                    continue;
+                }
+
+                $value = isset($toolRow['id']) ? trim((string) $toolRow['id']) : '';
+                if ($value === '') {
+                    continue;
+                }
+
+                $label = isset($toolRow['name']) ? trim((string) $toolRow['name']) : '';
+                if ($label === '') {
+                    $label = 'ابزار بدون عنوان';
+                }
+
+                $assessmentToolOptions[] = [
+                    'value' => $value,
+                    'label' => $label,
+                    'description' => isset($toolRow['description']) ? (string) $toolRow['description'] : '',
+                    'meta' => [
+                        'category' => isset($toolRow['category']) ? (string) $toolRow['category'] : '',
+                        'estimatedTime' => isset($toolRow['estimatedTime']) ? (string) $toolRow['estimatedTime'] : '',
+                        'difficulty' => isset($toolRow['difficulty']) ? (string) $toolRow['difficulty'] : '',
+                    ],
+                ];
+            }
+        }
+
+        $builderDatasets = [
+            'assessmentToolOptions' => $assessmentToolOptions,
+            'mbtiProfileSample' => $mbtiSample,
+            'discProfileSample' => $discSample,
+            'analyticalSample' => $analyticalSample,
+            'washupAgreedSample' => $washupSample,
+        ];
+
+        $builderStateJson = htmlspecialchars(json_encode($builderState, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+        $componentLibraryJson = htmlspecialchars(json_encode($componentLibrary, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+        $templateOptionsJson = htmlspecialchars(json_encode($templateOptions, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+        $builderDatasetsJson = htmlspecialchars(json_encode($builderDatasets, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+
+        $successMessage = flash('success');
+        $errorMessage = flash('error');
+
+        include __DIR__ . '/../Views/organizations/reports/certificate-builder.php';
+    }
+
+    public function organizationCertificatePreview(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_settings_manage']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCertificateSettingsTableExists();
+
+        $title = 'پیش‌نمایش گواهی';
+        $user = $sessionData['user'];
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $defaultState = $this->getCertificateBuilderDefaultState();
+        $builderState = $defaultState;
+
+        if ($organizationId > 0) {
+            $existing = null;
+            try {
+                $existing = DatabaseHelper::fetchOne(
+                    'SELECT builder_state_json FROM organization_certificate_settings WHERE organization_id = :organization_id LIMIT 1',
+                    ['organization_id' => $organizationId]
+                );
+            } catch (Exception $exception) {
+                $existing = null;
+            }
+
+            if ($existing && !empty($existing['builder_state_json'])) {
+                $decoded = json_decode((string) $existing['builder_state_json'], true);
+                if (is_array($decoded)) {
+                    $builderState = $this->sanitizeCertificateBuilderState($decoded);
+                }
+            }
+        }
+
+        if (empty($builderState['pages'])) {
+            $builderState = $defaultState;
+        }
+
+        $pages = isset($builderState['pages']) && is_array($builderState['pages']) ? $builderState['pages'] : [];
+        $pageIds = !empty($pages) ? array_column($pages, 'id') : [];
+
+        $requestedPageId = isset($_GET['page']) && is_string($_GET['page']) ? trim($_GET['page']) : '';
+        $activePageId = isset($builderState['activePageId']) && is_string($builderState['activePageId'])
+            ? $builderState['activePageId']
+            : ($pageIds[0] ?? '');
+
+        if ($requestedPageId !== '' && in_array($requestedPageId, $pageIds, true)) {
+            $activePageId = $requestedPageId;
+        }
+
+        $componentLibrary = $this->getCertificateBuilderComponentLibrary();
+        $componentMap = [];
+        foreach ($componentLibrary as $component) {
+            $componentMap[$component['type']] = $component;
+        }
+
+        $sampleData = $this->getCertificatePreviewSampleData($organization, $user);
+
+        $assessmentTools = $this->getCertificatePreviewAssessmentTools($organizationId);
+        if (!empty($assessmentTools)) {
+            $sampleData['assessment_tools'] = $assessmentTools;
+        }
+
+        $subjectContext = $this->resolveCertificatePreviewSubjectIds();
+        $requestedEvaluationId = (int) ($subjectContext['evaluation_id'] ?? 0);
+        $requestedEvaluateeId = (int) ($subjectContext['evaluatee_id'] ?? 0);
+
+        $selectorContext = $this->getCertificatePreviewEvaluationContext(
+            $organizationId,
+            $requestedEvaluationId,
+            $requestedEvaluateeId
+        );
+
+        $evaluationOptions = $selectorContext['evaluation_options'];
+        $evaluateeOptions = $selectorContext['evaluatee_options'];
+        $selectedEvaluation = $selectorContext['selected_evaluation'];
+        $selectedEvaluationId = (int) ($selectorContext['selected_evaluation_id'] ?? 0);
+        $selectedEvaluatee = $selectorContext['selected_evaluatee'];
+        $selectedEvaluateeId = (int) ($selectorContext['selected_evaluatee_id'] ?? 0);
+        $totalEvaluations = (int) ($selectorContext['evaluation_count'] ?? 0);
+    $evaluateeToolSummary = [];
+
+        if ($selectedEvaluation !== null) {
+            $sampleData['evaluation_title'] = (string) ($selectedEvaluation['title'] ?? $sampleData['evaluation_title'] ?? '');
+            if (!empty($selectedEvaluation['date_display'])) {
+                $sampleData['evaluation_period'] = (string) $selectedEvaluation['date_display'];
+            }
+            if (isset($selectedEvaluation['evaluatees']) && is_array($selectedEvaluation['evaluatees'])) {
+                $evaluateeCount = count($selectedEvaluation['evaluatees']);
+                if ($evaluateeCount > 0) {
+                    $sampleData['evaluatees_count'] = UtilityHelper::englishToPersian((string) $evaluateeCount) . ' ارزیاب‌شونده';
+                }
+            }
+        }
+
+        if ($selectedEvaluatee !== null && isset($selectedEvaluatee['user']) && is_array($selectedEvaluatee['user'])) {
+            $evaluateeUser = $selectedEvaluatee['user'];
+            $firstName = trim((string) ($evaluateeUser['first_name'] ?? ''));
+            $lastName = trim((string) ($evaluateeUser['last_name'] ?? ''));
+            $displayName = trim((string) ($evaluateeUser['display_name'] ?? ''));
+            $fallbackLabel = isset($selectedEvaluatee['display_name']) ? (string) $selectedEvaluatee['display_name'] : ((string) ($selectedEvaluatee['label'] ?? ''));
+            $fullName = trim($firstName . ' ' . $lastName);
+            if ($fullName === '' && $displayName !== '') {
+                $fullName = $displayName;
+            }
+            if ($fullName === '') {
+                $fullName = $fallbackLabel !== '' ? $fallbackLabel : 'ارزیاب‌شونده #' . UtilityHelper::englishToPersian((string) $selectedEvaluateeId);
+            }
+
+            if ($firstName === '' && $lastName === '' && $displayName !== '') {
+                $parts = preg_split('/\s+/u', $displayName, 2);
+                if (is_array($parts) && !empty($parts)) {
+                    $firstName = trim((string) ($parts[0] ?? ''));
+                    $lastName = trim((string) ($parts[1] ?? ''));
+                }
+            }
+
+            $sampleData['user_first_name'] = $firstName !== '' ? $firstName : ($sampleData['user_first_name'] ?? $fullName);
+            $sampleData['user_last_name'] = $lastName !== '' ? $lastName : ($sampleData['user_last_name'] ?? '');
+            $sampleData['user_full_name'] = $fullName;
+
+            if (!empty($evaluateeUser['job_title'])) {
+                $sampleData['user_job_title'] = (string) $evaluateeUser['job_title'];
+            }
+            if (!empty($evaluateeUser['organization_post'])) {
+                $sampleData['user_organization_post'] = (string) $evaluateeUser['organization_post'];
+            }
+            if (!empty($evaluateeUser['department'])) {
+                $sampleData['user_department'] = (string) $evaluateeUser['department'];
+            }
+            if (!empty($evaluateeUser['service_location'])) {
+                $sampleData['user_service_location'] = (string) $evaluateeUser['service_location'];
+            }
+
+            $personnelCode = trim((string) ($evaluateeUser['personnel_code'] ?? ''));
+            if ($personnelCode !== '') {
+                $sampleData['user_personnel_code'] = UtilityHelper::englishToPersian($personnelCode);
+            }
+
+            $nationalCode = trim((string) ($evaluateeUser['national_code'] ?? ''));
+            if ($nationalCode !== '') {
+                $sampleData['user_national_id'] = UtilityHelper::englishToPersian($nationalCode);
+            }
+
+            if (!empty($evaluateeUser['username'])) {
+                $sampleData['user_username'] = (string) $evaluateeUser['username'];
+            }
+
+            $initials = '';
+            if ($firstName !== '') {
+                $initials .= function_exists('mb_substr') ? mb_substr($firstName, 0, 1, 'UTF-8') : substr($firstName, 0, 1);
+            }
+            if ($lastName !== '') {
+                $initials .= function_exists('mb_substr') ? mb_substr($lastName, 0, 1, 'UTF-8') : substr($lastName, 0, 1);
+            }
+            if ($initials === '' && $fullName !== '') {
+                $initials = function_exists('mb_substr') ? mb_substr($fullName, 0, 2, 'UTF-8') : substr($fullName, 0, 2);
+            }
+            if ($initials !== '') {
+                $sampleData['user_initials'] = $initials;
+            }
+        }
+
+        if ($selectedEvaluationId > 0 && $selectedEvaluateeId > 0) {
+            $evaluateeToolSummary = $this->getCertificatePreviewEvaluateeAssessmentTools($organizationId, $selectedEvaluationId, $selectedEvaluateeId);
+            if (!empty($evaluateeToolSummary)) {
+                $sampleData['assessment_tools'] = $evaluateeToolSummary;
+            }
+        }
+
+        $runtimeDatasets = [];
+        if (!empty($evaluateeToolSummary)) {
+            $runtimeDatasets['assessment_tools'] = $evaluateeToolSummary;
+        }
+        $mbtiPreviewDataset = $this->getCertificatePreviewMbtiDataset($organizationId, $sampleData);
+        if (!empty($mbtiPreviewDataset)) {
+            $runtimeDatasets['mbti_profile'] = $mbtiPreviewDataset;
+            $sampleData['mbti_profile'] = $mbtiPreviewDataset;
+        }
+
+        $discPreviewDataset = $this->getCertificatePreviewDiscDataset($organizationId, $sampleData);
+        if (!empty($discPreviewDataset)) {
+            $runtimeDatasets['disc_profile'] = $discPreviewDataset;
+            $existingDiscSample = isset($sampleData['disc_profile']) && is_array($sampleData['disc_profile'])
+                ? $sampleData['disc_profile']
+                : [];
+            $sampleData['disc_profile'] = array_merge($existingDiscSample, $discPreviewDataset);
+        }
+
+        $analyticalPreviewDataset = $this->getCertificatePreviewAnalyticalDataset($organizationId, $sampleData);
+        if (!empty($analyticalPreviewDataset)) {
+            $runtimeDatasets['analytical'] = $analyticalPreviewDataset;
+            $existingAnalyticalSample = isset($sampleData['analytical']) && is_array($sampleData['analytical'])
+                ? $sampleData['analytical']
+                : [];
+            $sampleData['analytical'] = array_merge($existingAnalyticalSample, $analyticalPreviewDataset);
+        }
+
+        $washupPreviewDataset = $this->getCertificatePreviewWashupDataset($organizationId, $sampleData);
+        if (!empty($washupPreviewDataset)) {
+            $runtimeDatasets['washup_agreed'] = $washupPreviewDataset;
+            $existingWashupSample = isset($sampleData['washup_agreed']) && is_array($sampleData['washup_agreed'])
+                ? $sampleData['washup_agreed']
+                : [];
+            $sampleData['washup_agreed'] = array_merge($existingWashupSample, $washupPreviewDataset);
+        }
+
+        $builderStateJson = htmlspecialchars(json_encode($builderState, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+        $totalPages = count($pages);
+
+        $hasRuntimeData = false;
+        foreach ($runtimeDatasets as $dataset) {
+            if (!empty($dataset)) {
+                $hasRuntimeData = true;
+                break;
+            }
+        }
+
+        include __DIR__ . '/../Views/organizations/reports/certificate-preview.php';
     }
 
     public function updateOrganizationCertificateSettings(): void
@@ -11641,6 +11671,226 @@ class OrganizationController
         }
 
         UtilityHelper::redirect($redirectIndex);
+    }
+
+    public function updateOrganizationCertificateBuilder(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_settings_manage']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCertificateSettingsTableExists();
+
+        $organization = $sessionData['organization'];
+        $user = $sessionData['user'];
+
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $userIdentifier = (string) ($user['id'] ?? '');
+
+        $redirectIndex = UtilityHelper::baseUrl('organizations/reports/certificate-builder');
+
+        $token = $_POST['_token'] ?? '';
+        if (!AuthHelper::verifyCsrfToken($token)) {
+            ResponseHelper::flashError('توکن امنیتی نامعتبر است.');
+            UtilityHelper::redirect($redirectIndex);
+        }
+
+        $rawState = isset($_POST['builder_state']) ? (string) $_POST['builder_state'] : '';
+        $rawState = trim($rawState);
+
+        if ($rawState === '') {
+            ResponseHelper::flashError('اطلاعات سازنده دریافت نشد.');
+            UtilityHelper::redirect($redirectIndex);
+        }
+
+        $decoded = json_decode($rawState, true);
+        if (!is_array($decoded)) {
+            ResponseHelper::flashError('ساختار داده‌های سازنده نامعتبر است.');
+            UtilityHelper::redirect($redirectIndex);
+        }
+
+        $sanitized = $this->sanitizeCertificateBuilderState($decoded);
+        $encoded = json_encode($sanitized, JSON_UNESCAPED_UNICODE);
+        if ($encoded === false) {
+            $encoded = json_encode(['pages' => []], JSON_UNESCAPED_UNICODE);
+        }
+
+        $stateVersion = isset($sanitized['version']) && is_numeric($sanitized['version'])
+            ? (int) $sanitized['version']
+            : 1;
+
+        $metadata = $this->collectCertificateBuilderMetadata($sanitized);
+
+        $templatesJson = json_encode($metadata['templates'], JSON_UNESCAPED_UNICODE);
+        if ($templatesJson === false) {
+            $templatesJson = json_encode([], JSON_UNESCAPED_UNICODE);
+        }
+
+        $componentsJson = json_encode($metadata['components'], JSON_UNESCAPED_UNICODE);
+        if ($componentsJson === false) {
+            $componentsJson = json_encode([], JSON_UNESCAPED_UNICODE);
+        }
+
+        $toolsJson = json_encode($metadata['assessment_tool_ids'], JSON_UNESCAPED_UNICODE);
+        if ($toolsJson === false) {
+            $toolsJson = json_encode([], JSON_UNESCAPED_UNICODE);
+        }
+
+        try {
+            $existing = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_certificate_settings WHERE organization_id = :organization_id LIMIT 1',
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $existing = null;
+        }
+
+        try {
+            if ($existing) {
+                DatabaseHelper::query(
+                    'UPDATE organization_certificate_settings
+                     SET builder_state_json = :builder_state_json,
+                         builder_state_version = :builder_state_version,
+                         builder_templates_json = :builder_templates_json,
+                         builder_components_json = :builder_components_json,
+                         builder_assessment_tools_json = :builder_assessment_tools_json,
+                         updated_at = NOW()
+                     WHERE id = :id',
+                    [
+                        'builder_state_json' => $encoded,
+                        'builder_state_version' => $stateVersion,
+                        'builder_templates_json' => $templatesJson,
+                        'builder_components_json' => $componentsJson,
+                        'builder_assessment_tools_json' => $toolsJson,
+                        'id' => (int) $existing['id'],
+                    ]
+                );
+            } else {
+                DatabaseHelper::query(
+                    'INSERT INTO organization_certificate_settings (
+                        organization_id, title_ribbon_text, statement_text, template_key,
+                        show_org_logo, show_signatures, enable_decorations, pdf_mode, extra_footer_text,
+                        builder_state_json, builder_state_version, builder_templates_json, builder_components_json, builder_assessment_tools_json,
+                        user_id, created_at, updated_at
+                    ) VALUES (
+                        :organization_id, :title_ribbon_text, :statement_text, :template_key,
+                        :show_org_logo, :show_signatures, :enable_decorations, :pdf_mode, :extra_footer_text,
+                        :builder_state_json, :builder_state_version, :builder_templates_json, :builder_components_json, :builder_assessment_tools_json,
+                        :user_id, NOW(), NOW()
+                    )',
+                    [
+                        'organization_id' => $organizationId,
+                        'title_ribbon_text' => 'گواهی پایان دوره',
+                        'statement_text' => 'گزارش بازخورد',
+                        'template_key' => 'classic',
+                        'show_org_logo' => 1,
+                        'show_signatures' => 1,
+                        'enable_decorations' => 1,
+                        'pdf_mode' => 'simple',
+                        'extra_footer_text' => '',
+                        'builder_state_json' => $encoded,
+                        'builder_state_version' => $stateVersion,
+                        'builder_templates_json' => $templatesJson,
+                        'builder_components_json' => $componentsJson,
+                        'builder_assessment_tools_json' => $toolsJson,
+                        'user_id' => $userIdentifier !== '' ? $userIdentifier : 'system',
+                    ]
+                );
+            }
+
+            ResponseHelper::flashSuccess('تنظیمات سازنده گواهی با موفقیت ذخیره شد.');
+        } catch (Exception $exception) {
+            ResponseHelper::flashError('ذخیره تنظیمات سازنده با خطا مواجه شد.');
+        }
+
+        UtilityHelper::redirect($redirectIndex);
+    }
+
+    public function uploadOrganizationCertificateBuilderImage(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_settings_manage']);
+
+        AuthHelper::startSession();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => 'درخواست نامعتبر است.'
+            ], 405);
+        }
+
+        $token = $_POST['_token'] ?? '';
+        if (!AuthHelper::verifyCsrfToken($token)) {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => 'توکن امنیتی نامعتبر است.'
+            ], 419);
+        }
+
+        if (!isset($_FILES['image'])) {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => 'فایل تصویری ارسال نشده است.'
+            ], 400);
+        }
+
+        $imageFile = $_FILES['image'];
+        if (!isset($imageFile['error']) || (int) $imageFile['error'] !== UPLOAD_ERR_OK) {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => 'در هنگام دریافت فایل خطایی رخ داد.'
+            ], 422);
+        }
+        if (!FileHelper::isValidImage($imageFile)) {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => 'فقط فایل‌های تصویری مجاز هستند.'
+            ], 422);
+        }
+
+        $maxSize = 5 * 1024 * 1024; // 5 MB
+        if (!isset($imageFile['size']) || (int) $imageFile['size'] > $maxSize) {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => 'حجم فایل نباید بیش از ۵ مگابایت باشد.'
+            ], 422);
+        }
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        if ($organizationId <= 0) {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => 'شناسه سازمان نامعتبر است.'
+            ], 422);
+        }
+
+        $uploadDirectory = 'uploads/organizations/certificates/' . $organizationId . '/builder-assets/';
+        $uploadResult = FileHelper::uploadFile(
+            $imageFile,
+            $uploadDirectory,
+            ['jpg', 'jpeg', 'png', 'gif', 'webp']
+        );
+
+        if (empty($uploadResult['success'])) {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => $uploadResult['error'] ?? 'در ذخیره فایل خطایی رخ داد.'
+            ], 500);
+        }
+
+        $publicRelativePath = 'public/' . ltrim($uploadResult['path'] ?? '', '/');
+        $absoluteUrl = UtilityHelper::baseUrl($publicRelativePath);
+
+        ResponseHelper::json([
+            'success' => true,
+            'message' => 'تصویر با موفقیت آپلود شد.',
+            'url' => $absoluteUrl,
+            'path' => $uploadResult['path'] ?? null,
+            'public_path' => $publicRelativePath,
+            'filename' => $uploadResult['filename'] ?? null,
+            'size' => $uploadResult['size'] ?? null,
+        ]);
     }
 
     private function buildOrganizationExcelReportDataset(int $organizationId, string $search, string $statusFilter, ?int $evaluateeIdFilter = null): array
@@ -12236,6 +12486,37 @@ class OrganizationController
             }
         }
 
+        // Check WashUp completion: at least one agreed score exists for each evaluation/evaluatee pair
+        $this->ensureOrganizationEvaluationAgreedScoresTableExists();
+        $washupCompleted = [];
+        if (!empty($evaluationIds) && !empty($allEvaluateeIds)) {
+            $evalPh = implode(',', array_fill(0, count($evaluationIds), '?'));
+            $usrPh = implode(',', array_fill(0, count($allEvaluateeIds), '?'));
+            $params = array_merge([$organizationId], $evaluationIds, $allEvaluateeIds);
+            try {
+                $washupRows = DatabaseHelper::fetchAll(
+                    "SELECT evaluation_id, evaluatee_id, COUNT(*) AS agreed_count
+                     FROM organization_evaluation_agreed_scores
+                     WHERE organization_id = ?
+                       AND evaluation_id IN ({$evalPh})
+                       AND evaluatee_id IN ({$usrPh})
+                       AND agreed_score IS NOT NULL
+                     GROUP BY evaluation_id, evaluatee_id",
+                    $params
+                );
+            } catch (Exception $exception) {
+                $washupRows = [];
+            }
+            foreach ($washupRows as $wr) {
+                $eid = (int) ($wr['evaluation_id'] ?? 0);
+                $uid = (int) ($wr['evaluatee_id'] ?? 0);
+                $agreedCount = (int) ($wr['agreed_count'] ?? 0);
+                if ($eid <= 0 || $uid <= 0) { continue; }
+                if (!isset($washupCompleted[$eid])) { $washupCompleted[$eid] = []; }
+                $washupCompleted[$eid][$uid] = ($agreedCount > 0);
+            }
+        }
+
         $formatDateTimeDisplay = static function (?string $dateTime): string {
             if ($dateTime === null || trim($dateTime) === '') {
                 return '—';
@@ -12351,7 +12632,7 @@ class OrganizationController
                     $scoreCountWithValue++;
                 }
 
-                // Determine exam results visibility per evaluation: all exam tools completed
+                // Determine exam results visibility per evaluation: all exam tools completed AND WashUp completed
                 $examResultsViewable = false;
                 $evalToolSet = $examToolsByEvaluation[$evaluationId] ?? [];
                 if (!empty($evalToolSet)) {
@@ -12367,6 +12648,15 @@ class OrganizationController
                             if (!$completedFlag) { $allOk = false; break; }
                         }
                     }
+                    
+                    // Also check if WashUp is completed (at least one agreed score exists)
+                    if ($allOk) {
+                        $washupDone = !empty($washupCompleted[$evaluationId][$evaluateeId]);
+                        if (!$washupDone) {
+                            $allOk = false;
+                        }
+                    }
+                    
                     $examResultsViewable = $allOk;
                 }
 
@@ -24082,6 +24372,31 @@ SQL;
             if (!$tp5->fetch()) {
                 DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN third_page_image_height_mm DECIMAL(6,2) NULL AFTER third_page_image_width_mm");
             }
+            $builderCol = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'builder_state_json'");
+            $builderCol->execute();
+            if (!$builderCol->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN builder_state_json LONGTEXT NULL AFTER extra_footer_text");
+            }
+            $builderVersionCol = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'builder_state_version'");
+            $builderVersionCol->execute();
+            if (!$builderVersionCol->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN builder_state_version INT UNSIGNED NULL AFTER builder_state_json");
+            }
+            $builderTemplatesCol = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'builder_templates_json'");
+            $builderTemplatesCol->execute();
+            if (!$builderTemplatesCol->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN builder_templates_json LONGTEXT NULL AFTER builder_state_version");
+            }
+            $builderComponentsCol = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'builder_components_json'");
+            $builderComponentsCol->execute();
+            if (!$builderComponentsCol->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN builder_components_json LONGTEXT NULL AFTER builder_templates_json");
+            }
+            $builderToolsCol = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'builder_assessment_tools_json'");
+            $builderToolsCol->execute();
+            if (!$builderToolsCol->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN builder_assessment_tools_json LONGTEXT NULL AFTER builder_components_json");
+            }
             // THIRD PAGE: items json
             $tp6 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'third_page_items_json'");
             $tp6->execute();
@@ -25694,6 +26009,5033 @@ SQL;
         ];
 
         return $normalizedSlug !== '' && in_array($normalizedSlug, $allowedSlugs, true);
+    }
+
+    private function getCertificateBuilderDefaultState(): array
+    {
+        return [
+            'version' => 1,
+            'activePageId' => 'page-1',
+            'pages' => [[
+                'id' => 'page-1',
+                'name' => 'صفحه ۱',
+                'template' => 'classic',
+                'size' => 'a4',
+                'orientation' => 'portrait',
+                'elements' => [
+                    [
+                        'id' => 'el-1',
+                        'type' => 'hero_heading',
+                        'props' => [
+                            'text' => 'گواهی پایان دوره',
+                            'align' => 'center',
+                            'variant' => 'display',
+                            'style' => 'plain',
+                            'color' => '#111827',
+                            'widthMode' => 'full',
+                            'applyToAllPages' => 0,
+                        ],
+                    ],
+                    [
+                        'id' => 'el-2',
+                        'type' => 'user_full_name',
+                        'props' => [
+                            'showLabel' => 0,
+                            'alignment' => 'center',
+                            'widthMode' => 'full',
+                            'applyToAllPages' => 0,
+                        ],
+                    ],
+                    [
+                        'id' => 'el-3',
+                        'type' => 'custom_paragraph',
+                        'props' => [
+                            'text' => 'این گواهی به پاس حضور فعال و موفقیت در برنامه ارزیابی صادر می‌شود.',
+                            'align' => 'center',
+                            'color' => '#334155',
+                            'lineHeight' => 1.8,
+                            'widthMode' => 'full',
+                            'applyToAllPages' => 0,
+                        ],
+                    ],
+                ],
+            ]],
+        ];
+    }
+
+    private function getCertificateBuilderTemplateOptions(): array
+    {
+        return [
+            ['key' => 'classic', 'name' => 'کلاسیک', 'description' => 'قالب کلاسیک با حاشیه ساده و روبان طلایی'],
+            ['key' => 'minimal', 'name' => 'مینیمال', 'description' => 'فضای سفید فراوان و تایپوگرافی مدرن'],
+            ['key' => 'bordered', 'name' => 'قاب‌دار', 'description' => 'حاشیه رسمی برای گواهی‌های سازمانی'],
+            ['key' => 'modern', 'name' => 'مدرن', 'description' => 'رنگ‌های گرادیانی و کارت‌های اطلاعاتی'],
+            ['key' => 'elegant', 'name' => 'مینیمال تیره', 'description' => 'پس‌زمینه تیره با خطوط نوری ظریف'],
+            ['key' => 'aurora', 'name' => 'آرورا', 'description' => 'گرادیان ملایم با نورهای رنگی شناور برای حس نوآوری'],
+            ['key' => 'sunset', 'name' => 'غروب', 'description' => 'رنگ‌های گرم نارنجی و صورتی با هایلایت‌های نرم برای گواهی‌های صمیمی'],
+            ['key' => 'royal', 'name' => 'رویال لوکس', 'description' => 'زمینه سرمه‌ای با حاشیه طلایی برای مراسم رسمی و تجلیل ویژه'],
+            ['key' => 'paper', 'name' => 'کاغذ هنری', 'description' => 'بافت کاغذ دست‌ساز با قاب داخلی ظریف و خطوط چاپی'],
+            
+            // New professional certificate templates
+            ['key' => 'emerald', 'name' => 'زمرد', 'description' => 'گرادیان سبز زمردی با المان‌های طلایی - مناسب برای دوره‌های تخصصی'],
+            ['key' => 'sapphire', 'name' => 'یاقوت کبود', 'description' => 'آبی عمیق با لکه‌های نوری سفید - برای گواهی‌های آکادمیک'],
+            ['key' => 'crimson', 'name' => 'زرشکی اشرافی', 'description' => 'قرمز شرابی با فریم طلایی و نقوش کلاسیک - برای گواهی‌های ممتاز'],
+            ['key' => 'ocean', 'name' => 'اقیانوس', 'description' => 'گرادیان آبی اقیانوسی با امواج شیشه‌ای - حس آرامش و اعتماد'],
+            ['key' => 'forest', 'name' => 'جنگل', 'description' => 'سبز تیره جنگلی با نورهای طبیعی - برای دوره‌های محیط زیست'],
+            ['key' => 'gold_premium', 'name' => 'طلایی پرمیوم', 'description' => 'زمینه کرم با حاشیه طلایی براق و نقش‌های تزیینی - لوکس‌ترین قالب'],
+            ['key' => 'midnight', 'name' => 'نیمه‌شب', 'description' => 'مشکی با ستاره‌های درخشان و خطوط نقره‌ای - مدرن و باشکوه'],
+            ['key' => 'coral', 'name' => 'مرجانی', 'description' => 'صورتی مرجانی با عناصر فیروزه‌ای - شاد و متفاوت'],
+            ['key' => 'lavender', 'name' => 'اسطوخودوس', 'description' => 'بنفش ملایم با زمینه کرم - نرم و خاص برای دوره‌های هنری'],
+            ['key' => 'bronze', 'name' => 'برنزی', 'description' => 'قهوه‌ای برنزی با المان‌های مسی - کلاسیک و گرم'],
+            ['key' => 'pearl', 'name' => 'مرواریدی', 'description' => 'سفید مرواریدی با سایه‌های نقره‌ای و بنفش - شیک و مینیمال'],
+            ['key' => 'ruby', 'name' => 'یاقوت سرخ', 'description' => 'قرمز یاقوتی با جزئیات طلایی - برای دستاوردهای برتر'],
+        ];
+    }
+
+    private function getCertificateBuilderComponentLibrary(): array
+    {
+        return [
+            [
+                'type' => 'hero_heading',
+                'title' => 'عنوان بزرگ',
+                'icon' => 'text-outline',
+                'category' => 'متن',
+                'description' => 'نمایش عنوان برجسته در ابتدای گواهی',
+                'defaultProps' => [
+                    'text' => 'گواهی پایان دوره',
+                    'align' => 'center',
+                    'fontSize' => 48,
+                    'style' => 'plain',
+                    'color' => '#111827',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'text', 'label' => 'متن', 'type' => 'textarea', 'maxLength' => 400, 'placeholder' => 'مثلاً گواهی پایان دوره', 'help' => 'عنوان اصلی که در بالای گواهی نمایش داده می‌شود.'],
+                    ['key' => 'align', 'label' => 'تراز متن', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ], 'help' => 'موقعیت متن نسبت به صفحه را تعیین می‌کند.'],
+                    ['key' => 'fontSize', 'label' => 'اندازه فونت', 'type' => 'font_size', 'help' => 'اندازه فونت عنوان را مشخص کنید (6 تا 200 پیکسل).'],
+                    ['key' => 'style', 'label' => 'طرح نمایشی', 'type' => 'select', 'options' => [
+                        ['value' => 'plain', 'label' => 'ساده'],
+                        ['value' => 'pill', 'label' => 'پس‌زمینه گرد'],
+                        ['value' => 'outline', 'label' => 'قاب دور'],
+                        ['value' => 'ribbon', 'label' => 'روبان تزیینی'],
+                        ['value' => 'underline', 'label' => 'خط برجسته'],
+                    ], 'help' => 'یک سبک گرافیکی برای نمایش عنوان انتخاب کنید.'],
+                    ['key' => 'color', 'label' => 'رنگ متن', 'type' => 'color', 'help' => 'رنگ نمایش عنوان. از کد رنگی هگز یا RGBA استفاده کنید.'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ], 'help' => 'در حالت نیم‌عرض می‌توانید عنصر دیگری را در همان ردیف قرار دهید.'],
+                ],
+            ],
+            [
+                'type' => 'section_heading',
+                'title' => 'سرفصل',
+                'icon' => 'albums-outline',
+                'category' => 'متن',
+                'description' => 'جداسازی بخش‌های گواهی با تیتر برجسته',
+                'defaultProps' => [
+                    'text' => 'عنوان بخش',
+                    'align' => 'right',
+                    'color' => '#1f2937',
+                    'showDivider' => 1,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'text', 'label' => 'متن سرفصل', 'type' => 'text', 'maxLength' => 120, 'placeholder' => 'مثلاً اطلاعات دوره', 'help' => 'عنوان بخش را مشخص کنید.'],
+                    ['key' => 'align', 'label' => 'تراز متن', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ], 'help' => 'موقعیت قرارگیری تیتر نسبت به صفحه.'],
+                    ['key' => 'color', 'label' => 'رنگ متن', 'type' => 'color', 'help' => 'رنگ تیتر بخش.'],
+                    ['key' => 'showDivider', 'label' => 'نمایش خط جداکننده', 'type' => 'toggle', 'help' => 'در صورت فعال بودن یک خط نازک زیر تیتر نمایش داده می‌شود.'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'user_full_name',
+                'title' => 'نام ارزیاب‌شونده',
+                'icon' => 'person-circle-outline',
+                'category' => 'اطلاعات کاربر',
+                'description' => 'نمایش نام کامل ارزیاب‌شونده با امکان افزودن برچسب',
+                'defaultProps' => [
+                    'showLabel' => 0,
+                    'label' => 'نام ارزیاب‌شونده',
+                    'alignment' => 'center',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'showLabel', 'label' => 'نمایش عنوان', 'type' => 'toggle', 'help' => 'در صورت خاموش بودن فقط نام نمایش داده می‌شود.'],
+                    ['key' => 'label', 'label' => 'عنوان سفارشی', 'type' => 'text', 'maxLength' => 80, 'placeholder' => 'مثلاً: شرکت‌کننده', 'dependsOn' => ['showLabel' => true]],
+                    ['key' => 'alignment', 'label' => 'تراز', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ], 'help' => 'جهت‌گیری متن در صفحه را مشخص می‌کند.'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'user_job_title',
+                'title' => 'عنوان شغلی',
+                'icon' => 'briefcase-outline',
+                'category' => 'اطلاعات کاربر',
+                'description' => 'نمایش عنوان شغلی یا نقش سازمانی فرد',
+                'defaultProps' => [
+                    'showLabel' => 0,
+                    'label' => 'عنوان شغلی',
+                    'alignment' => 'center',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'showLabel', 'label' => 'نمایش عنوان', 'type' => 'toggle', 'help' => 'با غیرفعال کردن، فقط عنوان شغلی نشان داده می‌شود.'],
+                    ['key' => 'label', 'label' => 'عنوان سفارشی', 'type' => 'text', 'maxLength' => 80, 'dependsOn' => ['showLabel' => true]],
+                    ['key' => 'alignment', 'label' => 'تراز', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ], 'help' => 'جهت نمایش آیتم نسبت به صفحه.'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'user_profile_field',
+                'title' => 'فیلد مشخصات کاربر',
+                'icon' => 'id-card-outline',
+                'category' => 'اطلاعات کاربر',
+                'description' => 'نمایش تکی یکی از فیلدهای هویتی مانند کد ملی یا کد پرسنلی',
+                'defaultProps' => [
+                    'field' => 'national_id',
+                    'showLabel' => 1,
+                    'customLabel' => '',
+                    'alignment' => 'right',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'field', 'label' => 'فیلد اطلاعاتی', 'type' => 'select', 'options' => [
+                        ['value' => 'full_name', 'label' => 'نام و نام خانوادگی'],
+                        ['value' => 'national_id', 'label' => 'کد ملی'],
+                        ['value' => 'personnel_code', 'label' => 'کد پرسنلی'],
+                        ['value' => 'job_title', 'label' => 'عنوان شغلی'],
+                        ['value' => 'organization_post', 'label' => 'پست سازمانی'],
+                        ['value' => 'department', 'label' => 'واحد سازمانی'],
+                        ['value' => 'service_location', 'label' => 'محل خدمت'],
+                        ['value' => 'username', 'label' => 'نام کاربری'],
+                    ], 'help' => 'انتخاب کنید کدام فیلد از اطلاعات کاربر نمایش داده شود.'],
+                    ['key' => 'showLabel', 'label' => 'نمایش عنوان', 'type' => 'toggle'],
+                    ['key' => 'customLabel', 'label' => 'عنوان سفارشی', 'type' => 'text', 'maxLength' => 80, 'placeholder' => 'مثلاً کد پرسنلی', 'dependsOn' => ['showLabel' => true]],
+                    ['key' => 'alignment', 'label' => 'تراز', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ]],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'user_profile_overview',
+                'title' => 'کارت مشخصات کاربر',
+                'icon' => 'reader-outline',
+                'category' => 'اطلاعات کاربر',
+                'description' => 'نمایش چندفیلدی مشخصات کاربر در قالب کارت یا لیست',
+                'defaultProps' => [
+                    'title' => 'مشخصات کاربر',
+                    'alignment' => 'right',
+                    'layout' => 'two-column',
+                    'appearance' => 'card',
+                    'showLabels' => 1,
+                    'showFullName' => 1,
+                    'showNationalId' => 1,
+                    'showPersonnelCode' => 1,
+                    'showJobTitle' => 1,
+                    'showOrganizationPost' => 1,
+                    'showDepartment' => 1,
+                    'showServiceLocation' => 1,
+                    'showUsername' => 0,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'title', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'placeholder' => 'مثلاً مشخصات کاربر'],
+                    ['key' => 'alignment', 'label' => 'تراز', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ]],
+                    ['key' => 'layout', 'label' => 'چیدمان', 'type' => 'select', 'options' => [
+                        ['value' => 'list', 'label' => 'تک ستونه'],
+                        ['value' => 'two-column', 'label' => 'دو ستونه'],
+                    ], 'help' => 'در حالت دو ستونه اطلاعات به صورت جدولی نمایش داده می‌شود.'],
+                    ['key' => 'appearance', 'label' => 'استایل نمایش', 'type' => 'select', 'options' => [
+                        ['value' => 'card', 'label' => 'کارت'],
+                        ['value' => 'subtle', 'label' => 'پس‌زمینه ملایم'],
+                        ['value' => 'plain', 'label' => 'ساده بدون قاب'],
+                    ]],
+                    ['key' => 'showLabels', 'label' => 'نمایش عنوان هر فیلد', 'type' => 'toggle'],
+                    ['key' => 'showFullName', 'label' => 'نام و نام خانوادگی', 'type' => 'toggle'],
+                    ['key' => 'showNationalId', 'label' => 'کد ملی', 'type' => 'toggle'],
+                    ['key' => 'showPersonnelCode', 'label' => 'کد پرسنلی', 'type' => 'toggle'],
+                    ['key' => 'showJobTitle', 'label' => 'عنوان شغلی', 'type' => 'toggle'],
+                    ['key' => 'showOrganizationPost', 'label' => 'پست سازمانی', 'type' => 'toggle'],
+                    ['key' => 'showDepartment', 'label' => 'واحد سازمانی', 'type' => 'toggle'],
+                    ['key' => 'showServiceLocation', 'label' => 'محل خدمت', 'type' => 'toggle'],
+                    ['key' => 'showUsername', 'label' => 'نام کاربری', 'type' => 'toggle'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'user_avatar',
+                'title' => 'تصویر ارزیاب‌شونده',
+                'icon' => 'image-outline',
+                'category' => 'اطلاعات کاربر',
+                'description' => 'نمایش تصویر پروفایل یا جایگزین مبتنی بر حروف نام',
+                'defaultProps' => [
+                    'shape' => 'circle',
+                    'size' => 'medium',
+                    'showFrame' => 1,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'shape', 'label' => 'فرم تصویر', 'type' => 'select', 'options' => [
+                        ['value' => 'circle', 'label' => 'دایره'],
+                        ['value' => 'rounded', 'label' => 'گوشه‌دار'],
+                        ['value' => 'square', 'label' => 'مربع'],
+                    ], 'help' => 'نحوه نمایش قاب تصویر.'],
+                    ['key' => 'size', 'label' => 'اندازه', 'type' => 'select', 'options' => [
+                        ['value' => 'small', 'label' => 'کوچک'],
+                        ['value' => 'medium', 'label' => 'متوسط'],
+                        ['value' => 'large', 'label' => 'بزرگ'],
+                    ], 'help' => 'ابعاد تصویر نسبت به سایر اجزا.'],
+                    ['key' => 'showFrame', 'label' => 'نمایش قاب', 'type' => 'toggle', 'help' => 'در صورت فعال بودن یک قاب ظریف اطراف تصویر نمایش داده می‌شود.'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'evaluation_summary',
+                'title' => 'خلاصه ارزیابی',
+                'icon' => 'list-circle-outline',
+                'category' => 'نتایج',
+                'description' => 'نمایش خلاصه‌ای از تاریخ، دوره و وضعیت ارزیابی',
+                'defaultProps' => [
+                    'headline' => 'جزئیات ارزیابی',
+                    'layout' => 'two-column',
+                    'showDates' => 1,
+                    'showEvaluators' => 1,
+                    'showEvaluatees' => 1,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'help' => 'در صورت خالی بودن، عنوان نمایش داده نمی‌شود.'],
+                    ['key' => 'layout', 'label' => 'چیدمان', 'type' => 'select', 'options' => [
+                        ['value' => 'single-column', 'label' => 'تک ستونه'],
+                        ['value' => 'two-column', 'label' => 'دو ستونه'],
+                        ['value' => 'highlight', 'label' => 'جعبه برجسته'],
+                    ], 'help' => 'نحوه نمایش اطلاعات در صفحه.'],
+                    ['key' => 'showDates', 'label' => 'نمایش تاریخ‌ها', 'type' => 'toggle'],
+                    ['key' => 'showEvaluators', 'label' => 'نمایش ارزیاب‌ها', 'type' => 'toggle'],
+                    ['key' => 'showEvaluatees', 'label' => 'نمایش ارزیاب‌شونده‌ها', 'type' => 'toggle'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'score_badges',
+                'title' => 'نشان‌های امتیاز',
+                'icon' => 'ribbon-outline',
+                'category' => 'نتایج',
+                'description' => 'نمایش امتیاز کلی و شاخص‌های کلیدی به صورت نشان',
+                'defaultProps' => [
+                    'showOverallScore' => 1,
+                    'showRanking' => 1,
+                    'displayMode' => 'badges',
+                    'accentColor' => '#0f766e',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'showOverallScore', 'label' => 'نمایش امتیاز کلی', 'type' => 'toggle'],
+                    ['key' => 'showRanking', 'label' => 'نمایش رتبه نسبی', 'type' => 'toggle'],
+                    ['key' => 'displayMode', 'label' => 'حالت نمایش', 'type' => 'select', 'options' => [
+                        ['value' => 'badges', 'label' => 'نشان'],
+                        ['value' => 'progress', 'label' => 'نوار پیشرفت'],
+                        ['value' => 'tiles', 'label' => 'کارت'],
+                    ]],
+                    ['key' => 'accentColor', 'label' => 'رنگ تاکید', 'type' => 'color', 'help' => 'برای هماهنگی نشان‌ها با رنگ برند.'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'custom_paragraph',
+                'title' => 'متن سفارشی',
+                'icon' => 'document-text-outline',
+                'category' => 'متن',
+                'description' => 'افزودن متن توضیحی با قابلیت تنظیم تراز',
+                'defaultProps' => [
+                    'text' => 'متن نمونه... این ناحیه برای وارد کردن توضیحات تکمیلی استفاده می‌شود.',
+                    'align' => 'right',
+                    'color' => '#334155',
+                    'lineHeight' => 1.8,
+                    'widthMode' => 'full',
+                    'applyToAllPages' => 0,
+                ],
+                'configFields' => [
+                    ['key' => 'text', 'label' => 'متن', 'type' => 'textarea', 'maxLength' => 1000, 'placeholder' => 'متن خود را اینجا بنویسید...', 'help' => 'متنی که روی گواهی نمایش داده می‌شود.'],
+                    ['key' => 'align', 'label' => 'تراز', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                        ['value' => 'justify', 'label' => 'تراز دوطرفه'],
+                    ], 'help' => 'نحوه چینش خطوط متن.'],
+                    ['key' => 'color', 'label' => 'رنگ متن', 'type' => 'color'],
+                    ['key' => 'lineHeight', 'label' => 'فاصله خطوط', 'type' => 'number', 'min' => 1.2, 'max' => 2.4, 'step' => 0.1],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'dynamic_table',
+                'title' => 'جدول داده',
+                'icon' => 'grid-outline',
+                'category' => 'داده',
+                'description' => 'ساخت جدول سفارشی یا نمایش داده‌های ارزیابی به صورت خودکار',
+                'defaultProps' => [
+                    'mode' => 'custom',
+                    'title' => 'جدول اطلاعات',
+                    'showTitle' => 1,
+                    'showHeader' => 1,
+                    'showRowNumbers' => 0,
+                    'tableStyle' => 'grid',
+                    'sizeBehavior' => 'auto_scale',
+                    'tableData' => [
+                        'columns' => ['ستون اول', 'ستون دوم'],
+                        'rows' => [
+                            ['مقدار ردیف ۱ - ستون ۱', 'مقدار ردیف ۱ - ستون ۲'],
+                            ['مقدار ردیف ۲ - ستون ۱', 'مقدار ردیف ۲ - ستون ۲'],
+                        ],
+                    ],
+                    'competencyShowDefinition' => 1,
+                    'toolsShowDescription' => 1,
+                    'widthMode' => 'full',
+                    'applyToAllPages' => 0,
+                ],
+                'configFields' => [
+                    ['key' => 'mode', 'label' => 'منبع داده', 'type' => 'select', 'options' => [
+                        ['value' => 'custom', 'label' => 'جدول سفارشی'],
+                        ['value' => 'competency_model', 'label' => 'جدول شایستگی‌ها (از پایگاه داده)'],
+                        ['value' => 'evaluation_tools', 'label' => 'جدول ابزارهای ارزیابی (از پایگاه داده)'],
+                    ], 'help' => 'انتخاب کنید جدول به صورت دستی پر شود یا از اطلاعات ارزیابی بارگذاری شود.'],
+                    ['key' => 'title', 'label' => 'عنوان جدول', 'type' => 'text', 'maxLength' => 120, 'placeholder' => 'مثلاً جدول خلاصه شایستگی‌ها'],
+                    ['key' => 'showTitle', 'label' => 'نمایش عنوان', 'type' => 'toggle'],
+                    ['key' => 'showHeader', 'label' => 'نمایش سطر عنوان ستون‌ها', 'type' => 'toggle', 'dependsOn' => ['mode' => 'custom']],
+                    ['key' => 'showRowNumbers', 'label' => 'نمایش شماره ردیف', 'type' => 'toggle'],
+                        ['key' => 'tableStyle', 'label' => 'طرح جدول', 'type' => 'select', 'options' => [
+                            ['value' => 'grid', 'label' => 'شبکه‌ای (خط‌کشی کامل)'],
+                            ['value' => 'minimal', 'label' => 'مینیمال (خطوط ظریف)'],
+                            ['value' => 'striped', 'label' => 'ردیف‌های راه‌راه'],
+                            ['value' => 'soft', 'label' => 'کارتی نرم و مدرن'],
+                        ], 'help' => 'یک طرح ظاهری برای جدول انتخاب کنید.'],
+                        ['key' => 'sizeBehavior', 'label' => 'نحوه تطبیق با صفحه', 'type' => 'select', 'options' => [
+                            ['value' => 'auto_scale', 'label' => 'کوچک‌سازی خودکار برای جا شدن در صفحه'],
+                            ['value' => 'allow_split', 'label' => 'تقسیم جدول روی چند صفحه در صورت نیاز'],
+                        ], 'help' => 'اگر جدول خیلی بزرگ شد، می‌توانید اجازه دهید روی صفحه بعدی ادامه پیدا کند.'],
+                    ['key' => 'tableData', 'label' => 'محتوای جدول', 'type' => 'table_editor', 'dependsOn' => ['mode' => 'custom'], 'help' => 'ستون‌ها و ردیف‌های جدول را مدیریت کنید و مقادیر را وارد کنید.'],
+                    ['key' => 'competencyShowDefinition', 'label' => 'نمایش تعریف شایستگی', 'type' => 'toggle', 'dependsOn' => ['mode' => 'competency_model']],
+                    ['key' => 'toolsShowDescription', 'label' => 'نمایش توضیح ابزار', 'type' => 'toggle', 'dependsOn' => ['mode' => 'evaluation_tools']],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'assessment_tool_cards',
+                'title' => 'کارت ابزارهای ارزیابی',
+                'icon' => 'flask-outline',
+                'category' => 'آزمون‌ها',
+                'description' => 'نمایش کارت‌های معرفی ابزارهای آزمون به همراه توضیحات و مشخصات تکمیلی',
+                'defaultProps' => [
+                    'layout' => 'grid',
+                    'showDescription' => 1,
+                    'showCategory' => 1,
+                    'showMeta' => 1,
+                    'showIcons' => 1,
+                    'categoryFilter' => '',
+                    'maxItems' => 6,
+                    'displayMode' => 'all',
+                    'selectedToolIds' => [],
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'layout', 'label' => 'چیدمان کارت‌ها', 'type' => 'select', 'options' => [
+                        ['value' => 'grid', 'label' => 'کارت‌های شبکه‌ای'],
+                        ['value' => 'list', 'label' => 'فهرست خطی'],
+                        ['value' => 'compact', 'label' => 'فشرده (دو ستونه)'],
+                    ], 'help' => 'نحوه نمایش کارت‌ها را متناسب با صفحه انتخاب کنید.'],
+                    ['key' => 'showIcons', 'label' => 'نمایش آیکن ابزار', 'type' => 'toggle'],
+                    ['key' => 'showDescription', 'label' => 'نمایش توضیحات آزمون', 'type' => 'toggle'],
+                    ['key' => 'showCategory', 'label' => 'نمایش دسته‌بندی/نوع', 'type' => 'toggle'],
+                    ['key' => 'showMeta', 'label' => 'نمایش زمان و سطح سختی', 'type' => 'toggle'],
+                    ['key' => 'categoryFilter', 'label' => 'فیلتر دسته‌بندی', 'type' => 'text', 'maxLength' => 80, 'placeholder' => 'مثلاً شخصیت یا شایستگی', 'help' => 'در صورت تعیین، فقط ابزارهایی که دسته‌بندی آن با این عبارت تطبیق دارد نمایش داده می‌شوند.'],
+                    ['key' => 'displayMode', 'label' => 'نحوه انتخاب ابزارها', 'type' => 'select', 'options' => [
+                        ['value' => 'all', 'label' => 'نمایش همه ابزارها'],
+                        ['value' => 'selected', 'label' => 'فقط ابزارهای انتخاب‌شده'],
+                    ], 'help' => 'می‌توانید همه ابزارها را نمایش دهید یا تنها ابزارهایی که انتخاب می‌کنید.'],
+                    ['key' => 'selectedToolIds', 'label' => 'انتخاب ابزارها', 'type' => 'multi_select', 'optionsKey' => 'assessmentToolOptions', 'maxItems' => 12, 'dependsOn' => ['displayMode' => 'selected'], 'help' => 'ابزارهایی را که باید نمایش داده شوند انتخاب کنید. برای لغو انتخاب، تیک هر ابزار را بردارید.'],
+                    ['key' => 'maxItems', 'label' => 'حداکثر کارت‌ها', 'type' => 'number', 'min' => 1, 'max' => 20, 'cast' => 'int', 'dependsOn' => ['displayMode' => 'all']],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'public_profile',
+                'title' => 'پروفایل عمومی',
+                'icon' => 'person-outline',
+                'category' => 'آزمون‌ها',
+                'description' => 'جمع‌بندی داده‌محور از سبک رفتاری، ترجیحات همکاری و تمرکزهای توسعه فرد بر اساس نتایج آزمون‌ها',
+                'defaultProps' => [
+                    'headline' => 'پروفایل رفتاری',
+                    'layout' => 'split',
+                    'style' => 'card',
+                    'accentColor' => '#2563eb',
+                    'showHeadline' => 1,
+                    'showSummary' => 1,
+                    'showGeneralTendencies' => 1,
+                    'showWorkPreferences' => 1,
+                    'showEffectivenessRequirements' => 1,
+                    'showCompanionRequirements' => 0,
+                    'showBehaviorOverview' => 1,
+                    'showStrengthHighlights' => 1,
+                    'showCollaborationTips' => 1,
+                    'showDevelopmentFocus' => 1,
+                    'showStressSignals' => 0,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'placeholder' => 'مثلاً پروفایل رفتاری'],
+                    ['key' => 'showHeadline', 'label' => 'نمایش عنوان', 'type' => 'toggle'],
+                    ['key' => 'layout', 'label' => 'چیدمان', 'type' => 'select', 'options' => [
+                        ['value' => 'split', 'label' => 'متن و نکات در دو ستون'],
+                        ['value' => 'stacked', 'label' => 'چینش ستونی'],
+                    ]],
+                    ['key' => 'style', 'label' => 'استایل نمایش', 'type' => 'select', 'options' => [
+                        ['value' => 'card', 'label' => 'کارت با پس‌زمینه'],
+                        ['value' => 'panel', 'label' => 'پنل مرزبندی شده'],
+                        ['value' => 'minimal', 'label' => 'مینیمال'],
+                    ]],
+                    ['key' => 'accentColor', 'label' => 'رنگ تأکیدی', 'type' => 'color'],
+                    ['key' => 'showSummary', 'label' => 'نمایش خلاصه کلی', 'type' => 'toggle'],
+                    ['key' => 'showGeneralTendencies', 'label' => 'گرایش‌های کلی', 'type' => 'toggle'],
+                    ['key' => 'showWorkPreferences', 'label' => 'ترجیحات کاری', 'type' => 'toggle'],
+                    ['key' => 'showEffectivenessRequirements', 'label' => 'نیازهای موفقیت', 'type' => 'toggle'],
+                    ['key' => 'showCompanionRequirements', 'label' => 'انتظارات از دیگران', 'type' => 'toggle'],
+                    ['key' => 'showBehaviorOverview', 'label' => 'الگوی رفتاری', 'type' => 'toggle'],
+                    ['key' => 'showStrengthHighlights', 'label' => 'نمایش نقاط قوت کلیدی', 'type' => 'toggle'],
+                    ['key' => 'showCollaborationTips', 'label' => 'نمایش توصیه‌های همکاری', 'type' => 'toggle'],
+                    ['key' => 'showDevelopmentFocus', 'label' => 'نمایش تمرکزهای توسعه', 'type' => 'toggle'],
+                    ['key' => 'showStressSignals', 'label' => 'نمایش علائم تنش', 'type' => 'toggle'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'mbti_profile',
+                'title' => 'پروفایل MBTI',
+                'icon' => 'sparkles-outline',
+                'category' => 'آزمون‌ها',
+                'description' => 'نمایش تیپ شخصیتی MBTI همراه با نقاط قوت، فرصت‌های رشد و نمودار ترجیحات',
+                'defaultProps' => [
+                    'headline' => 'پروفایل MBTI',
+                    'showTypeOverview' => 1,
+                    'showSummary' => 1,
+                    'showStrengths' => 1,
+                    'showGrowthAreas' => 1,
+                    'showCollaborationStyle' => 1,
+                    'showPreferenceBars' => 1,
+                    'selectedFeatureCategories' => null,
+                    'startOnNextPage' => 0,
+                    'featureCategoryLabels' => [],
+                    'accentColor' => '#4f46e5',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    [
+                        'key' => 'autoDataNotice',
+                        'label' => 'منبع داده',
+                        'type' => 'note',
+                        'note' => 'محتوای تیپ، خلاصه، نقاط قوت و نمودار ترجیحات MBTI بر اساس پاسخ‌های آزمون هر ارزیاب‌شونده به صورت خودکار تکمیل می‌شود. فقط گزینه‌های نمایش و رنگ در این بخش قابل تنظیم هستند.',
+                    ],
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'placeholder' => 'مثلاً پروفایل شخصیتی MBTI'],
+                    ['key' => 'showTypeOverview', 'label' => 'نمایش تیتر تیپ شخصیتی', 'type' => 'toggle', 'help' => 'در صورت خاموش بودن، کد تیپ، نام پرسونای MBTI و توضیحات ابتدایی نمایش داده نمی‌شود.'],
+                    ['key' => 'showSummary', 'label' => 'نمایش متن خلاصه', 'type' => 'toggle', 'help' => 'در صورت فعال بودن، خلاصه تیپ از داده‌های آزمون نمایش داده می‌شود.'],
+                    ['key' => 'showStrengths', 'label' => 'نمایش نقاط قوت', 'type' => 'toggle', 'help' => 'نقاط قوت از ویژگی‌های ثبت‌شده برای تیپ MBTI استخراج می‌شوند.'],
+                    ['key' => 'showGrowthAreas', 'label' => 'نمایش فرصت‌های رشد', 'type' => 'toggle', 'help' => 'فرصت‌های رشد بر اساس ویژگی‌های تعریف‌شده برای تیپ MBTI نمایش داده می‌شود.'],
+                    ['key' => 'showCollaborationStyle', 'label' => 'نمایش «سبک همکاری ترجیحی»', 'type' => 'toggle'],
+                    ['key' => 'showPreferenceBars', 'label' => 'نمایش نمودار ترجیحات', 'type' => 'toggle', 'help' => 'نسبت ترجیحات چهارگانه بر اساس پاسخ‌های آزمون محاسبه می‌گردد.'],
+                    ['key' => 'selectedFeatureCategories', 'label' => 'دسته‌های ویژگی', 'type' => 'mbti_feature_picker', 'help' => 'فقط دسته‌هایی که فعال باشند به همراه همه ویژگی‌های آن‌ها در گواهی نمایش داده می‌شوند.'],
+                    ['key' => 'startOnNextPage', 'label' => 'شروع از صفحه بعد', 'type' => 'toggle', 'help' => 'در صورت فعال بودن، این بخش از ابتدای صفحه بعد نمایش داده می‌شود.'],
+                    ['key' => 'featureCategoryLabels', 'label' => 'عنوان فارسی دسته‌ها', 'type' => 'mbti_feature_labels', 'help' => 'برای هر دسته عنوان فارسی بنویسید تا در گواهی نمایش داده شود. در صورت خالی بودن عنوان اصلی استفاده می‌شود.'],
+                    ['key' => 'accentColor', 'label' => 'رنگ تأکیدی', 'type' => 'color'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'mbti_type_matrix',
+                'title' => 'ماتریس تیپ‌های MBTI',
+                'icon' => 'grid-outline',
+                'category' => 'آزمون‌ها',
+                'description' => 'نمایش جدول ۱۶ تیپ MBTI با برجسته‌سازی تیپ فعلی ارزیاب‌شونده',
+                'defaultProps' => [
+                    'headline' => 'ماتریس تیپ‌های MBTI',
+                    'showLegend' => 1,
+                    'accentColor' => '#2563eb',
+                    'inactiveColor' => 'rgba(15, 23, 42, 0.16)',
+                    'startOnNextPage' => 0,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'placeholder' => 'مثلاً ماتریس تیپ‌های شخصیتی'],
+                    ['key' => 'showLegend', 'label' => 'نمایش توضیح تیپ فعلی', 'type' => 'toggle'],
+                    ['key' => 'accentColor', 'label' => 'رنگ تیپ فعلی', 'type' => 'color', 'help' => 'برای برجسته کردن خانه مربوط به تیپ، رنگ دلخواه را انتخاب کنید.'],
+                    ['key' => 'inactiveColor', 'label' => 'رنگ حاشیه خانه‌ها', 'type' => 'color'],
+                    ['key' => 'startOnNextPage', 'label' => 'شروع از صفحه بعد', 'type' => 'toggle'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'disc_profile_chart',
+                'title' => 'نمودار DISC',
+                'icon' => 'analytics-outline',
+                'category' => 'نتایج',
+                'description' => 'نمایش شدت مؤلفه‌های Dominance، Influence، Steadiness و Conscientiousness همراه با نکات کلیدی',
+                'defaultProps' => [
+                    'headline' => 'پروفایل DISC',
+                    'summaryText' => 'ترکیب نمرات DISC نشان می‌دهد سبک غالب فرد در رهبری و تعامل چگونه است.',
+                    'showSummary' => 1,
+                    'showHighlights' => 1,
+                    'accentColor' => '#f97316',
+                    'scoreD' => 78,
+                    'scoreI' => 64,
+                    'scoreS' => 55,
+                    'scoreC' => 42,
+                    'highlights' => ['در شرایط فشار تمرکز بر نتیجه بالاست.', 'برای پایداری تیم لازم است بر شنیدن فعال کار شود.'],
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120],
+                    ['key' => 'showSummary', 'label' => 'نمایش متن خلاصه', 'type' => 'toggle'],
+                    ['key' => 'summaryText', 'label' => 'خلاصه تحلیلی', 'type' => 'textarea', 'maxLength' => 400, 'rows' => 3, 'dependsOn' => ['showSummary' => 1]],
+                    ['key' => 'showHighlights', 'label' => 'نمایش نکات کلیدی', 'type' => 'toggle'],
+                    ['key' => 'highlights', 'label' => 'نکات کلیدی', 'type' => 'list', 'maxItems' => 6, 'itemMaxLength' => 160, 'dependsOn' => ['showHighlights' => 1]],
+                    ['key' => 'accentColor', 'label' => 'رنگ تأکیدی', 'type' => 'color'],
+                    ['key' => 'scoreD', 'label' => 'نمره Dominance (D)', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int'],
+                    ['key' => 'scoreI', 'label' => 'نمره Influence (I)', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int'],
+                    ['key' => 'scoreS', 'label' => 'نمره Steadiness (S)', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int'],
+                    ['key' => 'scoreC', 'label' => 'نمره Conscientiousness (C)', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'disc_profile_overview',
+                'title' => 'تحلیل جامع DISC',
+                'icon' => 'people-circle-outline',
+                'category' => 'نتایج',
+                'description' => 'جمع‌بندی سبک غالب، نکات برجسته و ترجیحات رفتاری DISC در قالب یک نمای متنی کامل',
+                'defaultProps' => [
+                    'headline' => 'تحلیل جامع DISC',
+                    'showHeadline' => 1,
+                    'showSummary' => 1,
+                    'summaryText' => '',
+                    'showHighlights' => 1,
+                    'highlightTitle' => 'نکات برجسته',
+                    'showSecondary' => 1,
+                    'showCounts' => 1,
+                    'countsHeadline' => 'مقایسه پاسخ‌ها',
+                    'showSections' => 1,
+                    'visibleSections' => ['general_tendencies', 'work_preferences', 'effectiveness_requirements', 'companion_requirements'],
+                    'sectionsDisplay' => 'two-column',
+                    'accentColor' => '#f97316',
+                    'supportColor' => '#0f172a',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'showHeadline', 'label' => 'نمایش عنوان بخش', 'type' => 'toggle'],
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showHeadline' => 1]],
+                    ['key' => 'showSummary', 'label' => 'نمایش خلاصه تحلیلی', 'type' => 'toggle'],
+                    ['key' => 'summaryText', 'label' => 'متن خلاصه', 'type' => 'textarea', 'rows' => 3, 'maxLength' => 400, 'dependsOn' => ['showSummary' => 1]],
+                    ['key' => 'showHighlights', 'label' => 'نمایش نکات برجسته', 'type' => 'toggle'],
+                    ['key' => 'highlightTitle', 'label' => 'عنوان نکات برجسته', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showHighlights' => 1]],
+                    ['key' => 'showSecondary', 'label' => 'نمایش سبک پشتیبان', 'type' => 'toggle'],
+                    ['key' => 'showCounts', 'label' => 'نمایش جدول پاسخ‌ها', 'type' => 'toggle'],
+                    ['key' => 'countsHeadline', 'label' => 'عنوان جدول پاسخ‌ها', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showCounts' => 1]],
+                    ['key' => 'showSections', 'label' => 'نمایش سرفصل‌های رفتاری', 'type' => 'toggle'],
+                    ['key' => 'visibleSections', 'label' => 'سرفصل‌های قابل نمایش', 'type' => 'multi_select', 'options' => [
+                        ['value' => 'general_tendencies', 'label' => 'گرایش‌های کلی'],
+                        ['value' => 'work_preferences', 'label' => 'ترجیحات کاری'],
+                        ['value' => 'effectiveness_requirements', 'label' => 'نیازهای موفقیت'],
+                        ['value' => 'companion_requirements', 'label' => 'انتظارات از همکاران'],
+                    ], 'maxItems' => 4, 'dependsOn' => ['showSections' => 1]],
+                    ['key' => 'sectionsDisplay', 'label' => 'چیدمان سرفصل‌ها', 'type' => 'select', 'options' => [
+                        ['value' => 'two-column', 'label' => 'دو ستونه'],
+                        ['value' => 'stacked', 'label' => 'زیر هم'],
+                    ], 'dependsOn' => ['showSections' => 1]],
+                    ['key' => 'accentColor', 'label' => 'رنگ تأکیدی', 'type' => 'color'],
+                    ['key' => 'supportColor', 'label' => 'رنگ کمکی', 'type' => 'color'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'disc_triple_graphs',
+                'title' => 'نمودار سه‌گانه DISC',
+                'icon' => 'stats-chart-outline',
+                'category' => 'نتایج',
+                'description' => 'نمایش سه نمودار استاندارد DISC (طبیعی، تطبیق‌یافته، اجتماعی) همراه با توضیحات مفهومی',
+                'defaultProps' => [
+                    'showHeadline' => 1,
+                    'headline' => 'نمودارهای استاندارد DISC',
+                    'graphsJson' => json_encode([
+                        [
+                            'title' => 'Graph I',
+                            'subtitle' => 'سبک رفتاری تطبیق‌یافته',
+                            'points' => ['D' => 68, 'I' => 52, 'S' => 28, 'C' => 64],
+                            'summary' => 'نمودار اول نشان می‌دهد فرد در محیط‌های رسمی تمایل دارد با سرعت بالا تصمیم بگیرد و ساختار را حفظ کند.',
+                            'notes' => ['Intensity' => '++', 'Segment' => 'نتیجه‌محور'],
+                        ],
+                        [
+                            'title' => 'Graph II',
+                            'subtitle' => 'سبک رفتاری طبیعی',
+                            'points' => ['D' => 62, 'I' => 47, 'S' => 36, 'C' => 58],
+                            'summary' => 'در حالت طبیعی، تعادل بیشتری میان تصمیم‌گیری سریع و تعامل روابطی حفظ می‌شود.',
+                            'notes' => ['Intensity' => '+', 'Segment' => 'پیش‌برنده روابط'],
+                        ],
+                        [
+                            'title' => 'Graph III',
+                            'subtitle' => 'سبک رفتاری اجتماعی',
+                            'points' => ['D' => 42, 'I' => 58, 'S' => 46, 'C' => 38],
+                            'summary' => 'بازخورد دیگران نشان می‌دهد فرد در جمع‌های اجتماعی نفوذ کلام بالاتری دارد.',
+                            'notes' => ['Intensity' => 'متوسط', 'Segment' => 'الهام‌بخش'],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                    'descriptionHeadline' => 'مفهوم نمودارها',
+                    'descriptionList' => [
+                        'Graph I (تطبیق‌یافته): نحوه بروز رفتار هنگام نیاز به نتیجه‌گیری سریع و هماهنگی با ساختار رسمی سازمان.',
+                        'Graph II (طبیعی): ترجیحات رفتاری ذاتی فرد که در نبود فشار بیرونی ظاهر می‌شود.',
+                        'Graph III (اجتماعی): تصویری که دیگران از سبک رفتاری فرد در تعاملات روزمره دارند.',
+                    ],
+                    'accentColor' => '#2563eb',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'showHeadline', 'label' => 'نمایش عنوان', 'type' => 'toggle'],
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showHeadline' => 1]],
+                    ['key' => 'graphsJson', 'label' => 'اطلاعات نمودارها (JSON)', 'type' => 'textarea', 'rows' => 8, 'maxLength' => 1600, 'help' => 'چهار مقدار D، I، S و C را برای هر نمودار مشخص کنید. مثال: [{"title":"Graph I","points":{"D":70,"I":45,"S":30,"C":60}}]'],
+                    ['key' => 'descriptionHeadline', 'label' => 'عنوان بخش توضیحات', 'type' => 'text', 'maxLength' => 160],
+                    ['key' => 'descriptionList', 'label' => 'متن‌های توضیحی', 'type' => 'list', 'maxItems' => 6, 'itemMaxLength' => 220],
+                    ['key' => 'accentColor', 'label' => 'رنگ نمودار', 'type' => 'color'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'disc_single_graph',
+                'title' => 'نمودار خطی DISC',
+                'icon' => 'analytics-outline',
+                'category' => 'نتایج',
+                'description' => 'نمایش شدت مؤلفه‌های DISC در قالب یک نمودار خطی مشابه گزارش‌های استاندارد',
+                'defaultProps' => [
+                    'showHeadline' => 1,
+                    'headline' => 'نمودار شدت DISC',
+                    'accentColor' => '#f97316',
+                    'showValues' => 1,
+                    'scoreD' => 78,
+                    'scoreI' => 64,
+                    'scoreS' => 55,
+                    'scoreC' => 42,
+                    'showSummary' => 1,
+                    'summaryText' => 'این نمودار شدت نسبی هر یک از سبک‌های DISC را برای ارزیاب‌شونده نشان می‌دهد.',
+                    'chartSize' => 'medium',
+                    'align' => 'center',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'showHeadline', 'label' => 'نمایش عنوان', 'type' => 'toggle'],
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showHeadline' => 1]],
+                    ['key' => 'accentColor', 'label' => 'رنگ نمودار', 'type' => 'color'],
+                    ['key' => 'showValues', 'label' => 'نمایش جدول مقادیر', 'type' => 'toggle'],
+                    ['key' => 'scoreD', 'label' => 'نمره D', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int'],
+                    ['key' => 'scoreI', 'label' => 'نمره I', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int'],
+                    ['key' => 'scoreS', 'label' => 'نمره S', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int'],
+                    ['key' => 'scoreC', 'label' => 'نمره C', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int'],
+                    ['key' => 'showSummary', 'label' => 'نمایش متن توضیحی', 'type' => 'toggle'],
+                    ['key' => 'summaryText', 'label' => 'متن توضیحی', 'type' => 'textarea', 'rows' => 3, 'maxLength' => 400, 'dependsOn' => ['showSummary' => 1]],
+                    ['key' => 'chartSize', 'label' => 'اندازه نمودار', 'type' => 'select', 'options' => [
+                        ['value' => 'small', 'label' => 'کوچک'],
+                        ['value' => 'medium', 'label' => 'متوسط'],
+                        ['value' => 'large', 'label' => 'بزرگ'],
+                    ]],
+                    ['key' => 'align', 'label' => 'تراز قرارگیری', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ]],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'gauge_indicator',
+                'title' => 'نشانگر گیج',
+                'icon' => 'speedometer-outline',
+                'category' => 'نتایج',
+                'description' => 'نمایش یک شاخص کلیدی عملکرد یا مهارت به صورت گیج نیم‌دایره‌ای',
+                'defaultProps' => [
+                    'headline' => 'شاخص مهارتی',
+                    'label' => 'تفکر تحلیلی',
+                    'unit' => 'از ۱۰۰',
+                    'value' => 82,
+                    'maxValue' => 100,
+                    'size' => 'medium',
+                    'accentColor' => '#0ea5e9',
+                    'showDescription' => 1,
+                    'description' => 'امتیاز به‌دست‌آمده نشان می‌دهد فرد در تحلیل داده‌ها و ارائه توصیه‌های مبتنی بر شواهد عملکرد قوی دارد.',
+                    'sourceKey' => 'analytical_thinking',
+                    'widthMode' => 'half',
+                ],
+                'configFields' => [
+                    ['key' => 'headline', 'label' => 'عنوان شاخص', 'type' => 'text', 'maxLength' => 120],
+                    ['key' => 'label', 'label' => 'برچسب گیج', 'type' => 'text', 'maxLength' => 120],
+                    ['key' => 'unit', 'label' => 'واحد نمایش', 'type' => 'text', 'maxLength' => 60, 'placeholder' => 'مثلاً از ۱۰۰'],
+                    ['key' => 'value', 'label' => 'مقدار فعلی', 'type' => 'number', 'min' => 0, 'max' => 1000],
+                    ['key' => 'maxValue', 'label' => 'حداکثر مقدار', 'type' => 'number', 'min' => 1, 'max' => 1000],
+                    ['key' => 'size', 'label' => 'اندازه', 'type' => 'select', 'options' => [
+                        ['value' => 'small', 'label' => 'کوچک'],
+                        ['value' => 'medium', 'label' => 'متوسط'],
+                        ['value' => 'large', 'label' => 'بزرگ'],
+                    ]],
+                    ['key' => 'accentColor', 'label' => 'رنگ گیج', 'type' => 'color'],
+                    ['key' => 'showDescription', 'label' => 'نمایش توضیحات', 'type' => 'toggle'],
+                    ['key' => 'description', 'label' => 'توضیح تکمیلی', 'type' => 'textarea', 'maxLength' => 400, 'rows' => 3, 'dependsOn' => ['showDescription' => 1]],
+                    ['key' => 'sourceKey', 'label' => 'کلید منبع داده', 'type' => 'text', 'maxLength' => 80, 'placeholder' => 'مثلاً analytical_thinking', 'help' => 'در صورت تطبیق با داده‌های سامانه، مقدار واقعی به‌صورت خودکار جایگزین می‌شود.'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'analytical_thinking_insight',
+                'title' => 'تحلیل تفکر تحلیلی',
+                'icon' => 'trending-up-outline',
+                'category' => 'نتایج',
+                'description' => 'نمایش امتیاز آزمون تفکر تحلیلی به صورت گیج با تفسیر متنی مبتنی بر بازه امتیاز',
+                'defaultProps' => [
+                    'showHeadline' => 1,
+                    'headline' => 'نتیجه تفکر تحلیلی',
+                    'analysisHeadline' => 'تفسیر عملکرد',
+                    'accentColor' => '#0ea5e9',
+                    'alignment' => 'center',
+                    'showDetails' => 1,
+                    'showBreakdown' => 1,
+                    'showAnalysisText' => 1,
+                    'lowThreshold' => 50,
+                    'mediumThreshold' => 60,
+                    'lowText' => 'این امتیاز نشان می‌دهد لازم است با تمرین‌های هدفمند، مهارت در تحلیل داده‌های پیچیده تقویت شود.',
+                    'mediumText' => 'عملکرد در محدوده متوسط قرار دارد و با به‌کارگیری چارچوب‌های تحلیلی منظم می‌توان به سرعت رشد کرد.',
+                    'highText' => 'سطح تفکر تحلیلی بالاتر از میانگین و نشانگر تصمیم‌گیری مبتنی بر شواهد است.',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'showHeadline', 'label' => 'نمایش عنوان', 'type' => 'toggle'],
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showHeadline' => 1]],
+                    ['key' => 'analysisHeadline', 'label' => 'عنوان تفسیر', 'type' => 'text', 'maxLength' => 160],
+                    ['key' => 'accentColor', 'label' => 'رنگ تاکید', 'type' => 'color'],
+                    ['key' => 'alignment', 'label' => 'تراز عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ]],
+                    ['key' => 'showDetails', 'label' => 'نمایش مقادیر پاسخ‌ها', 'type' => 'toggle'],
+                    ['key' => 'showBreakdown', 'label' => 'نمایش جدول درست/نادرست', 'type' => 'toggle'],
+                    ['key' => 'showAnalysisText', 'label' => 'نمایش متن تفسیر', 'type' => 'toggle'],
+                    ['key' => 'lowThreshold', 'label' => 'آستانه بازه متوسط', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int', 'help' => 'امتیاز کمتر از این مقدار در بازه نیاز به توسعه قرار می‌گیرد.'],
+                    ['key' => 'mediumThreshold', 'label' => 'آستانه بازه پیشرفته', 'type' => 'number', 'min' => 0, 'max' => 100, 'cast' => 'int', 'help' => 'امتیاز برابر یا بالاتر از این مقدار در بازه پیشرفته قرار می‌گیرد.'],
+                    ['key' => 'lowText', 'label' => 'متن بازه نیاز به توسعه', 'type' => 'textarea', 'rows' => 3, 'maxLength' => 400, 'dependsOn' => ['showAnalysisText' => 1]],
+                    ['key' => 'mediumText', 'label' => 'متن بازه در حال توسعه', 'type' => 'textarea', 'rows' => 3, 'maxLength' => 400, 'dependsOn' => ['showAnalysisText' => 1]],
+                    ['key' => 'highText', 'label' => 'متن بازه پیشرفته', 'type' => 'textarea', 'rows' => 3, 'maxLength' => 400, 'dependsOn' => ['showAnalysisText' => 1]],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'washup_agreed_competencies',
+                'title' => 'شایستگی‌های Wash-Up',
+                'icon' => 'clipboard-outline',
+                'category' => 'نتایج',
+                'description' => 'نمایش شایستگی‌هایی که در جلسه Wash-Up برای آنها امتیاز توافقی ثبت شده است.',
+                'defaultProps' => [
+                    'showHeadline' => 1,
+                    'headline' => 'شایستگی‌های دارای امتیاز توافقی',
+                    'showSummary' => 1,
+                    'summary' => 'این بخش شایستگی‌هایی را نمایش می‌دهد که در Wash-Up به توافق نهایی رسیده‌اند.',
+                    'layout' => 'cards',
+                    'maxItems' => 6,
+                    'showScore' => 1,
+                    'showGauges' => 1,
+                    'gaugeMax' => '',
+                    'gaugeSize' => 42,
+                    'maxPerTool' => 0,
+                    'eachToolOnNewPage' => 1,
+                    'toolHeaderAlign' => 'auto',
+                    'toolHeaderSize' => 'auto',
+                    'scoreInline' => 1,
+                    'scoreOrder' => 'score_first',
+                    'groupedItemAppearance' => 'cards',
+                    'groupedCardsPerRow' => 2,
+                    'groupedCardBorder' => 1,
+                    'groupedCardShadow' => 0,
+                    'groupedCardInnerLayout' => 'vertical',
+                    'showDimension' => 1,
+                    'showCompetencyCode' => 0,
+                    'showCompetencyNature' => 1,
+                    // Example notes table under each tool group
+                    'showExampleNotes' => 1,
+                    'exampleNotesTitle' => 'مصداق‌ها و توضیحات ارزیاب',
+                    'exampleNotesShowEvaluator' => 1,
+                    'showTools' => 1,
+                    'showUpdatedInfo' => 1,
+                    'showFooter' => 0,
+                    'footerNote' => '',
+                    'emptyMessage' => 'برای این ارزیابی هنوز امتیاز توافقی ثبت نشده است.',
+                    'accentColor' => '#2563eb',
+                    'alignment' => 'right',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'showHeadline', 'label' => 'نمایش عنوان', 'type' => 'toggle'],
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 160, 'dependsOn' => ['showHeadline' => 1]],
+                    ['key' => 'accentColor', 'label' => 'رنگ تاکید', 'type' => 'color'],
+                    ['key' => 'alignment', 'label' => 'تراز عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ]],
+                    ['key' => 'layout', 'label' => 'طرح نمایش', 'type' => 'select', 'options' => [
+                        ['value' => 'cards', 'label' => 'کارت‌ها'],
+                        ['value' => 'list', 'label' => 'فهرست'],
+                        ['value' => 'table', 'label' => 'جدول'],
+                        ['value' => 'grouped_by_tool', 'label' => 'گروه‌بندی بر اساس ابزار'],
+                    ]],
+                    ['key' => 'maxItems', 'label' => 'حداکثر آیتم‌ها', 'type' => 'number', 'min' => 1, 'max' => 12, 'cast' => 'int'],
+                    ['key' => 'showGauges', 'label' => 'نمایش گیج کنار امتیاز', 'type' => 'toggle'],
+                    ['key' => 'gaugeMax', 'label' => 'سقف گیج (۵/۱۰/۱۰۰)', 'type' => 'number', 'min' => 0, 'max' => 100, 'help' => 'اگر ۰ یا خالی باشد به صورت خودکار از روی داده‌ها ۵/۱۰/۱۰۰ تشخیص داده می‌شود.'],
+                    ['key' => 'gaugeSize', 'label' => 'اندازه گیج (px)', 'type' => 'number', 'min' => 24, 'max' => 120, 'cast' => 'int'],
+                    ['key' => 'maxPerTool', 'label' => 'حداکثر آیتم در هر ابزار', 'type' => 'number', 'min' => 0, 'max' => 50, 'cast' => 'int', 'help' => '۰ یعنی بدون محدودیت در هر گروه ابزار.'],
+                    ['key' => 'eachToolOnNewPage', 'label' => 'هر ابزار در صفحه جدا', 'type' => 'toggle', 'dependsOn' => ['layout' => 'grouped_by_tool']],
+                    // Grouped-by-tool presentation
+                    ['key' => 'toolHeaderAlign', 'label' => 'تراز عنوان ابزار', 'type' => 'select', 'options' => [
+                        ['value' => 'auto', 'label' => 'خودکار'],
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ], 'dependsOn' => ['layout' => 'grouped_by_tool']],
+                    ['key' => 'toolHeaderSize', 'label' => 'اندازه عنوان ابزار', 'type' => 'select', 'options' => [
+                        ['value' => 'auto', 'label' => 'خودکار'],
+                        ['value' => 'normal', 'label' => 'عادی'],
+                        ['value' => 'large', 'label' => 'بزرگ'],
+                        ['value' => 'xlarge', 'label' => 'خیلی بزرگ'],
+                    ], 'dependsOn' => ['layout' => 'grouped_by_tool']],
+                    ['key' => 'scoreInline', 'label' => 'نمایش امتیاز و گیج در یک ردیف', 'type' => 'toggle', 'dependsOn' => ['layout' => 'grouped_by_tool']],
+                    ['key' => 'scoreOrder', 'label' => 'ترتیب نمایش', 'type' => 'select', 'options' => [
+                        ['value' => 'score_first', 'label' => 'ابتدا امتیاز سپس گیج'],
+                        ['value' => 'gauge_first', 'label' => 'ابتدا گیج سپس امتیاز'],
+                    ], 'dependsOn' => ['layout' => 'grouped_by_tool']],
+                    ['key' => 'groupedItemAppearance', 'label' => 'نمایش آیتم‌ها', 'type' => 'select', 'options' => [
+                        ['value' => 'cards', 'label' => 'کارتی (شبکه‌ای)'],
+                        ['value' => 'list', 'label' => 'فهرست ساده'],
+                    ], 'dependsOn' => ['layout' => 'grouped_by_tool']],
+                    ['key' => 'groupedCardsPerRow', 'label' => 'تعداد ستون کارت‌ها', 'type' => 'number', 'min' => 1, 'max' => 4, 'cast' => 'int', 'dependsOn' => ['groupedItemAppearance' => 'cards']],
+                    ['key' => 'groupedCardBorder', 'label' => 'نمایش کادر دور کارت', 'type' => 'toggle', 'dependsOn' => ['groupedItemAppearance' => 'cards']],
+                    ['key' => 'groupedCardShadow', 'label' => 'سایه کارت', 'type' => 'toggle', 'dependsOn' => ['groupedItemAppearance' => 'cards']],
+                    ['key' => 'groupedCardInnerLayout', 'label' => 'چیدمان داخل کارت', 'type' => 'select', 'options' => [
+                        ['value' => 'vertical', 'label' => 'عمودی (گیج، امتیاز، سپس عنوان)'],
+                        ['value' => 'horizontal', 'label' => 'افقی (پیش‌فرض قبلی)'],
+                    ], 'dependsOn' => ['groupedItemAppearance' => 'cards']],
+                    // Example notes table under grouped-by-tool
+                    ['key' => 'showExampleNotes', 'label' => 'نمایش جدول توضیحات مصادیق', 'type' => 'toggle', 'dependsOn' => ['layout' => 'grouped_by_tool']],
+                    ['key' => 'exampleNotesTitle', 'label' => 'عنوان جدول توضیحات', 'type' => 'text', 'maxLength' => 160, 'dependsOn' => ['layout' => 'grouped_by_tool', 'showExampleNotes' => 1]],
+                    ['key' => 'exampleNotesShowEvaluator', 'label' => 'نمایش ستون ارزیاب', 'type' => 'toggle', 'dependsOn' => ['layout' => 'grouped_by_tool', 'showExampleNotes' => 1]],
+                    ['key' => 'showSummary', 'label' => 'نمایش خلاصه', 'type' => 'toggle'],
+                    ['key' => 'summary', 'label' => 'متن خلاصه', 'type' => 'textarea', 'rows' => 3, 'maxLength' => 400, 'dependsOn' => ['showSummary' => 1]],
+                    ['key' => 'showScore', 'label' => 'نمایش امتیاز', 'type' => 'toggle'],
+                    ['key' => 'showDimension', 'label' => 'نمایش حوزه شایستگی', 'type' => 'toggle'],
+                    ['key' => 'showCompetencyCode', 'label' => 'نمایش کد شایستگی', 'type' => 'toggle'],
+                    ['key' => 'showCompetencyNature', 'label' => 'نمایش نوع شایستگی (عمومی/اختصاصی)', 'type' => 'toggle'],
+                    ['key' => 'showTools', 'label' => 'نمایش ابزارهای موثر', 'type' => 'toggle'],
+                    ['key' => 'showUpdatedInfo', 'label' => 'نمایش اطلاعات به‌روزرسانی', 'type' => 'toggle'],
+                    ['key' => 'showFooter', 'label' => 'نمایش یادداشت پایانی', 'type' => 'toggle'],
+                    ['key' => 'footerNote', 'label' => 'متن یادداشت پایانی', 'type' => 'textarea', 'rows' => 2, 'maxLength' => 300, 'dependsOn' => ['showFooter' => 1]],
+                    ['key' => 'emptyMessage', 'label' => 'پیام حالت خالی', 'type' => 'text', 'maxLength' => 200],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'custom_image',
+                'title' => 'تصویر سفارشی',
+                'icon' => 'images-outline',
+                'category' => 'رسانه',
+                'description' => 'نمایش تصویر از منابع پویا یا URL ثابت',
+                'defaultProps' => [
+                    'mode' => 'dynamic',
+                    'dynamicSource' => 'evaluation_cover',
+                    'staticUrl' => '',
+                    'width' => '100%',
+                    'borderRadius' => '16px',
+                    'altText' => 'تصویر گواهی',
+                    'align' => 'center',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'mode', 'label' => 'منبع تصویر', 'type' => 'select', 'options' => [
+                        ['value' => 'dynamic', 'label' => 'پویا (بر اساس داده)'],
+                        ['value' => 'static', 'label' => 'آدرس ثابت'],
+                    ], 'help' => 'در حالت پویا تصویر از داده‌های سیستم دریافت می‌شود.'],
+                    ['key' => 'dynamicSource', 'label' => 'منبع پویا', 'type' => 'select', 'options' => [
+                        ['value' => 'evaluation_cover', 'label' => 'تصویر کاور ارزیابی'],
+                        ['value' => 'organization_logo', 'label' => 'لوگوی سازمان'],
+                        ['value' => 'participant_avatar', 'label' => 'تصویر ارزیاب‌شونده'],
+                        ['value' => 'competency_model', 'label' => 'تصویر مدل شایستگی'],
+                    ], 'dependsOn' => ['mode' => 'dynamic']],
+                    ['key' => 'staticUrl', 'label' => 'آدرس تصویر ثابت', 'type' => 'text', 'maxLength' => 255, 'placeholder' => 'https://example.com/image.png', 'help' => 'می‌توانید تصویر دلخواه را آپلود کنید یا آدرس اینترنتی آن را وارد نمایید.', 'allowUpload' => true, 'accept' => 'image/*', 'maxFileSize' => 5242880, 'dependsOn' => ['mode' => 'static']],
+                    ['key' => 'width', 'label' => 'عرض (مثلاً 80% یا 260px)', 'type' => 'text', 'maxLength' => 32],
+                    ['key' => 'borderRadius', 'label' => 'گردی گوشه‌ها', 'type' => 'text', 'maxLength' => 32],
+                    ['key' => 'altText', 'label' => 'متن جایگزین', 'type' => 'text', 'maxLength' => 120, 'help' => 'برای دسترس‌پذیری و زمانی که تصویر لود نمی‌شود.'],
+                    ['key' => 'align', 'label' => 'تراز تصویر', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ], 'help' => 'موقعیت قرارگیری تصویر در عرض صفحه را مشخص کنید.'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'logo_display',
+                'title' => 'لوگو',
+                'icon' => 'shield-outline',
+                'category' => 'رسانه',
+                'description' => 'نمایش لوگوی سازمان یا سامانه با اندازه‌های مختلف',
+                'defaultProps' => [
+                    'source' => 'organization',
+                    'align' => 'center',
+                    'size' => 'medium',
+                    'sizePercent' => '',
+                    'showLabel' => 0,
+                    'customLabel' => '',
+                    'showBorder' => 0,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'source', 'label' => 'منبع لوگو', 'type' => 'select', 'options' => [
+                        ['value' => 'organization', 'label' => 'لوگوی سازمان'],
+                        ['value' => 'system', 'label' => 'لوگوی سامانه'],
+                    ], 'help' => 'انتخاب کنید لوگوی سازمان نمایش داده شود یا لوگوی سامانه.'],
+                    ['key' => 'align', 'label' => 'تراز', 'type' => 'select', 'options' => [
+                        ['value' => 'right', 'label' => 'راست'],
+                        ['value' => 'center', 'label' => 'وسط'],
+                        ['value' => 'left', 'label' => 'چپ'],
+                    ], 'help' => 'موقعیت قرارگیری لوگو در صفحه.'],
+                    ['key' => 'size', 'label' => 'اندازه لوگو', 'type' => 'select', 'options' => [
+                        ['value' => 'small', 'label' => 'کوچک'],
+                        ['value' => 'medium', 'label' => 'متوسط'],
+                        ['value' => 'large', 'label' => 'بزرگ'],
+                    ], 'help' => 'اندازه نمایش لوگو را مشخص می‌کند.'],
+                    ['key' => 'sizePercent', 'label' => 'اندازه (درصد)', 'type' => 'number', 'min' => 5, 'max' => 100, 'step' => 1, 'help' => 'عرض لوگو نسبت به عرض بخش به صورت درصد. اگر خالی باشد از اندازه پیش‌فرض (کوچک/متوسط/بزرگ) استفاده می‌شود.'],
+                    ['key' => 'showLabel', 'label' => 'نمایش عنوان', 'type' => 'toggle', 'help' => 'در صورت فعال بودن متنی در زیر لوگو نمایش داده می‌شود.'],
+                    ['key' => 'customLabel', 'label' => 'عنوان سفارشی', 'type' => 'text', 'maxLength' => 120, 'placeholder' => 'مثلاً: لوگوی سازمان شما', 'dependsOn' => ['showLabel' => true]],
+                    ['key' => 'showBorder', 'label' => 'نمایش قاب دور لوگو', 'type' => 'toggle'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ], 'help' => 'برای نمایش دو لوگو در کنار هم، گزینه نیم‌عرض را انتخاب کنید.'],
+                ],
+            ],
+            [
+                'type' => 'signature_block',
+                'title' => 'بلوک امضا',
+                'icon' => 'pencil-outline',
+                'category' => 'امضا و تایید',
+                'description' => 'نمایش جایگاه امضای مدیران یا مهر سازمان',
+                'defaultProps' => [
+                    'headline' => 'تاییدیه سازمان',
+                    'showFirstSigner' => 1,
+                    'firstSignerLabel' => 'نماینده اول',
+                    'showSecondSigner' => 0,
+                    'secondSignerLabel' => 'نماینده دوم',
+                    'showSeal' => 1,
+                    'sealLabel' => 'مهر سازمان',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'headline', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120],
+                    ['key' => 'showFirstSigner', 'label' => 'امضای مدیر اول', 'type' => 'toggle'],
+                    ['key' => 'firstSignerLabel', 'label' => 'عنوان امضا ۱', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showFirstSigner' => true]],
+                    ['key' => 'showSecondSigner', 'label' => 'امضای مدیر دوم', 'type' => 'toggle'],
+                    ['key' => 'secondSignerLabel', 'label' => 'عنوان امضا ۲', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showSecondSigner' => true]],
+                    ['key' => 'showSeal', 'label' => 'نمایش مهر سازمان', 'type' => 'toggle'],
+                    ['key' => 'sealLabel', 'label' => 'عنوان مهر', 'type' => 'text', 'maxLength' => 120, 'dependsOn' => ['showSeal' => true]],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'divider',
+                'title' => 'خط جداکننده',
+                'icon' => 'remove-outline',
+                'category' => 'چیدمان',
+                'description' => 'ایجاد مرز بصری بین بخش‌ها',
+                'defaultProps' => [
+                    'style' => 'solid',
+                    'thickness' => 2,
+                    'color' => 'rgba(15, 23, 42, 0.16)',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'style', 'label' => 'نوع خط', 'type' => 'select', 'options' => [
+                        ['value' => 'solid', 'label' => 'یکنواخت'],
+                        ['value' => 'dashed', 'label' => 'خط چین'],
+                        ['value' => 'double', 'label' => 'دوتایی'],
+                    ]],
+                    ['key' => 'thickness', 'label' => 'ضخامت', 'type' => 'number', 'min' => 1, 'max' => 12, 'cast' => 'int'],
+                    ['key' => 'color', 'label' => 'کد رنگ', 'type' => 'text', 'maxLength' => 32],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'spacer',
+                'title' => 'فاصله عمودی',
+                'icon' => 'ellipsis-vertical-outline',
+                'category' => 'چیدمان',
+                'description' => 'تنظیم فاصله بین عناصر',
+                'defaultProps' => [
+                    'height' => 32,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'height', 'label' => 'ارتفاع (پیکسل)', 'type' => 'number', 'min' => 8, 'max' => 160, 'cast' => 'int'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'chart_placeholder',
+                'title' => 'نمایه نمودار',
+                'icon' => 'stats-chart-outline',
+                'category' => 'نتایج',
+                'description' => 'بخش مخصوص قرارگیری نمودارهای نتایج آزمون',
+                'defaultProps' => [
+                    'chartType' => 'radar',
+                    'showLegend' => 1,
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'chartType', 'label' => 'نوع نمودار', 'type' => 'select', 'options' => [
+                        ['value' => 'radar', 'label' => 'رادار شایستگی'],
+                        ['value' => 'bar', 'label' => 'میله‌ای'],
+                        ['value' => 'line', 'label' => 'خطی'],
+                    ]],
+                    ['key' => 'showLegend', 'label' => 'نمایش راهنما', 'type' => 'toggle'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+            [
+                'type' => 'washup_final_result',
+                'title' => 'نتیجه نهایی WashUp',
+                'icon' => 'checkmark-done-circle-outline',
+                'category' => 'نتایج',
+                'description' => 'جمع‌بندی نهایی، توصیه‌ها و پیشنهادات توسعه از WashUp',
+                'defaultProps' => [
+                    'title' => 'نتیجه نهایی و جمع‌بندی',
+                    'showSummary' => 1,
+                    'showRecommendations' => 1,
+                    'showDevelopmentSuggestions' => 1,
+                    'showNextSteps' => 1,
+                    'appearance' => 'card',
+                    'widthMode' => 'full',
+                ],
+                'configFields' => [
+                    ['key' => 'title', 'label' => 'عنوان بخش', 'type' => 'text', 'maxLength' => 120, 'placeholder' => 'مثلاً نتیجه نهایی'],
+                    ['key' => 'showSummary', 'label' => 'نمایش جمع‌بندی کلی', 'type' => 'toggle', 'help' => 'خلاصه نتایج و ارزیابی کلی'],
+                    ['key' => 'showRecommendations', 'label' => 'نمایش توصیه‌ها', 'type' => 'toggle', 'help' => 'توصیه‌های بهبود عملکرد'],
+                    ['key' => 'showDevelopmentSuggestions', 'label' => 'نمایش پیشنهادات توسعه', 'type' => 'toggle', 'help' => 'پیشنهادهای توسعه مهارت‌ها (اختیاری)'],
+                    ['key' => 'showNextSteps', 'label' => 'نمایش گام‌های بعدی', 'type' => 'toggle', 'help' => 'اقدامات و گام‌های پیشنهادی بعدی (اختیاری)'],
+                    ['key' => 'appearance', 'label' => 'استایل نمایش', 'type' => 'select', 'options' => [
+                        ['value' => 'card', 'label' => 'کارت برجسته'],
+                        ['value' => 'boxed', 'label' => 'قاب‌دار'],
+                        ['value' => 'minimal', 'label' => 'مینیمال'],
+                    ], 'help' => 'نحوه نمایش بصری اطلاعات'],
+                    ['key' => 'widthMode', 'label' => 'عرض عنصر', 'type' => 'select', 'options' => [
+                        ['value' => 'full', 'label' => 'تمام عرض'],
+                        ['value' => 'half', 'label' => 'نیم‌عرض (دو ستون)'],
+                    ]],
+                ],
+            ],
+        ];
+    }
+
+    private function getCertificatePreviewSampleData(array $organization, array $user): array
+    {
+        $organizationName = isset($organization['name']) && $organization['name'] !== ''
+            ? (string) $organization['name']
+            : 'سازمان نمونه';
+
+        return [
+            'organization_name' => $organizationName,
+            'user_first_name' => 'سمانه',
+            'user_last_name' => 'جعفری',
+            'user_full_name' => 'سمانه جعفری',
+            'user_job_title' => 'کارشناس توسعه منابع انسانی',
+            'user_organization_post' => 'سرپرست واحد توسعه',
+            'user_department' => 'معاونت سرمایه انسانی',
+            'user_personnel_code' => '۱۲۳۴۵۶',
+            'user_national_id' => '۰۰۱۲۳۴۵۶۷۸',
+            'user_service_location' => 'اداره کل منابع انسانی',
+            'user_username' => 's.jafari',
+            'user_initials' => 'SJ',
+            'organization_logo_url' => UtilityHelper::baseUrl('public/assets/images/thumbs/invoice-logo3.png'),
+            'system_logo_url' => UtilityHelper::baseUrl('public/assets/images/logo/logo.png'),
+            'evaluation_title' => 'برنامه توسعه رهبری ۱۴۰۴',
+            'evaluation_period' => '۱۴۰۴/۰۷/۱۰ تا ۱۴۰۴/۰۷/۲۵',
+            'issued_at' => '۱۴۰۴/۰۸/۰۱',
+            'overall_score' => '۸۶',
+            'overall_score_suffix' => 'از ۱۰۰',
+            'overall_score_numeric' => 86,
+            'ranking_value' => '۱۰ از ۱۲۰',
+            'ranking_position' => 10,
+            'ranking_total' => 120,
+            'evaluators_count' => '۶ ارزیاب',
+            'evaluatees_count' => '۱ ارزیاب‌شونده',
+            'signers' => [
+                ['name' => 'کتایون محمدی', 'title' => 'مدیر توسعه منابع انسانی'],
+                ['name' => 'رضا احمدی', 'title' => 'مدیرعامل'],
+            ],
+            'evaluation_cover_image_url' => UtilityHelper::baseUrl('public/assets/images/thumbs/mentor-cover-img4.png'),
+            'participant_avatar_url' => UtilityHelper::baseUrl('public/assets/images/thumbs/avatar-img4.png'),
+            'competency_model_name' => 'مدل شایستگی رهبران آینده',
+            'competency_model_image_url' => UtilityHelper::baseUrl('public/assets/images/thumbs/mentor-cover-img7.png'),
+            'competencies' => [
+                ['name' => 'رهبری تحول‌آفرین', 'definition' => 'توانایی الهام‌بخشی و هدایت تیم در مسیر تغییرات سازمانی.'],
+                ['name' => 'تفکر استراتژیک', 'definition' => 'تحلیل آینده کسب‌وکار و ترجمه آن به اولویت‌های اجرایی.'],
+                ['name' => 'توسعه کارکنان', 'definition' => 'حمایت از رشد حرفه‌ای اعضای تیم با بازخورد و مربیگری.'],
+            ],
+            'evaluation_tools' => [
+                ['name' => 'ارزیابی ۳۶۰ درجه', 'description' => 'جمع‌آوری بازخورد از مدیر، همکار و زیردست برای فرایند یادگیری.'],
+                ['name' => 'آزمون MBTI', 'description' => 'سنجش ترجیحات شخصیتی و سبک تصمیم‌گیری.'],
+                ['name' => 'مصاحبه رفتاری ساختارمند', 'description' => 'تحلیل تجربه‌های واقعی فرد برای ارزیابی شایستگی‌ها.'],
+            ],
+            'assessment_tools' => [
+                [
+                    'id' => 'sample_mbti',
+                    'name' => 'MBTI',
+                    'category' => 'شخصیت‌شناسی',
+                    'description' => 'سنجش ترجیحات شخصیتی بر اساس چهار بعد اصلی و ارائه تیپ رفتاری.',
+                    'estimatedTime' => '۱۵ دقیقه',
+                    'difficulty' => 'ساده',
+                    'icon' => 'sparkles-outline',
+                ],
+                [
+                    'id' => 'sample_disc',
+                    'name' => 'DISC',
+                    'category' => 'سبک ارتباطی',
+                    'description' => 'تحلیل سبک غالب رفتاری در محیط کار و نحوه تعامل با دیگران.',
+                    'estimatedTime' => '۱۲ دقیقه',
+                    'difficulty' => 'متوسط',
+                    'icon' => 'analytics-outline',
+                ],
+                [
+                    'id' => 'sample_analytical',
+                    'name' => 'آزمون تفکر تحلیلی',
+                    'category' => 'مهارت‌های شناختی',
+                    'description' => 'ارزیابی توانایی تحلیل داده‌ها، حل مسئله و تصمیم‌گیری مبتنی بر شواهد.',
+                    'estimatedTime' => '۲۰ دقیقه',
+                    'difficulty' => 'چالش‌برانگیز',
+                    'icon' => 'speedometer-outline',
+                ],
+            ],
+            'mbti_profile' => [
+                'type_code' => 'ENFP-A',
+                'type_title' => 'الهام‌بخش خلاق',
+                'type_category' => 'دیپلومات‌ها',
+                'type_summary' => 'افراد این تیپ با ترکیب انرژی بالای هیجانی و نگاه آینده‌نگر، دیگران را با ایده‌های نو همراه می‌کنند.',
+                'type_short_description' => 'ترکیبی از شهود و احساس که به ایجاد انگیزه، همدلی و نوآفرینی کمک می‌کند.',
+                'type_description' => 'تیپ ENFP به‌عنوان الهام‌بخش خلاق، با تمرکز بر فرصت‌ها و امکان‌های نو وارد میدان می‌شود و ترجیح می‌دهد با استقلال عمل و شبکه‌ای گسترده از ارتباطات ایده‌های تازه را به اجرا درآورد.',
+                'cognitive_functions' => 'Ne → Fi → Te → Si',
+                'persona_name' => 'الهام‌بخش خلاق',
+                'summary' => 'این تیپ شخصیتی با رویکرد خلاقانه، انرژی بالایی در ایجاد انگیزه و پیشبرد تغییرات دارد و در تیم‌ها الهام‌بخش است.',
+                'strengths' => ['ایده‌پردازی و نوآوری', 'ارتباطات بین‌فردی قوی', 'سازگار با تغییرات'],
+                'growth_areas' => ['نیاز به برنامه‌ریزی دقیق‌تر', 'مدیریت زمان و اولویت‌بندی'],
+                'feature_groups' => [
+                    ['category' => 'نقاط قوت اصلی', 'items' => ['ایده‌پردازی و نوآوری', 'ارتباطات بین‌فردی قوی', 'سازگار با تغییرات']],
+                    ['category' => 'فرصت‌های رشد', 'items' => ['نیاز به برنامه‌ریزی دقیق‌تر', 'مدیریت زمان و اولویت‌بندی']],
+                    ['category' => 'سبک همکاری ترجیحی', 'items' => ['ترجیح تعاملات منعطف و غیررسمی', 'بهترین عملکرد در تیم‌های چندوظیفه‌ای و متنوع']],
+                ],
+                'features' => [
+                    'نقاط قوت اصلی' => ['ایده‌پردازی و نوآوری', 'ارتباطات بین‌فردی قوی', 'سازگار با تغییرات'],
+                    'فرصت‌های رشد' => ['نیاز به برنامه‌ریزی دقیق‌تر', 'مدیریت زمان و اولویت‌بندی'],
+                    'سبک همکاری ترجیحی' => ['ترجیح تعاملات منعطف و غیررسمی', 'بهترین عملکرد در تیم‌های چندوظیفه‌ای و متنوع'],
+                ],
+                'preferences' => [
+                    ['axis' => 'برون‌گرایی (E)', 'value' => 72],
+                    ['axis' => 'شهود (N)', 'value' => 68],
+                    ['axis' => 'احساس (F)', 'value' => 74],
+                    ['axis' => 'ادراک (P)', 'value' => 66],
+                ],
+                'preferenceEI' => 72,
+                'preferenceSN' => 68,
+                'preferenceTF' => 74,
+                'preferenceJP' => 66,
+            ],
+            'disc_profile' => [
+                'has_disc' => true,
+                'D' => 78,
+                'I' => 64,
+                'S' => 55,
+                'C' => 42,
+                'primary_code' => 'D',
+                'primary_label' => 'Dominance',
+                'secondary_code' => 'D/I',
+                'secondary_label' => 'Dominance / Influence',
+                'best_counts' => ['D' => 39, 'I' => 32, 'S' => 28, 'C' => 21],
+                'least_counts' => ['D' => 12, 'I' => 18, 'S' => 22, 'C' => 16],
+                'primary_meta' => [
+                    'disc_type_code' => 'D',
+                    'title' => 'رهبر نتیجه‌گرا',
+                    'short_description' => 'هدایت پروژه‌ها با تمرکز بر نتیجه سریع و مشخص.',
+                    'general_tendencies' => "تمایل به تصمیم‌گیری سریع و پیشبرد پروژه‌ها.\nتمرکز بر دستیابی به نتیجه در کوتاه‌ترین زمان.",
+                    'work_preferences' => "آزادی عمل در تعیین روش انجام کار.\nتیم‌های چابک با نقش‌های مشخص.",
+                    'effectiveness_requirements' => "اهداف شفاف و قابل اندازه‌گیری.\nاختیار کافی برای اعمال تصمیمات.",
+                    'companion_requirements' => "همکارانی که بازخورد مستقیم ارائه می‌کنند.\nتیمی که در مواجهه با چالش‌ها همراه بماند.",
+                ],
+                'secondary_meta' => [
+                    'disc_type_code' => 'DI',
+                    'title' => 'الهام‌بخش پرانرژی',
+                    'short_description' => 'با انرژی و نفوذ اجتماعی بالا فعالیت‌ها را آغاز می‌کند.',
+                    'general_tendencies' => "ایجاد انگیزه در دیگران با انرژی بالا.\nاهمیت به دیده شدن پیشرفت‌ها و جشن گرفتن موفقیت.",
+                    'work_preferences' => "تعامل مستمر با ذی‌نفعان متنوع.\nجلسات کوتاه و پرانرژی برای مرور پیشرفت.",
+                ],
+                'highlights' => ['سبک رهبری نتیجه‌گرا و قاطع', 'تمرکز بر سرعت در تصمیم‌گیری', 'نیاز به تقویت گوش‌دادن فعال'],
+                'summary' => 'پروفایل DISC نشان می‌دهد فرد در نقش‌های نیازمند قاطعیت و پیشرانی پروژه‌ها عملکرد قوی دارد و لازم است روی ثبات و مشارکت تیمی بیشتر سرمایه‌گذاری کند.',
+                'triple_graphs' => [
+                    'graphs' => [
+                        [
+                            'title' => 'Graph I',
+                            'subtitle' => 'سبک رفتاری تطبیق‌یافته',
+                            'points' => ['D' => 68, 'I' => 52, 'S' => 28, 'C' => 64],
+                            'summary' => 'نمودار اول نشان می‌دهد فرد در محیط‌های رسمی تمایل دارد با سرعت بالا تصمیم بگیرد و ساختار را حفظ کند.',
+                            'notes' => ['Intensity' => '++', 'Segment' => 'نتیجه‌محور'],
+                        ],
+                        [
+                            'title' => 'Graph II',
+                            'subtitle' => 'سبک رفتاری طبیعی',
+                            'points' => ['D' => 62, 'I' => 47, 'S' => 36, 'C' => 58],
+                            'summary' => 'در حالت طبیعی، تعادل بیشتری میان تصمیم‌گیری سریع و تعامل روابطی حفظ می‌شود.',
+                            'notes' => ['Intensity' => '+', 'Segment' => 'پیش‌برنده روابط'],
+                        ],
+                        [
+                            'title' => 'Graph III',
+                            'subtitle' => 'سبک رفتاری اجتماعی',
+                            'points' => ['D' => 42, 'I' => 58, 'S' => 46, 'C' => 38],
+                            'summary' => 'بازخورد دیگران نشان می‌دهد فرد در جمع‌های اجتماعی نفوذ کلام بالاتری دارد.',
+                            'notes' => ['Intensity' => 'متوسط', 'Segment' => 'الهام‌بخش'],
+                        ],
+                    ],
+                    'descriptions' => [
+                        'Graph I (تطبیق‌یافته): نحوه بروز رفتار هنگام نیاز به نتیجه‌گیری سریع و هماهنگی با ساختار رسمی سازمان.',
+                        'Graph II (طبیعی): ترجیحات رفتاری ذاتی فرد که در نبود فشار بیرونی ظاهر می‌شود.',
+                        'Graph III (اجتماعی): تصویری که دیگران از سبک رفتاری فرد در تعاملات روزمره دارند.',
+                    ],
+                ],
+            ],
+            'analytical' => [
+                'has_analytical' => true,
+                'score' => 68,
+                'percent' => 68,
+                'answered' => 25,
+                'correct' => 17,
+                'incorrect' => 8,
+                'band' => 'high',
+                'band_label' => 'عملکرد قوی',
+                'analysis_text' => 'امتیاز به‌دست‌آمده نشان می‌دهد توان تحلیل داده‌ها و استخراج الگوهای معنادار در سطح بالایی قرار دارد و تصمیم‌ها بر پایه شواهد اتخاذ می‌شود.',
+                'analysis_headline' => 'تفسیر عملکرد تحلیلی',
+                'analysis_texts' => [
+                    'low' => 'این امتیاز حاکی از نیاز به تمرین بیشتر در تحلیل داده‌های پیچیده و تقویت روش‌های ساختاردهی مسئله است.',
+                    'medium' => 'عملکرد در محدوده متوسط قرار دارد؛ تمرکز بر مستندسازی منظم یافته‌ها و بررسی مجدد فرضیات می‌تواند منجر به رشد محسوس شود.',
+                    'high' => 'توان تفکر تحلیلی بالاتر از میانگین است و نشان می‌دهد تصمیم‌ها بر اساس جمع‌آوری اطلاعات، مقایسه گزینه‌ها و نتیجه‌گیری دقیق اتخاذ می‌شوند.',
+                ],
+                'thresholds' => [
+                    'low' => 50,
+                    'medium' => 60,
+                ],
+                'range_labels' => [
+                    'low' => 'نیاز به توسعه',
+                    'medium' => 'در مسیر رشد',
+                    'high' => 'سطح پیشرفته',
+                ],
+                'accentColor' => '#0ea5e9',
+            ],
+            'washup_agreed' => [
+                'has_washup' => true,
+                'headline' => 'شایستگی‌های دارای امتیاز توافقی',
+                'summary' => 'این بخش شایستگی‌هایی را نشان می‌دهد که در جلسه Wash-Up برای آنها امتیاز توافقی ثبت شده است.',
+                'accentColor' => '#2563eb',
+                'footer_note' => 'امتیازها پس از جمع‌بندی نهایی Wash-Up تایید شده‌اند.',
+                'empty_message' => 'برای این ارزیابی هنوز امتیاز توافقی ثبت نشده است.',
+                'items' => [
+                    [
+                        'competency_id' => 101,
+                        'competency_title' => 'رهبری تحول‌آفرین',
+                        'competency_code' => 'LEAD-01',
+                        'dimension' => 'رهبری',
+                        'agreed_score' => 4.6,
+                        'score_label' => '۴٫۶ از ۵',
+                        'tools' => ['ارزیابی ۳۶۰ درجه', 'مصاحبه رفتاری ساختارمند'],
+                        'updated_at' => '۱۴۰۴/۰۷/۲۸',
+                        'updated_by' => 'کتایون محمدی',
+                    ],
+                    [
+                        'competency_id' => 108,
+                        'competency_title' => 'تفکر استراتژیک',
+                        'competency_code' => 'STR-02',
+                        'dimension' => 'تفکر',
+                        'agreed_score' => 4.2,
+                        'score_label' => '۴٫۲ از ۵',
+                        'tools' => ['ارزیابی ۳۶۰ درجه'],
+                        'updated_at' => '۱۴۰۴/۰۷/۲۷',
+                        'updated_by' => 'رضا احمدی',
+                    ],
+                    [
+                        'competency_id' => 115,
+                        'competency_title' => 'توسعه کارکنان',
+                        'competency_code' => 'DEV-07',
+                        'dimension' => 'سرپرستی',
+                        'agreed_score' => 3.9,
+                        'score_label' => '۳٫۹ از ۵',
+                        'tools' => ['مصاحبه رفتاری ساختارمند'],
+                        'updated_at' => '۱۴۰۴/۰۷/۲۶',
+                        'updated_by' => 'نگین حدادی',
+                    ],
+                ],
+            ],
+            'public_profile' => [
+                'headline' => 'پروفایل عمومی ارزیاب‌شونده',
+                'persona_name' => 'رهبر تحول‌آفرین',
+                'style_name' => 'سبک ارتباطی نتیجه‌محور',
+                'summary' => 'این پروفایل تصویری یکپارچه از سبک رفتاری، ترجیحات همکاری و تمرکزهای توسعه فرد را ارائه می‌دهد تا تیم بتواند تعاملات اثربخش‌تری با او داشته باشد.',
+                'sections' => [
+                    'general_tendencies' => [
+                        'title' => 'گرایش‌های کلی',
+                        'text' => 'در تعاملات حرفه‌ای با انرژی و انگیزه بالا ظاهر می‌شود، تغییر را فرصت می‌بیند و برای آغاز پروژه‌های نو مشتاق است.',
+                    ],
+                    'work_preferences' => [
+                        'title' => 'ترجیحات کاری',
+                        'text' => 'فضاهای کاری منعطف، امکان تصمیم‌گیری سریع و دسترسی به اطلاعات کافی برای برنامه‌ریزی مرحله‌ای را ترجیح می‌دهد.',
+                        'bullets' => [
+                            'به بازخورد سریع و مشخص واکنش بهتری نشان می‌دهد.',
+                            'رویه‌های ساده و واضح را به فرآیندهای پیچیده ترجیح می‌دهد.',
+                        ],
+                    ],
+                    'effectiveness_requirements' => [
+                        'title' => 'نیازهای موفقیت',
+                        'text' => 'برای حفظ عملکرد بالا به اهداف شفاف، اختیار کافی برای تصمیم‌گیری و دسترسی به شبکه‌ای از همکاران کلیدی تکیه می‌کند.',
+                    ],
+                    'behavior_overview' => [
+                        'title' => 'الگوی رفتاری',
+                        'text' => 'در شرایط فشار همچنان ارتباط مستقیم را حفظ می‌کند، اما ممکن است به‌سرعت از جزئیات عبور کند و نیازمند همراهی حوصله‌مندانه تیم است.',
+                    ],
+                    'companion_requirements' => [
+                        'title' => 'انتظارات از همکاران',
+                        'text' => 'به همکارانی پاسخ مثبت می‌دهد که ایده‌های او را به اجرا نزدیک کنند، بازخورد سازنده بدهند و در برابر سرعت بالای تصمیم‌گیری منعطف باشند.',
+                    ],
+                ],
+                'strengths' => [
+                    'قابلیت الهام‌بخشی و ایجاد انگیزه در تیم‌های بین‌وظیفه‌ای',
+                    'هدایت جلسات تصمیم‌گیری با نگاه کلان و آینده‌نگر',
+                    'توانایی شناسایی سریع فرصت‌های رشد و نوآوری',
+                ],
+                'collaboration_tips' => [
+                    'اهداف را در ابتدای همکاری به زبان نتایج و شاخص‌های موفقیت تعریف کنید.',
+                    'در تصمیم‌گیری‌ها جمع‌بندی مختصر ارائه کنید تا سرعت عمل حفظ شود.',
+                    'برای طرح نقد یا بازخورد، ابتدا دستاوردها را به رسمیت بشناسید و سپس پیشنهاد مشخص بدهید.',
+                ],
+                'development_focus' => [
+                    'تقویت مهارت مستندسازی و پیگیری ساختارمند پیشرفت‌ها',
+                    'توجه بیشتر به شنیدن فعال دیدگاه‌های متفاوت پیش از جمع‌بندی',
+                    'تمرکز بر ایجاد تعادل میان سرعت عمل و توجه به جزئیات اجرایی',
+                ],
+                'stress_signals' => [
+                    'در مواجهه با فشار زمانی ممکن است به‌صورت شتاب‌زده تصمیم بگیرد.',
+                    'کاهش تمایل به مشارکت جمعی و تمرکز صرف بر نتیجه فوری.',
+                ],
+                'source_tool' => 'پروفایل عمومی داده‌محور',
+                'updated_at_formatted' => '۱۴۰۴/۰۸/۰۱',
+            ],
+            'skills' => [
+                ['key' => 'analytical_thinking', 'label' => 'تفکر تحلیلی', 'score' => 82, 'max' => 100],
+                ['key' => 'problem_solving', 'label' => 'حل مسئله', 'score' => 76, 'max' => 100],
+            ],
+        ];
+    }
+
+    private function getCertificatePreviewAssessmentTools(int $organizationId): array
+    {
+        if ($organizationId <= 0) {
+            return [];
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT id, code, name, question_type, description, guide, duration_minutes, is_optional, is_exam
+                 FROM organization_evaluation_tools
+                 WHERE organization_id = :organization_id
+                 ORDER BY name ASC',
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            return [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $tools = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $id = isset($row['id']) ? trim((string) $row['id']) : '';
+            if ($id === '') {
+                continue;
+            }
+
+            $name = isset($row['name']) ? trim((string) $row['name']) : '';
+            if ($name === '') {
+                continue;
+            }
+
+            $description = isset($row['description']) ? trim((string) $row['description']) : '';
+            if ($description === '' && isset($row['guide'])) {
+                $description = trim((string) $row['guide']);
+            }
+
+            $durationMinutes = isset($row['duration_minutes']) && is_numeric($row['duration_minutes'])
+                ? max(0, (int) $row['duration_minutes'])
+                : 0;
+            $estimatedTime = '';
+            if ($durationMinutes > 0) {
+                $estimatedTime = UtilityHelper::englishToPersian((string) $durationMinutes) . ' دقیقه';
+            }
+
+            $questionType = isset($row['question_type']) ? trim((string) $row['question_type']) : '';
+            if ($questionType === '') {
+                $questionType = ((int) ($row['is_exam'] ?? 0) === 1) ? 'آزمون' : 'ابزار ارزیابی';
+            }
+
+            $difficulty = '';
+            if (isset($row['is_optional'])) {
+                $difficulty = ((int) $row['is_optional'] === 1) ? 'اختیاری' : 'اجباری';
+            }
+
+            $icon = ((int) ($row['is_exam'] ?? 0) === 1) ? 'clipboard-outline' : 'document-text-outline';
+
+            $tools[] = [
+                'id' => $id,
+                'code' => isset($row['code']) ? (string) $row['code'] : '',
+                'name' => $name,
+                'category' => $questionType,
+                'description' => $description,
+                'estimatedTime' => $estimatedTime,
+                'difficulty' => $difficulty,
+                'icon' => $icon,
+            ];
+        }
+
+        return $tools;
+    }
+
+    private function resolveCertificatePreviewSubjectIds(): array
+    {
+        $evaluationId = 0;
+        $evaluateeId = 0;
+
+        $evaluationKeys = ['evaluation_id', 'evaluation', 'evaluationId', 'evaluationID'];
+        foreach ($evaluationKeys as $key) {
+            if (!isset($_GET[$key])) {
+                continue;
+            }
+            $candidate = UtilityHelper::persianToEnglish(trim((string) $_GET[$key]));
+            if ($candidate === '' || !preg_match('/^-?\d+$/', $candidate)) {
+                continue;
+            }
+            $value = (int) $candidate;
+            if ($value > 0) {
+                $evaluationId = $value;
+                break;
+            }
+        }
+
+        $evaluateeKeys = ['evaluatee_id', 'evaluatee', 'evaluateeId', 'user_id', 'user', 'participant_id', 'participant'];
+        foreach ($evaluateeKeys as $key) {
+            if (!isset($_GET[$key])) {
+                continue;
+            }
+            $candidate = UtilityHelper::persianToEnglish(trim((string) $_GET[$key]));
+            if ($candidate === '' || !preg_match('/^-?\d+$/', $candidate)) {
+                continue;
+            }
+            $value = (int) $candidate;
+            if ($value > 0) {
+                $evaluateeId = $value;
+                break;
+            }
+        }
+
+        return [
+            'evaluation_id' => $evaluationId,
+            'evaluatee_id' => $evaluateeId,
+        ];
+    }
+
+    private function getCertificatePreviewEvaluationContext(int $organizationId, int $requestedEvaluationId, int $requestedEvaluateeId): array
+    {
+        $result = [
+            'evaluation_options' => [],
+            'evaluatee_options' => [],
+            'selected_evaluation' => null,
+            'selected_evaluation_id' => 0,
+            'selected_evaluatee' => null,
+            'selected_evaluatee_id' => 0,
+            'evaluation_count' => 0,
+        ];
+
+        if ($organizationId <= 0) {
+            return $result;
+        }
+
+        try {
+            $evaluationRows = DatabaseHelper::fetchAll(
+                'SELECT id, title, evaluation_date, evaluatees_json
+                 FROM organization_evaluations
+                 WHERE organization_id = :organization_id
+                 ORDER BY (evaluation_date IS NULL) ASC, evaluation_date DESC, id DESC',
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $evaluationRows = [];
+        }
+
+        if (empty($evaluationRows)) {
+            return $result;
+        }
+
+        $evaluationCandidates = [];
+        $uniqueUserIds = [];
+
+        foreach ($evaluationRows as $row) {
+            $evaluationId = (int) ($row['id'] ?? 0);
+            if ($evaluationId <= 0) {
+                continue;
+            }
+
+            $evaluateeIds = [];
+            $rawEvaluatees = $row['evaluatees_json'] ?? null;
+            if (is_string($rawEvaluatees) && trim($rawEvaluatees) !== '') {
+                $decoded = json_decode((string) $rawEvaluatees, true);
+                if (is_array($decoded)) {
+                    foreach ($decoded as $entry) {
+                        $uid = 0;
+                        if (is_array($entry)) {
+                            $uid = (int) ($entry['id'] ?? 0);
+                        } else {
+                            $uid = (int) $entry;
+                        }
+                        if ($uid > 0) {
+                            $evaluateeIds[$uid] = true;
+                            $uniqueUserIds[$uid] = true;
+                        }
+                    }
+                }
+            }
+
+            $evaluationCandidates[] = [
+                'row' => $row,
+                'id' => $evaluationId,
+                'evaluatee_ids' => array_keys($evaluateeIds),
+            ];
+        }
+
+        if (empty($evaluationCandidates)) {
+            return $result;
+        }
+
+        $userRecords = [];
+        $userLabelMap = [];
+
+        if (!empty($uniqueUserIds)) {
+            $placeholders = implode(',', array_fill(0, count($uniqueUserIds), '?'));
+            $params = array_merge([$organizationId], array_keys($uniqueUserIds));
+
+            try {
+                $userRows = DatabaseHelper::fetchAll(
+                    "SELECT id, username, national_code, personnel_code, first_name, last_name, display_name, job_title, organization_post, department, service_location
+                     FROM organization_users
+                     WHERE organization_id = ? AND id IN ({$placeholders})",
+                    $params
+                );
+            } catch (Exception $exception) {
+                $userRows = [];
+            }
+
+            if (!empty($userRows)) {
+                foreach ($userRows as $userRow) {
+                    $userId = (int) ($userRow['id'] ?? 0);
+                    if ($userId <= 0) {
+                        continue;
+                    }
+
+                    $firstName = trim((string) ($userRow['first_name'] ?? ''));
+                    $lastName = trim((string) ($userRow['last_name'] ?? ''));
+                    $displayName = trim((string) ($userRow['display_name'] ?? ''));
+                    $fullName = trim($firstName . ' ' . $lastName);
+                    $username = trim((string) ($userRow['username'] ?? ''));
+
+                    $label = $displayName !== '' ? $displayName : ($fullName !== '' ? $fullName : $username);
+                    if ($label === '') {
+                        $label = 'ارزیاب‌شونده #' . UtilityHelper::englishToPersian((string) $userId);
+                    }
+
+                    $userRecords[$userId] = [
+                        'id' => $userId,
+                        'first_name' => $firstName,
+                        'last_name' => $lastName,
+                        'display_name' => $displayName,
+                        'username' => $username,
+                        'national_code' => trim((string) ($userRow['national_code'] ?? '')),
+                        'personnel_code' => trim((string) ($userRow['personnel_code'] ?? '')),
+                        'job_title' => trim((string) ($userRow['job_title'] ?? '')),
+                        'organization_post' => trim((string) ($userRow['organization_post'] ?? '')),
+                        'department' => trim((string) ($userRow['department'] ?? '')),
+                        'service_location' => trim((string) ($userRow['service_location'] ?? '')),
+                    ];
+
+                    $userLabelMap[$userId] = $label;
+                }
+            }
+        }
+
+        $evaluationOptions = [
+            [
+                'value' => '',
+                'label' => 'انتخاب برنامه ارزیابی',
+            ],
+        ];
+
+        $evaluationsIndexed = [];
+        $selectedEvaluation = null;
+        $selectedEvaluatee = null;
+
+        $buildDisplayName = static function (array $userDetails, string $fallbackLabel, int $userId): string {
+            $displayName = trim((string) ($userDetails['display_name'] ?? ''));
+            if ($displayName !== '') {
+                return $displayName;
+            }
+
+            $first = trim((string) ($userDetails['first_name'] ?? ''));
+            $last = trim((string) ($userDetails['last_name'] ?? ''));
+            $username = trim((string) ($userDetails['username'] ?? ''));
+            $fullName = trim($first . ' ' . $last);
+            if ($fullName !== '') {
+                return $fullName;
+            }
+            if ($fallbackLabel !== '') {
+                return $fallbackLabel;
+            }
+            if ($username !== '') {
+                return $username;
+            }
+            return 'ارزیاب‌شونده #' . UtilityHelper::englishToPersian((string) $userId);
+        };
+
+        foreach ($evaluationCandidates as $candidate) {
+            $row = $candidate['row'];
+            $evaluationId = $candidate['id'];
+
+            $title = isset($row['title']) ? trim((string) $row['title']) : '';
+            if ($title === '') {
+                $title = 'برنامه ارزیابی #' . UtilityHelper::englishToPersian((string) $evaluationId);
+            }
+
+            $evaluationOptions[] = [
+                'value' => $evaluationId,
+                'label' => $title,
+            ];
+
+            $decodedEvaluatees = $this->decodeUserList($row['evaluatees_json'] ?? null, $userLabelMap);
+            $evaluatees = [];
+            foreach ($decodedEvaluatees as $decodedEvaluatee) {
+                if (!is_array($decodedEvaluatee)) {
+                    continue;
+                }
+                $userId = (int) ($decodedEvaluatee['id'] ?? 0);
+                if ($userId <= 0) {
+                    continue;
+                }
+
+                $userDetails = $userRecords[$userId] ?? [];
+                $label = isset($decodedEvaluatee['label']) ? trim((string) $decodedEvaluatee['label']) : '';
+                $displayName = $buildDisplayName($userDetails, $label, $userId);
+
+                $evaluatees[] = [
+                    'id' => $userId,
+                    'label' => $displayName,
+                    'display_name' => $displayName,
+                    'user' => $userDetails,
+                ];
+            }
+
+            $dateMeta = $this->formatEvaluationPersianDate($row['evaluation_date'] ?? null);
+
+            $evaluationsIndexed[$evaluationId] = [
+                'id' => $evaluationId,
+                'title' => $title,
+                'evaluation_date' => $row['evaluation_date'] ?? null,
+                'date_display' => $dateMeta['display'] ?? '—',
+                'date_meta' => $dateMeta,
+                'evaluatees' => $evaluatees,
+            ];
+
+            if ($selectedEvaluation === null && $requestedEvaluationId > 0 && $requestedEvaluationId === $evaluationId) {
+                $selectedEvaluation = $evaluationsIndexed[$evaluationId];
+            }
+        }
+
+        $evaluationCount = count($evaluationsIndexed);
+        $result['evaluation_count'] = $evaluationCount;
+        $result['evaluation_options'] = $evaluationOptions;
+
+        if ($selectedEvaluation === null && $requestedEvaluationId > 0 && !isset($evaluationsIndexed[$requestedEvaluationId])) {
+            $requestedEvaluationId = 0;
+        }
+
+        if ($selectedEvaluation === null && $requestedEvaluationId > 0 && isset($evaluationsIndexed[$requestedEvaluationId])) {
+            $selectedEvaluation = $evaluationsIndexed[$requestedEvaluationId];
+        }
+
+        if ($selectedEvaluation !== null) {
+            $selectedEvaluationId = (int) $selectedEvaluation['id'];
+            $evaluateeOptions = [];
+            $evaluateeIndex = [];
+
+            foreach ($selectedEvaluation['evaluatees'] as $evaluatee) {
+                if (!is_array($evaluatee)) {
+                    continue;
+                }
+                $uid = (int) ($evaluatee['id'] ?? 0);
+                if ($uid <= 0) {
+                    continue;
+                }
+                $label = isset($evaluatee['display_name']) ? (string) $evaluatee['display_name'] : ((string) ($evaluatee['label'] ?? ''));
+                if ($label === '') {
+                    $label = 'ارزیاب‌شونده #' . UtilityHelper::englishToPersian((string) $uid);
+                }
+
+                $evaluateeOptions[] = [
+                    'value' => $uid,
+                    'label' => $label,
+                ];
+                $evaluateeIndex[$uid] = $evaluatee;
+            }
+
+            if ($requestedEvaluateeId > 0 && isset($evaluateeIndex[$requestedEvaluateeId])) {
+                $selectedEvaluatee = $evaluateeIndex[$requestedEvaluateeId];
+            }
+
+            $result['selected_evaluation'] = $selectedEvaluation;
+            $result['selected_evaluation_id'] = $selectedEvaluationId;
+            $result['evaluatee_options'] = $evaluateeOptions;
+        }
+
+        if ($selectedEvaluatee !== null) {
+            $result['selected_evaluatee'] = $selectedEvaluatee;
+            $result['selected_evaluatee_id'] = (int) ($selectedEvaluatee['id'] ?? 0);
+        }
+
+        return $result;
+    }
+
+    private function getCertificatePreviewEvaluateeAssessmentTools(int $organizationId, int $evaluationId, int $evaluateeId): array
+    {
+        if ($organizationId <= 0 || $evaluationId <= 0 || $evaluateeId <= 0) {
+            return [];
+        }
+
+        $this->ensureOrganizationEvaluationExamParticipationsTableExists();
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT
+                    p.tool_id,
+                    p.tool_code,
+                    p.tool_name,
+                    p.question_type AS participation_question_type,
+                    p.is_disc,
+                    p.is_optional AS participation_optional,
+                    p.total_questions,
+                    p.answered_questions,
+                    p.is_completed,
+                    p.completed_at,
+                    p.created_at,
+                    t.name AS tool_title,
+                    t.code AS tool_code_db,
+                    t.question_type AS tool_question_type,
+                    t.calculation_formula,
+                    t.description AS tool_description,
+                    t.guide AS tool_guide,
+                    t.duration_minutes,
+                    t.is_optional AS tool_optional,
+                    t.is_exam,
+                    t.updated_at AS tool_updated_at
+                 FROM organization_evaluation_exam_participations p
+                 LEFT JOIN organization_evaluation_tools t
+                   ON t.organization_id = p.organization_id AND t.id = p.tool_id
+                 WHERE p.organization_id = :organization_id
+                   AND p.evaluation_id = :evaluation_id
+                   AND p.evaluatee_id = :evaluatee_id
+                 ORDER BY (p.completed_at IS NULL) ASC,
+                          p.completed_at DESC,
+                          COALESCE(t.name, p.tool_name, "") ASC',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                ]
+            ) ?: [];
+        } catch (Exception $exception) {
+            return [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $scoreMap = [];
+        try {
+            $scoreRows = DatabaseHelper::fetchAll(
+                'SELECT tool_id, AVG(score_value) AS avg_score
+                 FROM organization_evaluation_tool_scores
+                 WHERE organization_id = :organization_id
+                   AND evaluation_id = :evaluation_id
+                   AND evaluatee_id = :evaluatee_id
+                 GROUP BY tool_id',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                ]
+            ) ?: [];
+
+            foreach ($scoreRows as $scoreRow) {
+                $toolId = (int) ($scoreRow['tool_id'] ?? 0);
+                $avgScore = isset($scoreRow['avg_score']) ? (float) $scoreRow['avg_score'] : null;
+                if ($toolId > 0 && $avgScore !== null) {
+                    $scoreMap[$toolId] = $avgScore;
+                }
+            }
+        } catch (Exception $exception) {
+            // Ignore score aggregation failures; cards will simply omit score data.
+        }
+
+        $formatNumber = static function ($value): string {
+            $normalized = rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
+            if ($normalized === '') {
+                $normalized = '0';
+            }
+            return UtilityHelper::englishToPersian($normalized);
+        };
+
+        $mapQuestionType = static function (?string $questionType, ?string $formula, bool $isExam): array {
+            $type = is_string($questionType) ? strtolower(trim($questionType)) : '';
+            $formula = is_string($formula) ? strtolower(trim($formula)) : '';
+
+            if (strpos($formula, 'mbti') !== false || strpos($type, 'mbti') !== false) {
+                return ['label' => 'MBTI', 'icon' => 'sparkles-outline'];
+            }
+            if (strpos($formula, 'disc') !== false || strpos($type, 'disc') !== false) {
+                return ['label' => 'DISC', 'icon' => 'analytics-outline'];
+            }
+            if (strpos($formula, 'wash') !== false || strpos($type, 'wash') !== false) {
+                return ['label' => 'Wash-Up', 'icon' => 'color-palette-outline'];
+            }
+            if (strpos($formula, 'analytical') !== false || strpos($type, 'analytical') !== false) {
+                return ['label' => 'تفکر تحلیلی', 'icon' => 'speedometer-outline'];
+            }
+            if (strpos($type, '360') !== false || strpos($type, '۳۶۰') !== false) {
+                return ['label' => 'ارزیابی ۳۶۰ درجه', 'icon' => 'people-circle-outline'];
+            }
+
+            return [
+                'label' => $isExam ? 'آزمون' : 'ابزار ارزیابی',
+                'icon' => $isExam ? 'clipboard-outline' : 'document-text-outline',
+            ];
+        };
+
+        $results = [];
+        foreach ($rows as $row) {
+            $toolId = (int) ($row['tool_id'] ?? 0);
+            $toolCode = trim((string) ($row['tool_code'] ?? ($row['tool_code_db'] ?? '')));
+            $nameCandidates = [
+                $row['tool_title'] ?? null,
+                $row['tool_name'] ?? null,
+            ];
+
+            $name = '';
+            foreach ($nameCandidates as $candidate) {
+                if (is_string($candidate) && trim($candidate) !== '') {
+                    $name = trim((string) $candidate);
+                    break;
+                }
+            }
+            if ($name === '') {
+                $name = $toolId > 0
+                    ? 'ابزار #' . UtilityHelper::englishToPersian((string) $toolId)
+                    : 'ابزار ارزیابی';
+            }
+
+            $isoCompletedAt = trim((string) ($row['completed_at'] ?? ''));
+            $completedAtLabel = '';
+            if ($isoCompletedAt !== '') {
+                try {
+                    $date = new DateTime($isoCompletedAt, new DateTimeZone('Asia/Tehran'));
+                    $completedAtLabel = UtilityHelper::englishToPersian($date->format('Y/m/d H:i'));
+                    $isoCompletedAt = $date->format(DateTime::ATOM);
+                } catch (Exception $exception) {
+                    $completedAtLabel = UtilityHelper::englishToPersian(date('Y/m/d H:i', strtotime($isoCompletedAt)));
+                }
+            } else {
+                $isoCompletedAt = null;
+            }
+
+            $answered = max(0, (int) ($row['answered_questions'] ?? 0));
+            $total = max(0, (int) ($row['total_questions'] ?? 0));
+            $progressLabel = '';
+            $progressPercent = null;
+            if ($total > 0) {
+                $progressLabel = UtilityHelper::englishToPersian((string) $answered)
+                    . ' از '
+                    . UtilityHelper::englishToPersian((string) $total)
+                    . ' پرسش';
+                $progressPercent = (int) round(($answered * 100) / max(1, $total));
+            } elseif ($answered > 0) {
+                $progressLabel = UtilityHelper::englishToPersian((string) $answered) . ' پاسخ ثبت شده';
+            }
+
+            $isCompleted = (int) ($row['is_completed'] ?? 0) === 1;
+            $statusLabel = $isCompleted ? 'تکمیل شده' : 'در انتظار تکمیل';
+            $statusCode = $isCompleted ? 'completed' : 'pending';
+
+            $scoreLabel = '';
+            if ($toolId > 0 && isset($scoreMap[$toolId])) {
+                $scoreLabel = $formatNumber($scoreMap[$toolId]) . ' امتیاز';
+            }
+
+            $durationMinutes = (int) ($row['duration_minutes'] ?? 0);
+            $estimatedTime = '';
+            if ($durationMinutes > 0) {
+                $estimatedTime = UtilityHelper::englishToPersian((string) $durationMinutes) . ' دقیقه';
+            }
+
+            $toolOptional = (int) ($row['tool_optional'] ?? 0) === 1;
+            $participationOptional = (int) ($row['participation_optional'] ?? 0) === 1;
+            $isOptional = $toolOptional || $participationOptional;
+            $difficulty = $isOptional ? 'اختیاری' : 'اجباری';
+            $description = '';
+            if (isset($row['tool_description']) && is_string($row['tool_description'])) {
+                $description = trim((string) $row['tool_description']);
+            }
+            if ($description === '' && isset($row['tool_guide']) && is_string($row['tool_guide'])) {
+                $description = trim((string) $row['tool_guide']);
+            }
+
+            $isExam = (int) ($row['is_exam'] ?? 0) === 1;
+            $typeMeta = $mapQuestionType(
+                $row['tool_question_type'] ?? $row['participation_question_type'] ?? null,
+                $row['calculation_formula'] ?? null,
+                $isExam
+            );
+
+            $identifier = $toolId > 0
+                ? (string) $toolId
+                : ($toolCode !== '' ? $toolCode : md5($name . ($row['created_at'] ?? '')));
+
+            $results[] = [
+                'id' => $identifier,
+                'tool_id' => $toolId,
+                'name' => $name,
+                'category' => $typeMeta['label'] ?? 'ابزار ارزیابی',
+                'description' => $description,
+                'estimatedTime' => $estimatedTime,
+                'difficulty' => $difficulty,
+                'icon' => $typeMeta['icon'] ?? 'document-text-outline',
+                'status_label' => $statusLabel,
+                'status_code' => $statusCode,
+                'progress_label' => $progressLabel,
+                'progress_percent' => $progressPercent,
+                'score_label' => $scoreLabel,
+                'completed_at_label' => $completedAtLabel,
+                'completed_at_iso' => $isoCompletedAt,
+            ];
+        }
+
+        return $results;
+    }
+
+    private function getCertificatePreviewDiscDataset(int $organizationId, array $sampleData): array
+    {
+        if ($organizationId <= 0) {
+            return [];
+        }
+
+        $context = $this->resolveCertificatePreviewSubjectIds();
+        $evaluationId = (int) ($context['evaluation_id'] ?? 0);
+        $evaluateeId = (int) ($context['evaluatee_id'] ?? 0);
+
+        if ($evaluationId <= 0 || $evaluateeId <= 0) {
+            return [];
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT a.disc_best_answer_code, a.disc_least_answer_code
+                 FROM organization_evaluation_exam_answers a
+                 INNER JOIN organization_evaluation_tools t ON t.id = a.tool_id
+                 WHERE a.organization_id = :organization_id
+                   AND a.evaluation_id = :evaluation_id
+                   AND a.evaluatee_id = :evaluatee_id
+                   AND (
+                        LOWER(t.calculation_formula) LIKE "%disc%"
+                        OR LOWER(t.question_type) LIKE "%disc%"
+                   )',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                ]
+            ) ?: [];
+        } catch (Exception $exception) {
+            $rows = [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $bestCounts = ['D' => 0, 'I' => 0, 'S' => 0, 'C' => 0];
+        $leastCounts = ['D' => 0, 'I' => 0, 'S' => 0, 'C' => 0];
+
+        foreach ($rows as $row) {
+            $bestCode = $this->normalizeDiscTypeCode((string) ($row['disc_best_answer_code'] ?? ''));
+            if (preg_match('/^[DISC]$/', $bestCode)) {
+                $bestCounts[$bestCode]++;
+            }
+
+            $leastCode = $this->normalizeDiscTypeCode((string) ($row['disc_least_answer_code'] ?? ''));
+            if (preg_match('/^[DISC]$/', $leastCode)) {
+                $leastCounts[$leastCode]++;
+            }
+        }
+
+        $bestTotal = (int) array_sum($bestCounts);
+        if ($bestTotal <= 0) {
+            return [];
+        }
+
+        $percentScores = [];
+        $intensityScores = [];
+        foreach (['D', 'I', 'S', 'C'] as $letter) {
+            $bestValue = (int) ($bestCounts[$letter] ?? 0);
+            $percentScores[$letter] = round(($bestValue * 100) / max(1, $bestTotal), 2);
+            $intensityScores[$letter] = max(0, min(100, (float) ($bestValue * 2)));
+        }
+
+        $orderPref = ['D', 'I', 'S', 'C'];
+        $sorted = $bestCounts;
+        uksort($sorted, static function (string $a, string $b) use ($sorted, $orderPref): int {
+            $diff = $sorted[$b] <=> $sorted[$a];
+            if ($diff !== 0) {
+                return $diff;
+            }
+            return array_search($a, $orderPref, true) <=> array_search($b, $orderPref, true);
+        });
+        $codes = array_keys($sorted);
+        $primaryCode = $codes[0] ?? '';
+        $secondaryLetter = $codes[1] ?? '';
+        $secondaryCombo = '';
+        if ($primaryCode !== '' && $secondaryLetter !== '' && ($sorted[$secondaryLetter] ?? 0) > 0) {
+            $secondaryCombo = $primaryCode . '/' . $secondaryLetter;
+        }
+
+        $this->ensureOrganizationDiscPersonalityTypesTableExists();
+
+        $primaryLabel = $primaryCode !== '' ? $this->getDiscTypeLabel($primaryCode) : '';
+        $secondaryLabel = $secondaryCombo !== '' ? $this->getDiscTypeLabel($secondaryCombo) : '';
+
+        $primaryMeta = null;
+        if ($primaryCode !== '') {
+            try {
+                $primaryMeta = DatabaseHelper::fetchOne(
+                    'SELECT * FROM organization_disc_personality_types
+                     WHERE organization_id = :organization_id AND scope = :scope AND disc_type_code = :code
+                     LIMIT 1',
+                    [
+                        'organization_id' => $organizationId,
+                        'scope' => 'primary',
+                        'code' => $primaryCode,
+                    ]
+                );
+            } catch (Exception $exception) {
+                $primaryMeta = null;
+            }
+        }
+
+        $secondaryMeta = null;
+        if ($secondaryCombo !== '') {
+            try {
+                $secondaryMeta = DatabaseHelper::fetchOne(
+                    'SELECT * FROM organization_disc_personality_types
+                     WHERE organization_id = :organization_id AND scope = :scope AND disc_type_code = :code
+                     LIMIT 1',
+                    [
+                        'organization_id' => $organizationId,
+                        'scope' => 'secondary',
+                        'code' => $secondaryCombo,
+                    ]
+                );
+            } catch (Exception $exception) {
+                $secondaryMeta = null;
+            }
+        }
+
+        $summary = '';
+        if ($primaryMeta && isset($primaryMeta['short_description'])) {
+            $summary = trim((string) $primaryMeta['short_description']);
+        }
+        if ($summary === '' && isset($sampleData['disc_profile']['summary'])) {
+            $summary = (string) $sampleData['disc_profile']['summary'];
+        }
+
+        $extractHighlights = static function ($value): array {
+            if (!is_string($value)) {
+                return [];
+            }
+            $normalized = preg_replace("/[\r\n]+/u", "\n", $value);
+            $parts = array_map('trim', explode("\n", (string) $normalized));
+            $filtered = [];
+            foreach ($parts as $part) {
+                if ($part !== '') {
+                    $filtered[] = $part;
+                }
+            }
+            return $filtered;
+        };
+
+        $highlights = [];
+        if ($primaryMeta) {
+            foreach (['general_tendencies', 'work_preferences', 'effectiveness_requirements', 'companion_requirements'] as $field) {
+                if (!isset($primaryMeta[$field])) {
+                    continue;
+                }
+                $highlights = array_merge($highlights, $extractHighlights($primaryMeta[$field]));
+            }
+        }
+        if (empty($highlights) && isset($sampleData['disc_profile']['highlights']) && is_array($sampleData['disc_profile']['highlights'])) {
+            $highlights = $sampleData['disc_profile']['highlights'];
+        }
+        $highlights = array_values(array_unique(array_map('trim', array_filter($highlights, static function ($item) {
+            return is_string($item) && trim($item) !== '';
+        }))));
+        if (count($highlights) > 6) {
+            $highlights = array_slice($highlights, 0, 6);
+        }
+
+        $sampleDiscTriple = [];
+        if (isset($sampleData['disc_profile']['triple_graphs']) && is_array($sampleData['disc_profile']['triple_graphs'])) {
+            $sampleDiscTriple = $sampleData['disc_profile']['triple_graphs'];
+        }
+
+        $dataset = [
+            'has_disc' => true,
+            'D' => $intensityScores['D'],
+            'I' => $intensityScores['I'],
+            'S' => $intensityScores['S'],
+            'C' => $intensityScores['C'],
+            'primary_code' => $primaryCode,
+            'primary_label' => $primaryLabel,
+            'secondary_code' => $secondaryCombo,
+            'secondary_label' => $secondaryLabel,
+            'summary' => $summary,
+            'highlights' => $highlights,
+            'best_total' => $bestTotal,
+            'least_total' => (int) array_sum($leastCounts),
+        ];
+
+        $dataset['intensity_scores'] = $intensityScores;
+        $dataset['percent_scores'] = $percentScores;
+
+        if (!empty($bestCounts)) {
+            $dataset['best_counts'] = $bestCounts;
+        }
+        if (!empty($leastCounts)) {
+            $dataset['least_counts'] = $leastCounts;
+        }
+        if ($primaryMeta) {
+            $dataset['primary_meta'] = $primaryMeta;
+        }
+        if ($secondaryMeta) {
+            $dataset['secondary_meta'] = $secondaryMeta;
+        }
+
+    $tripleGraphs = $this->buildDiscTripleGraphsDataset($percentScores, $bestCounts, $leastCounts, $sampleDiscTriple);
+        if (!empty($tripleGraphs)) {
+            $dataset['triple_graphs'] = $tripleGraphs;
+        }
+
+        return $dataset;
+    }
+
+    private function buildDiscTripleGraphsDataset(array $percentScores, array $bestCounts, array $leastCounts, array $sampleTriple): array
+    {
+        $letters = ['D', 'I', 'S', 'C'];
+
+        $graphs = [];
+        $sampleGraphs = isset($sampleTriple['graphs']) && is_array($sampleTriple['graphs'])
+            ? $sampleTriple['graphs']
+            : [];
+
+        $bestTotal = array_sum($bestCounts);
+        $leastTotal = array_sum($leastCounts);
+
+        $graphTemplates = [
+            [
+                'title' => 'Graph I',
+                'subtitle' => 'سبک رفتاری تطبیق‌یافته',
+                'source' => 'percent',
+            ],
+            [
+                'title' => 'Graph II',
+                'subtitle' => 'سبک رفتاری طبیعی',
+                'source' => 'best',
+            ],
+            [
+                'title' => 'Graph III',
+                'subtitle' => 'سبک رفتاری اجتماعی',
+                'source' => 'least',
+            ],
+        ];
+
+        foreach ($graphTemplates as $index => $template) {
+            $sampleGraph = $sampleGraphs[$index] ?? [];
+            $points = [];
+
+            switch ($template['source']) {
+                case 'percent':
+                    foreach ($letters as $letter) {
+                        $points[$letter] = round((float) ($percentScores[$letter] ?? 0), 2);
+                    }
+                    break;
+                case 'best':
+                    if ($bestTotal > 0) {
+                        foreach ($letters as $letter) {
+                            $points[$letter] = round((($bestCounts[$letter] ?? 0) * 100) / $bestTotal, 2);
+                        }
+                    }
+                    break;
+                case 'least':
+                    if ($leastTotal > 0) {
+                        foreach ($letters as $letter) {
+                            $points[$letter] = round((($leastCounts[$letter] ?? 0) * 100) / $leastTotal, 2);
+                        }
+                    }
+                    break;
+            }
+
+            if (empty($points)) {
+                $points = isset($sampleGraph['points']) && is_array($sampleGraph['points'])
+                    ? array_intersect_key($sampleGraph['points'], array_flip($letters))
+                    : [];
+            }
+
+            if (empty($points)) {
+                continue;
+            }
+
+            $graph = [
+                'title' => $sampleGraph['title'] ?? $template['title'],
+                'subtitle' => $sampleGraph['subtitle'] ?? $template['subtitle'],
+                'points' => $points,
+            ];
+
+            if (isset($sampleGraph['summary'])) {
+                $graph['summary'] = (string) $sampleGraph['summary'];
+            }
+            if (isset($sampleGraph['notes']) && is_array($sampleGraph['notes'])) {
+                $graph['notes'] = $sampleGraph['notes'];
+            }
+
+            $graphs[] = $graph;
+        }
+
+        $descriptions = [];
+        if (isset($sampleTriple['descriptions']) && is_array($sampleTriple['descriptions'])) {
+            foreach ($sampleTriple['descriptions'] as $description) {
+                if (is_string($description) && trim($description) !== '') {
+                    $descriptions[] = trim($description);
+                }
+            }
+        }
+
+        if (empty($graphs)) {
+            return [];
+        }
+
+        $result = ['graphs' => $graphs];
+        if (!empty($descriptions)) {
+            $result['descriptions'] = $descriptions;
+        }
+
+        return $result;
+    }
+
+    private function getCertificatePreviewAnalyticalDataset(int $organizationId, array $sampleData): array
+    {
+        if ($organizationId <= 0) {
+            return [];
+        }
+
+        $context = $this->resolveCertificatePreviewSubjectIds();
+        $evaluationId = (int) ($context['evaluation_id'] ?? 0);
+        $evaluateeId = (int) ($context['evaluatee_id'] ?? 0);
+
+        if ($evaluationId <= 0 || $evaluateeId <= 0) {
+            return [];
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT a.answer_id, a.answer_code, ans.is_correct
+                 FROM organization_evaluation_exam_answers a
+                 INNER JOIN organization_evaluation_tools t ON t.id = a.tool_id
+                 LEFT JOIN organization_evaluation_tool_answers ans
+                   ON ans.id = a.answer_id AND ans.evaluation_tool_id = a.tool_id AND ans.question_id = a.question_id
+                 WHERE a.organization_id = :organization_id
+                   AND a.evaluation_id = :evaluation_id
+                   AND a.evaluatee_id = :evaluatee_id
+                   AND (
+                        LOWER(t.calculation_formula) LIKE "%analytical%"
+                        OR LOWER(t.question_type) LIKE "%analytical%"
+                   )',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                ]
+            ) ?: [];
+        } catch (Exception $exception) {
+            $rows = [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $answered = 0;
+        $correct = 0;
+        foreach ($rows as $row) {
+            $answerId = $row['answer_id'] ?? null;
+            $answerCode = $row['answer_code'] ?? null;
+            if ($answerId !== null || ($answerCode !== null && trim((string) $answerCode) !== '')) {
+                $answered++;
+                if ((int) ($row['is_correct'] ?? 0) === 1) {
+                    $correct++;
+                }
+            }
+        }
+
+        if ($answered <= 0) {
+            return [];
+        }
+
+        $incorrect = max(0, $answered - $correct);
+        $percent = (int) round(($correct * 100) / max(1, $answered));
+        $percent = max(0, min(100, $percent));
+
+        $sampleAnalytical = isset($sampleData['analytical']) && is_array($sampleData['analytical'])
+            ? $sampleData['analytical']
+            : [];
+
+        $thresholds = isset($sampleAnalytical['thresholds']) && is_array($sampleAnalytical['thresholds'])
+            ? $sampleAnalytical['thresholds']
+            : [];
+
+        $lowThreshold = (int) ($thresholds['low'] ?? 50);
+        $mediumThreshold = (int) ($thresholds['medium'] ?? 60);
+        if ($mediumThreshold <= $lowThreshold) {
+            $mediumThreshold = $lowThreshold + 10;
+        }
+
+        $band = 'low';
+        if ($percent >= $mediumThreshold) {
+            $band = 'high';
+        } elseif ($percent >= $lowThreshold) {
+            $band = 'medium';
+        }
+
+        $defaultRangeLabels = [
+            'low' => 'نیاز به توسعه',
+            'medium' => 'در مسیر رشد',
+            'high' => 'سطح پیشرفته',
+        ];
+
+        $rangeLabels = isset($sampleAnalytical['range_labels']) && is_array($sampleAnalytical['range_labels'])
+            ? array_merge($defaultRangeLabels, array_filter($sampleAnalytical['range_labels'], static function ($value) {
+                return is_string($value) && trim($value) !== '';
+            }))
+            : $defaultRangeLabels;
+
+        $analysisTexts = isset($sampleAnalytical['analysis_texts']) && is_array($sampleAnalytical['analysis_texts'])
+            ? $sampleAnalytical['analysis_texts']
+            : [];
+
+        $analysisText = '';
+        if (!empty($analysisTexts[$band])) {
+            $analysisText = (string) $analysisTexts[$band];
+        } elseif (!empty($sampleAnalytical['analysis_text'])) {
+            $analysisText = (string) $sampleAnalytical['analysis_text'];
+        }
+
+        $analysisHeadline = isset($sampleAnalytical['analysis_headline']) && is_string($sampleAnalytical['analysis_headline'])
+            ? trim($sampleAnalytical['analysis_headline'])
+            : 'تفسیر عملکرد تحلیلی';
+        if (isset($sampleAnalytical['analysisHeadline']) && is_string($sampleAnalytical['analysisHeadline'])) {
+            $analysisHeadline = trim($sampleAnalytical['analysisHeadline']) !== ''
+                ? trim($sampleAnalytical['analysisHeadline'])
+                : $analysisHeadline;
+        }
+
+        $accentColor = isset($sampleAnalytical['accentColor']) && is_string($sampleAnalytical['accentColor'])
+            ? trim($sampleAnalytical['accentColor'])
+            : '#0ea5e9';
+
+        return [
+            'has_analytical' => true,
+            'answered' => $answered,
+            'correct' => $correct,
+            'incorrect' => $incorrect,
+            'percent' => $percent,
+            'score' => $percent,
+            'band' => $band,
+            'band_label' => $rangeLabels[$band] ?? $band,
+            'analysis_text' => $analysisText,
+            'analysis_texts' => $analysisTexts,
+            'analysis_headline' => $analysisHeadline,
+            'range_labels' => $rangeLabels,
+            'thresholds' => [
+                'low' => $lowThreshold,
+                'medium' => $mediumThreshold,
+            ],
+            'accentColor' => $accentColor,
+        ];
+    }
+
+    private function getCertificatePreviewWashupDataset(int $organizationId, array $sampleData): array
+    {
+        if ($organizationId <= 0) {
+            return [];
+        }
+
+        $context = $this->resolveCertificatePreviewSubjectIds();
+        $evaluationId = (int) ($context['evaluation_id'] ?? 0);
+        $evaluateeId = (int) ($context['evaluatee_id'] ?? 0);
+
+        if ($evaluationId <= 0 || $evaluateeId <= 0) {
+            return [];
+        }
+
+        $this->ensureOrganizationEvaluationAgreedScoresTableExists();
+        $this->ensureOrganizationCompetenciesTableExists();
+        $this->ensureOrganizationCompetencyDimensionsTableExists();
+    $this->ensureOrganizationEvaluationToolAssignmentsTableExists();
+        $this->ensureOrganizationEvaluationToolsTableExists();
+        $this->ensureOrganizationEvaluationToolCompetenciesTableExists();
+    $this->ensureOrganizationEvaluationToolScoresTableExists();
+    $this->ensureOrganizationCompetencyExamplesTableExists();
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationEvaluationFinalRecommendationsTableExists();
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT competency_id, agreed_score, updated_at, updated_by
+                 FROM organization_evaluation_agreed_scores
+                 WHERE organization_id = :organization_id
+                   AND evaluation_id = :evaluation_id
+                   AND evaluatee_id = :evaluatee_id
+                   AND agreed_score IS NOT NULL',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                ]
+            ) ?: [];
+        } catch (Exception $exception) {
+            $rows = [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $competencyIds = [];
+        $updatedByCandidates = [];
+        foreach ($rows as $row) {
+            $competencyId = (int) ($row['competency_id'] ?? 0);
+            if ($competencyId <= 0) {
+                continue;
+            }
+            $competencyIds[$competencyId] = true;
+
+            $updatedByRaw = trim((string) ($row['updated_by'] ?? ''));
+            if ($updatedByRaw !== '' && preg_match('/^\d+$/', $updatedByRaw)) {
+                $updatedByCandidates[(int) $updatedByRaw] = true;
+            }
+        }
+
+        if (empty($competencyIds)) {
+            return [];
+        }
+
+        $competencyParams = ['organization_id' => $organizationId];
+        $competencyPlaceholders = [];
+        $index = 0;
+        foreach (array_keys($competencyIds) as $competencyId) {
+            $placeholder = ':comp_' . $index++;
+            $competencyPlaceholders[] = $placeholder;
+            $competencyParams[$placeholder] = $competencyId;
+        }
+
+        $competencyMap = [];
+        try {
+            $competencySql = sprintf(
+                'SELECT oc.id, oc.code, oc.title, ocd.name AS dimension_name
+                 FROM organization_competencies oc
+                 LEFT JOIN organization_competency_dimensions ocd
+                   ON ocd.id = oc.competency_dimension_id AND ocd.organization_id = oc.organization_id
+                 WHERE oc.organization_id = :organization_id
+                   AND oc.id IN (%s)',
+                     implode(', ', $competencyPlaceholders)
+            );
+
+            $competencyRows = DatabaseHelper::fetchAll($competencySql, $competencyParams) ?: [];
+        } catch (Exception $exception) {
+            $competencyRows = [];
+        }
+
+        foreach ($competencyRows as $competencyRow) {
+            $compId = (int) ($competencyRow['id'] ?? 0);
+            if ($compId <= 0) {
+                continue;
+            }
+
+            $competencyMap[$compId] = [
+                'id' => $compId,
+                'code' => trim((string) ($competencyRow['code'] ?? '')),
+                'title' => trim((string) ($competencyRow['title'] ?? '')),
+                'dimension' => trim((string) ($competencyRow['dimension_name'] ?? '')),
+            ];
+        }
+
+        $assignmentToolIds = [];
+        try {
+            $assignmentRows = DatabaseHelper::fetchAll(
+                'SELECT tool_id
+                 FROM organization_evaluation_tool_assignments
+                 WHERE evaluation_id = :evaluation_id
+                 ORDER BY sort_order ASC, id ASC',
+                ['evaluation_id' => $evaluationId]
+            ) ?: [];
+        } catch (Exception $exception) {
+            $assignmentRows = [];
+        }
+
+        foreach ($assignmentRows as $assignmentRow) {
+            $toolId = (int) ($assignmentRow['tool_id'] ?? 0);
+            if ($toolId > 0) {
+                $assignmentToolIds[$toolId] = true;
+            }
+        }
+
+    $toolNames = [];
+        if (!empty($assignmentToolIds)) {
+            $toolParams = ['organization_id' => $organizationId];
+            $toolPlaceholders = [];
+            $toolIndex = 0;
+            foreach (array_keys($assignmentToolIds) as $toolId) {
+                $placeholder = ':tool_' . $toolIndex++;
+                $toolPlaceholders[] = $placeholder;
+                $toolParams[$placeholder] = $toolId;
+            }
+
+            try {
+                $toolSql = sprintf(
+                    'SELECT id, name
+                     FROM organization_evaluation_tools
+                     WHERE organization_id = :organization_id
+                       AND id IN (%s)',
+                                        implode(', ', $toolPlaceholders)
+                );
+
+                $toolRows = DatabaseHelper::fetchAll($toolSql, $toolParams) ?: [];
+            } catch (Exception $exception) {
+                $toolRows = [];
+            }
+
+            foreach ($toolRows as $toolRow) {
+                $toolId = (int) ($toolRow['id'] ?? 0);
+                if ($toolId <= 0) {
+                    continue;
+                }
+                $toolNames[$toolId] = trim((string) ($toolRow['name'] ?? ''));
+            }
+        }
+
+        $toolsByCompetency = [];
+        if (!empty($assignmentToolIds)) {
+            $toolCompParams = ['organization_id' => $organizationId];
+            $toolCompPlaceholders = [];
+            $paramIndex = 0;
+            foreach (array_keys($assignmentToolIds) as $toolId) {
+                $placeholder = ':assign_' . $paramIndex++;
+                $toolCompPlaceholders[] = $placeholder;
+                $toolCompParams[$placeholder] = $toolId;
+            }
+
+            $competencyParamsInline = ['organization_id' => $organizationId];
+            $competencyPlaceholdersInline = [];
+            $inlineIndex = 0;
+            foreach (array_keys($competencyIds) as $compId) {
+                $placeholder = ':competency_' . $inlineIndex++;
+                $competencyPlaceholdersInline[] = $placeholder;
+                $competencyParamsInline[$placeholder] = $compId;
+            }
+
+            $joinedParams = array_merge($toolCompParams, $competencyParamsInline);
+
+            try {
+                $toolCompSql = sprintf(
+                    'SELECT evaluation_tool_id, competency_id
+                     FROM organization_evaluation_tool_competencies
+                     WHERE organization_id = :organization_id
+                       AND evaluation_tool_id IN (%s)
+                       AND competency_id IN (%s)',
+                                        implode(', ', $toolCompPlaceholders),
+                                        implode(', ', $competencyPlaceholdersInline)
+                );
+
+                $toolCompRows = DatabaseHelper::fetchAll($toolCompSql, $joinedParams) ?: [];
+            } catch (Exception $exception) {
+                $toolCompRows = [];
+            }
+
+            foreach ($toolCompRows as $toolCompRow) {
+                $toolId = (int) ($toolCompRow['evaluation_tool_id'] ?? 0);
+                $compId = (int) ($toolCompRow['competency_id'] ?? 0);
+                if ($toolId <= 0 || $compId <= 0 || !isset($toolNames[$toolId])) {
+                    continue;
+                }
+
+                if (!isset($toolsByCompetency[$compId])) {
+                    $toolsByCompetency[$compId] = [];
+                }
+
+                $toolsByCompetency[$compId][$toolId] = $toolNames[$toolId];
+            }
+        }
+
+        $updatedByMap = [];
+        if (!empty($updatedByCandidates)) {
+            $userParams = ['organization_id' => $organizationId];
+            $userPlaceholders = [];
+            $userIndex = 0;
+            foreach (array_keys($updatedByCandidates) as $userId) {
+                $placeholder = ':user_' . $userIndex++;
+                $userPlaceholders[] = $placeholder;
+                $userParams[$placeholder] = $userId;
+            }
+
+            try {
+                $userSql = sprintf(
+                    'SELECT id, first_name, last_name, display_name
+                     FROM organization_users
+                     WHERE organization_id = :organization_id
+                       AND id IN (%s)',
+                                        implode(', ', $userPlaceholders)
+                );
+
+                $userRows = DatabaseHelper::fetchAll($userSql, $userParams) ?: [];
+            } catch (Exception $exception) {
+                $userRows = [];
+            }
+
+            foreach ($userRows as $userRow) {
+                $userId = (int) ($userRow['id'] ?? 0);
+                if ($userId <= 0) {
+                    continue;
+                }
+
+                $displayName = trim((string) ($userRow['display_name'] ?? ''));
+                if ($displayName === '') {
+                    $first = trim((string) ($userRow['first_name'] ?? ''));
+                    $last = trim((string) ($userRow['last_name'] ?? ''));
+                    $displayName = trim($first . ' ' . $last);
+                }
+
+                if ($displayName === '') {
+                    $displayName = 'کاربر ' . UtilityHelper::englishToPersian((string) $userId);
+                }
+
+                $updatedByMap[$userId] = $displayName;
+            }
+        }
+
+        $sampleWashup = isset($sampleData['washup_agreed']) && is_array($sampleData['washup_agreed'])
+            ? $sampleData['washup_agreed']
+            : [];
+
+        $accentColor = isset($sampleWashup['accentColor']) && is_string($sampleWashup['accentColor'])
+            ? trim($sampleWashup['accentColor'])
+            : '#2563eb';
+        $headline = isset($sampleWashup['headline']) ? (string) $sampleWashup['headline'] : '';
+        $summary = isset($sampleWashup['summary']) ? (string) $sampleWashup['summary'] : '';
+        $footerNote = isset($sampleWashup['footer_note']) ? (string) $sampleWashup['footer_note'] : '';
+        $emptyMessage = isset($sampleWashup['empty_message']) ? (string) $sampleWashup['empty_message'] : 'برای این ارزیابی هنوز امتیاز توافقی ثبت نشده است.';
+
+    $items = [];
+        foreach ($rows as $row) {
+            $competencyId = (int) ($row['competency_id'] ?? 0);
+            if ($competencyId <= 0 || !isset($competencyMap[$competencyId])) {
+                continue;
+            }
+
+            $score = isset($row['agreed_score']) ? (float) $row['agreed_score'] : null;
+            if ($score === null) {
+                continue;
+            }
+
+            $tools = isset($toolsByCompetency[$competencyId]) && is_array($toolsByCompetency[$competencyId])
+                ? array_values(array_unique(array_filter($toolsByCompetency[$competencyId], static function ($value) {
+                    return is_string($value) && trim($value) !== '';
+                })))
+                : [];
+
+            $updatedByRaw = trim((string) ($row['updated_by'] ?? ''));
+            $updatedByDisplay = $updatedByRaw;
+            if ($updatedByRaw !== '' && preg_match('/^\d+$/', $updatedByRaw)) {
+                $updatedByDisplay = $updatedByMap[(int) $updatedByRaw] ?? ('کاربر ' . UtilityHelper::englishToPersian($updatedByRaw));
+            }
+
+            $updatedAt = trim((string) ($row['updated_at'] ?? ''));
+            $updatedAtIso = $updatedAt !== '' ? $updatedAt : null;
+            $updatedAtDisplay = '';
+            if ($updatedAt !== '') {
+                try {
+                    $date = new DateTime($updatedAt, new DateTimeZone('Asia/Tehran'));
+                    $updatedAtDisplay = UtilityHelper::englishToPersian($date->format('Y/m/d'));
+                    $updatedAtIso = $date->format(DateTime::ATOM);
+                } catch (Exception $exception) {
+                    $updatedAtDisplay = UtilityHelper::englishToPersian(date('Y/m/d', strtotime($updatedAt)));
+                }
+            }
+
+            $scoreFormatted = rtrim(rtrim(number_format($score, 2, '.', ''), '0'), '.');
+            if ($scoreFormatted === '') {
+                $scoreFormatted = '0';
+            }
+
+            $items[] = [
+                'competency_id' => $competencyId,
+                'competency_title' => $competencyMap[$competencyId]['title'] ?? '',
+                'competency_code' => $competencyMap[$competencyId]['code'] ?? '',
+                'dimension' => $competencyMap[$competencyId]['dimension'] ?? '',
+                'agreed_score' => $score,
+                'score_label' => UtilityHelper::englishToPersian($scoreFormatted),
+                'tools' => $tools,
+                'tool_count' => count($tools),
+                'updated_by' => $updatedByDisplay,
+                'updated_at_display' => $updatedAtDisplay,
+                'updated_at_iso' => $updatedAtIso,
+            ];
+        }
+
+        if (empty($items)) {
+            return [];
+        }
+
+        usort($items, static function (array $a, array $b): int {
+            $scoreA = (float) ($a['agreed_score'] ?? 0.0);
+            $scoreB = (float) ($b['agreed_score'] ?? 0.0);
+            $diff = $scoreB <=> $scoreA;
+            if ($diff !== 0) {
+                return $diff;
+            }
+            $titleA = trim((string) ($a['competency_title'] ?? ''));
+            $titleB = trim((string) ($b['competency_title'] ?? ''));
+            return strcmp($titleA, $titleB);
+        });
+
+        $toolSummary = [];
+        foreach ($toolsByCompetency as $compTools) {
+            foreach ($compTools as $toolName) {
+                if (!is_string($toolName) || trim($toolName) === '') {
+                    continue;
+                }
+                $toolSummary[$toolName] = true;
+            }
+        }
+
+        // Build example-level notes grouped by tool
+        $examplesByTool = [];
+        if (!empty($assignmentToolIds)) {
+            try {
+                $scoreRows = DatabaseHelper::fetchAll(
+                    'SELECT s.tool_id, s.competency_id, s.example_id, s.score_note, s.scorer_id
+                     FROM organization_evaluation_tool_scores s
+                     WHERE s.organization_id = :organization_id
+                       AND s.evaluation_id = :evaluation_id
+                       AND s.evaluatee_id = :evaluatee_id
+                       AND s.score_note IS NOT NULL
+                       AND TRIM(s.score_note) <> ""',
+                    [
+                        'organization_id' => $organizationId,
+                        'evaluation_id' => $evaluationId,
+                        'evaluatee_id' => $evaluateeId,
+                    ]
+                ) ?: [];
+            } catch (Exception $exception) {
+                $scoreRows = [];
+            }
+
+            $exampleIds = [];
+            $scorerIds = [];
+            foreach ($scoreRows as $sr) {
+                $eid = isset($sr['example_id']) ? (int) $sr['example_id'] : 0;
+                if ($eid > 0) { $exampleIds[$eid] = true; }
+                $scid = isset($sr['scorer_id']) ? (int) $sr['scorer_id'] : 0;
+                if ($scid > 0) { $scorerIds[$scid] = true; }
+            }
+
+            $exampleTextMap = [];
+            if (!empty($exampleIds)) {
+                $exParams = ['organization_id' => $organizationId];
+                $ph = [];
+                $idx = 0;
+                foreach (array_keys($exampleIds) as $id) {
+                    $p = ':ex_' . $idx++;
+                    $ph[] = $p;
+                    $exParams[$p] = $id;
+                }
+                try {
+                    $exSql = sprintf(
+                        'SELECT id, behavior_example FROM organization_competency_examples WHERE organization_id = :organization_id AND id IN (%s)',
+                        implode(', ', $ph)
+                    );
+                    $exRows = DatabaseHelper::fetchAll($exSql, $exParams) ?: [];
+                } catch (Exception $exception) {
+                    $exRows = [];
+                }
+                foreach ($exRows as $er) {
+                    $eid = (int) ($er['id'] ?? 0);
+                    if ($eid > 0) {
+                        $exampleTextMap[$eid] = trim((string) ($er['behavior_example'] ?? ''));
+                    }
+                }
+            }
+
+            $scorerNameMap = [];
+            if (!empty($scorerIds)) {
+                $uParams = ['organization_id' => $organizationId];
+                $uph = [];
+                $uix = 0;
+                foreach (array_keys($scorerIds) as $uid) {
+                    $p = ':uid_' . $uix++;
+                    $uph[] = $p;
+                    $uParams[$p] = $uid;
+                }
+                try {
+                    $uSql = sprintf(
+                        'SELECT id, first_name, last_name, display_name FROM organization_users WHERE organization_id = :organization_id AND id IN (%s)',
+                        implode(', ', $uph)
+                    );
+                    $uRows = DatabaseHelper::fetchAll($uSql, $uParams) ?: [];
+                } catch (Exception $exception) {
+                    $uRows = [];
+                }
+                foreach ($uRows as $ur) {
+                    $uid = (int) ($ur['id'] ?? 0);
+                    if ($uid <= 0) continue;
+                    $dn = trim((string) ($ur['display_name'] ?? ''));
+                    if ($dn === '') {
+                        $fn = trim((string) ($ur['first_name'] ?? ''));
+                        $ln = trim((string) ($ur['last_name'] ?? ''));
+                        $dn = trim($fn . ' ' . $ln);
+                    }
+                    if ($dn === '') { $dn = 'کاربر ' . UtilityHelper::englishToPersian((string) $uid); }
+                    $scorerNameMap[$uid] = $dn;
+                }
+            }
+
+            // Map competency id to title for table display
+            $compTitleMap = [];
+            foreach ($items as $it) {
+                $cid = (int) ($it['competency_id'] ?? 0);
+                if ($cid > 0) { $compTitleMap[$cid] = (string) ($it['competency_title'] ?? ''); }
+            }
+
+            foreach ($scoreRows as $sr) {
+                $toolId = (int) ($sr['tool_id'] ?? 0);
+                $toolName = $toolNames[$toolId] ?? '';
+                if ($toolName === '') { continue; }
+                $compId = (int) ($sr['competency_id'] ?? 0);
+                $exampleId = (int) ($sr['example_id'] ?? 0);
+                $note = trim((string) ($sr['score_note'] ?? ''));
+                if ($note === '') { continue; }
+                $exampleText = $exampleId > 0 ? ($exampleTextMap[$exampleId] ?? '') : '';
+                $evaluatorId = (int) ($sr['scorer_id'] ?? 0);
+                $evaluator = $evaluatorId > 0 ? ($scorerNameMap[$evaluatorId] ?? '') : '';
+                $competencyTitle = $compTitleMap[$compId] ?? '';
+
+                if (!isset($examplesByTool[$toolName])) { $examplesByTool[$toolName] = []; }
+                $examplesByTool[$toolName][] = [
+                    'competency_id' => $compId,
+                    'competency_title' => $competencyTitle,
+                    'example_id' => $exampleId,
+                    'example_text' => $exampleText,
+                    'note' => $note,
+                    'evaluator' => $evaluator,
+                ];
+            }
+
+            // Sort entries within each tool by competency then example
+            foreach ($examplesByTool as $tname => $entries) {
+                usort($entries, static function (array $a, array $b): int {
+                    $cmp = strcmp(trim((string) ($a['competency_title'] ?? '')), trim((string) ($b['competency_title'] ?? '')));
+                    if ($cmp !== 0) return $cmp;
+                    $ea = trim((string) ($a['example_text'] ?? ''));
+                    $eb = trim((string) ($b['example_text'] ?? ''));
+                    return strcmp($ea, $eb);
+                });
+                $examplesByTool[$tname] = $entries;
+            }
+        }
+
+        // Fetch final recommendations
+        $recommendationText = '';
+        $developmentText = '';
+        try {
+            $finalRec = DatabaseHelper::fetchOne(
+                'SELECT recommendation_text, development_text
+                 FROM organization_evaluation_final_recommendations
+                 WHERE organization_id = :organization_id
+                   AND evaluation_id = :evaluation_id
+                   AND evaluatee_id = :evaluatee_id
+                 LIMIT 1',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                ]
+            );
+            
+            if ($finalRec) {
+                $recommendationText = trim((string) ($finalRec['recommendation_text'] ?? ''));
+                $developmentText = trim((string) ($finalRec['development_text'] ?? ''));
+            }
+        } catch (Exception $exception) {
+            // If table doesn't exist or query fails, keep empty strings
+        }
+
+        return [
+            'has_washup' => true,
+            'headline' => $headline,
+            'summary' => $summary,
+            'footer_note' => $footerNote,
+            'empty_message' => $emptyMessage,
+            'accentColor' => $accentColor,
+            'items' => $items,
+            'items_count' => count($items),
+            'tool_names' => array_values(array_keys($toolSummary)),
+            'tool_count' => count($toolSummary),
+            'examples_by_tool' => $examplesByTool,
+            'recommendation_text' => $recommendationText,
+            'development_text' => $developmentText,
+        ];
+    }
+
+    private function buildMbtiDatasetFromAnswers(int $organizationId, int $evaluationId, int $evaluateeId): array
+    {
+        $mbtiData = [
+            'has_mbti' => false,
+            'type_code' => '',
+            'counts' => [],
+            'axes' => [],
+            'type_title' => '',
+            'type_summary' => '',
+            'type_description' => '',
+            'cognitive_functions' => '',
+            'features' => [],
+            'persona_name' => '',
+            'summary' => '',
+        ];
+
+        if ($organizationId <= 0 || $evaluationId <= 0 || $evaluateeId <= 0) {
+            return $mbtiData;
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT a.tool_id, a.question_id, a.answer_id
+                 FROM organization_evaluation_exam_answers a
+                 INNER JOIN organization_evaluation_tools t ON t.id = a.tool_id
+                 WHERE a.organization_id = :organization_id
+                   AND a.evaluation_id = :evaluation_id
+                   AND a.evaluatee_id = :evaluatee_id
+                   AND (
+                        LOWER(t.calculation_formula) LIKE "%mbti%"
+                        OR LOWER(t.question_type) LIKE "%mbti%"
+                   )',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $rows = [];
+        }
+
+        if (empty($rows)) {
+            return $mbtiData;
+        }
+
+        $optionsByTool = [];
+        $counts = [];
+
+        foreach ($rows as $row) {
+            $toolId = (int) ($row['tool_id'] ?? 0);
+            $questionId = (int) ($row['question_id'] ?? 0);
+            $answerId = (int) ($row['answer_id'] ?? 0);
+
+            if ($toolId <= 0 || $questionId <= 0 || $answerId <= 0) {
+                continue;
+            }
+
+            if (!isset($optionsByTool[$toolId])) {
+                $optionsByTool[$toolId] = $this->loadToolAnswerOptions($organizationId, $toolId);
+            }
+
+            $option = $optionsByTool[$toolId][$questionId][$answerId] ?? null;
+            if (!$option) {
+                continue;
+            }
+
+            $score = strtoupper((string) ($option['character_score'] ?? ''));
+            if ($score === '') {
+                continue;
+            }
+
+            $letters = preg_split('//u', $score, -1, PREG_SPLIT_NO_EMPTY);
+            foreach ($letters as $letter) {
+                if (preg_match('/^[EISNTFJP]$/u', $letter)) {
+                    $counts[$letter] = ($counts[$letter] ?? 0) + 1;
+                }
+            }
+        }
+
+        if (empty($counts)) {
+            return $mbtiData;
+        }
+
+        $typeCode = $this->deriveMbtiTypeFromCounts($counts);
+        $axes = [];
+        $pairs = [['E', 'I'], ['S', 'N'], ['T', 'F'], ['J', 'P']];
+        foreach ($pairs as $pair) {
+            [$a, $b] = $pair;
+            $countA = (int) ($counts[$a] ?? 0);
+            $countB = (int) ($counts[$b] ?? 0);
+            $total = max(1, $countA + $countB);
+            $axes[$a . $b] = [
+                $a => $countA,
+                $b => $countB,
+                $a . '_pct' => (int) round($countA * 100 / $total),
+                $b . '_pct' => (int) round($countB * 100 / $total),
+            ];
+        }
+
+        $mbtiData['has_mbti'] = $typeCode !== '';
+        $mbtiData['type_code'] = $typeCode;
+        $mbtiData['counts'] = $counts;
+        $mbtiData['axes'] = $axes;
+
+        if ($typeCode === '') {
+            return $mbtiData;
+        }
+
+        try {
+            $typeRow = DatabaseHelper::fetchOne(
+                'SELECT *
+                 FROM organization_mbti_types
+                 WHERE organization_id = :organization_id AND UPPER(type_code) = :type_code
+                 LIMIT 1',
+                ['organization_id' => $organizationId, 'type_code' => strtoupper($typeCode)]
+            );
+        } catch (Exception $exception) {
+            $typeRow = null;
+        }
+
+        if ($typeRow) {
+            $mbtiData = $this->enrichMbtiDatasetWithTypeRow($mbtiData, $typeRow, $organizationId);
+        }
+
+        return $mbtiData;
+    }
+
+    private function loadMbtiTypeFeaturesByCategory(int $organizationId, int $mbtiTypeId): array
+    {
+        if ($organizationId <= 0 || $mbtiTypeId <= 0) {
+            return [];
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT category, feature_text, sort_order, id
+                 FROM organization_mbti_type_features
+                 WHERE organization_id = :organization_id AND mbti_type_id = :mbti_type_id
+                 ORDER BY category ASC, sort_order ASC, id ASC',
+                ['organization_id' => $organizationId, 'mbti_type_id' => $mbtiTypeId]
+            );
+        } catch (Exception $exception) {
+            $rows = [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $featuresByCategory = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $category = trim((string) ($row['category'] ?? ''));
+            if ($category === '') {
+                $category = 'ویژگی‌ها';
+            }
+
+            $text = trim((string) ($row['feature_text'] ?? ''));
+            if ($text === '') {
+                continue;
+            }
+
+            if (!isset($featuresByCategory[$category])) {
+                $featuresByCategory[$category] = [];
+            }
+
+            if (!in_array($text, $featuresByCategory[$category], true)) {
+                $featuresByCategory[$category][] = $text;
+            }
+        }
+
+        return $featuresByCategory;
+    }
+
+    private function enrichMbtiDatasetWithTypeRow(array $mbtiData, array $typeRow, int $organizationId): array
+    {
+        $typeCode = strtoupper(trim((string) ($typeRow['type_code'] ?? '')));
+        if ($typeCode !== '') {
+            $mbtiData['type_code'] = $mbtiData['type_code'] ?? $typeCode;
+            $mbtiData['has_mbti'] = true;
+        }
+
+        $title = trim((string) ($typeRow['title'] ?? ''));
+        if ($title !== '') {
+            $mbtiData['type_title'] = $title;
+            if (empty($mbtiData['persona_name'])) {
+                $mbtiData['persona_name'] = $title;
+            }
+        }
+
+        $summary = trim((string) ($typeRow['summary'] ?? ''));
+        if ($summary !== '') {
+            $mbtiData['type_summary'] = $summary;
+            if (empty($mbtiData['summary'])) {
+                $mbtiData['summary'] = $summary;
+            }
+        }
+
+        $shortDescription = trim((string) ($typeRow['short_description'] ?? ''));
+        if ($shortDescription === '' && $summary !== '') {
+            $shortDescription = $summary;
+        }
+        if ($shortDescription !== '') {
+            $mbtiData['type_short_description'] = $shortDescription;
+            if (empty($mbtiData['summary'])) {
+                $mbtiData['summary'] = $shortDescription;
+            }
+        }
+
+        $description = trim((string) ($typeRow['description'] ?? ''));
+        if ($description !== '') {
+            $mbtiData['type_description'] = $description;
+            if (empty($mbtiData['summary'])) {
+                $mbtiData['summary'] = $description;
+            }
+        }
+
+        $functions = trim((string) ($typeRow['cognitive_functions'] ?? ''));
+        if ($functions !== '') {
+            $mbtiData['cognitive_functions'] = $functions;
+        }
+
+        $categoryValue = '';
+        if (isset($typeRow['type_category'])) {
+            $categoryValue = trim((string) $typeRow['type_category']);
+        }
+        if ($categoryValue === '' && isset($typeRow['category'])) {
+            $categoryValue = trim((string) $typeRow['category']);
+        }
+        if ($categoryValue === '' && isset($typeRow['categories'])) {
+            $categoriesList = $this->decodeMbtiCategories((string) $typeRow['categories']);
+            if (!empty($categoriesList)) {
+                $categoryValue = implode('، ', array_slice($categoriesList, 0, 2));
+            }
+        }
+        if ($categoryValue !== '') {
+            $mbtiData['type_category'] = $categoryValue;
+        }
+
+        $mbtiTypeId = (int) ($typeRow['id'] ?? 0);
+        if ($mbtiTypeId > 0) {
+            $featuresByCategory = $this->loadMbtiTypeFeaturesByCategory($organizationId, $mbtiTypeId);
+            if (!empty($featuresByCategory)) {
+                $mbtiData['features'] = $featuresByCategory;
+            }
+        }
+
+        if (!isset($mbtiData['summary'])) {
+            $mbtiData['summary'] = '';
+        }
+
+        return $mbtiData;
+    }
+
+    private function normalizeMbtiDatasetForPreview(array $mbtiData): array
+    {
+        if (empty($mbtiData) || empty($mbtiData['has_mbti'])) {
+            return [];
+        }
+
+        $typeCode = trim((string) ($mbtiData['type_code'] ?? ''));
+        $typeTitle = trim((string) ($mbtiData['type_title'] ?? ''));
+        $personaName = trim((string) ($mbtiData['persona_name'] ?? ($typeTitle !== '' ? $typeTitle : '')));
+        $summary = trim((string) ($mbtiData['summary'] ?? ''));
+        $typeSummary = trim((string) ($mbtiData['type_summary'] ?? ''));
+        $typeShort = trim((string) ($mbtiData['type_short_description'] ?? ''));
+        $typeDescription = trim((string) ($mbtiData['type_description'] ?? ''));
+        $typeCategory = trim((string) ($mbtiData['type_category'] ?? ''));
+        $cognitiveFunctions = trim((string) ($mbtiData['cognitive_functions'] ?? ''));
+
+        if ($summary === '' && $typeSummary !== '') {
+            $summary = $typeSummary;
+        }
+        if ($summary === '' && $typeShort !== '') {
+            $summary = $typeShort;
+        }
+        if ($summary === '' && $typeDescription !== '') {
+            $summary = $typeDescription;
+        }
+
+        $cleanupList = static function (array $list): array {
+            $filtered = [];
+            foreach ($list as $item) {
+                $text = trim((string) $item);
+                if ($text !== '') {
+                    $filtered[] = $text;
+                }
+            }
+            return array_values(array_unique($filtered));
+        };
+
+        $strengths = [];
+        $growthAreas = [];
+        $featureGroups = [];
+
+        if (!empty($mbtiData['features']) && is_array($mbtiData['features'])) {
+            foreach ($mbtiData['features'] as $category => $items) {
+                $title = trim((string) $category);
+                $sourceItems = [];
+                if (is_array($items)) {
+                    $sourceItems = $items;
+                } elseif ($items !== null) {
+                    $sourceItems = [$items];
+                }
+
+                $normalizedItems = $cleanupList($sourceItems);
+                if (empty($normalizedItems)) {
+                    continue;
+                }
+
+                $classification = $this->classifyMbtiFeatureCategory($title);
+                if ($classification === 'strengths') {
+                    $strengths = array_merge($strengths, $normalizedItems);
+                } elseif ($classification === 'growth') {
+                    $growthAreas = array_merge($growthAreas, $normalizedItems);
+                }
+
+                if ($title === '') {
+                    $title = 'ویژگی‌ها';
+                }
+
+                $featureGroups[] = [
+                    'category' => $title,
+                    'items' => $normalizedItems,
+                ];
+            }
+        }
+
+        $strengths = $cleanupList($strengths);
+        $growthAreas = $cleanupList($growthAreas);
+
+        if (empty($strengths) && !empty($featureGroups)) {
+            $firstGroup = $featureGroups[0]['items'] ?? [];
+            if (!empty($firstGroup)) {
+                $strengths = $cleanupList($firstGroup);
+            }
+        }
+
+        $preferenceEI = $this->resolveMbtiPreferencePercent($mbtiData, 'EI', 'E');
+        $preferenceSN = $this->resolveMbtiPreferencePercent($mbtiData, 'SN', 'S');
+        $preferenceTF = $this->resolveMbtiPreferencePercent($mbtiData, 'TF', 'T');
+        $preferenceJP = $this->resolveMbtiPreferencePercent($mbtiData, 'JP', 'J');
+
+        $result = [
+            'has_mbti' => true,
+            'type_code' => $typeCode,
+            'persona_name' => $personaName,
+            'summary' => $summary,
+            'strengths' => $strengths,
+            'growth_areas' => $growthAreas,
+            'preferenceEI' => $preferenceEI,
+            'preferenceSN' => $preferenceSN,
+            'preferenceTF' => $preferenceTF,
+            'preferenceJP' => $preferenceJP,
+        ];
+
+        if ($typeTitle !== '') {
+            $result['type_title'] = $typeTitle;
+        }
+        if ($typeSummary !== '' && $typeSummary !== $summary) {
+            $result['type_summary'] = $typeSummary;
+        }
+        if ($typeShort !== '' && $typeShort !== $summary) {
+            $result['type_short_description'] = $typeShort;
+        }
+        if ($typeDescription !== '' && $typeDescription !== $summary) {
+            $result['type_description'] = $typeDescription;
+        }
+        if ($typeCategory !== '') {
+            $result['type_category'] = $typeCategory;
+        }
+        if ($cognitiveFunctions !== '') {
+            $result['cognitive_functions'] = $cognitiveFunctions;
+        }
+        if (!empty($featureGroups)) {
+            $result['feature_groups'] = $featureGroups;
+        }
+        if (!empty($mbtiData['features']) && is_array($mbtiData['features'])) {
+            $result['features'] = $mbtiData['features'];
+        }
+
+        if ($typeCode === '') {
+            unset($result['type_code']);
+        }
+        if ($personaName === '') {
+            unset($result['persona_name']);
+        }
+        if ($summary === '') {
+            unset($result['summary']);
+        }
+        if (empty($strengths)) {
+            unset($result['strengths']);
+        }
+        if (empty($growthAreas)) {
+            unset($result['growth_areas']);
+        }
+
+        return $result;
+    }
+
+    private function getCertificatePreviewMbtiDataset(int $organizationId, array $sampleData): array
+    {
+        $this->ensureOrganizationMbtiTypesTableExists();
+        $this->ensureOrganizationMbtiTypeFeaturesTableExists();
+
+        $requestedCode = '';
+        $codeKeys = ['mbti_type', 'mbtiType', 'mbti_code', 'type_code'];
+        foreach ($codeKeys as $key) {
+            if (!isset($_GET[$key]) || !is_string($_GET[$key])) {
+                continue;
+            }
+            $candidate = strtoupper(trim(UtilityHelper::persianToEnglish($_GET[$key])));
+            $candidate = preg_replace('/[^A-Z]/', '', $candidate);
+            if ($this->isValidMbtiCode($candidate)) {
+                $requestedCode = $candidate;
+                break;
+            }
+        }
+
+        if ($organizationId <= 0) {
+            return isset($sampleData['mbti_profile']) && is_array($sampleData['mbti_profile'])
+                ? $sampleData['mbti_profile']
+                : [];
+        }
+
+        $params = ['organization_id' => $organizationId];
+        $query = 'SELECT * FROM organization_mbti_types WHERE organization_id = :organization_id';
+        if ($requestedCode !== '') {
+            $query .= ' AND UPPER(type_code) = :type_code';
+            $params['type_code'] = $requestedCode;
+        }
+        $query .= ' ORDER BY updated_at DESC, id DESC LIMIT 1';
+
+        try {
+            $typeRow = DatabaseHelper::fetchOne($query, $params);
+        } catch (Exception $exception) {
+            $typeRow = null;
+        }
+
+        if (!$typeRow) {
+            return isset($sampleData['mbti_profile']) && is_array($sampleData['mbti_profile'])
+                ? $sampleData['mbti_profile']
+                : [];
+        }
+
+        $typeCode = strtoupper(trim((string) ($typeRow['type_code'] ?? '')));
+        if (!$this->isValidMbtiCode($typeCode)) {
+            $typeCode = strtoupper(trim((string) ($typeRow['type_code'] ?? '')));
+        }
+
+        $mbtiData = [
+            'has_mbti' => $typeCode !== '',
+            'type_code' => $typeCode,
+            'axes' => [],
+            'features' => [],
+        ];
+
+        $mbtiData = $this->enrichMbtiDatasetWithTypeRow($mbtiData, $typeRow, $organizationId);
+
+        $normalized = $this->normalizeMbtiDatasetForPreview($mbtiData);
+        if (!empty($normalized)) {
+            foreach (['type_title', 'type_summary', 'type_short_description', 'type_description', 'type_category', 'cognitive_functions', 'features', 'persona_name', 'summary'] as $key) {
+                if (isset($mbtiData[$key]) && $mbtiData[$key] !== '') {
+                    $normalized[$key] = $mbtiData[$key];
+                }
+            }
+            if (!empty($mbtiData['features']) && is_array($mbtiData['features'])) {
+                $normalized['features'] = $mbtiData['features'];
+            }
+            if (!isset($normalized['axes']) && isset($mbtiData['axes'])) {
+                $normalized['axes'] = $mbtiData['axes'];
+            }
+            return $normalized;
+        }
+
+        return $mbtiData;
+    }
+
+    private function resolveMbtiPreferencePercent(array $mbtiData, string $axisKey, string $primaryLetter): float
+    {
+        if (!isset($mbtiData['axes'][$axisKey]) || !is_array($mbtiData['axes'][$axisKey])) {
+            return 50.0;
+        }
+
+        $axis = $mbtiData['axes'][$axisKey];
+        $percentKey = $primaryLetter . '_pct';
+
+        if (isset($axis[$percentKey]) && is_numeric($axis[$percentKey])) {
+            return max(0.0, min(100.0, (float) $axis[$percentKey]));
+        }
+
+        $primaryCount = isset($axis[$primaryLetter]) && is_numeric($axis[$primaryLetter]) ? (float) $axis[$primaryLetter] : 0.0;
+        $counts = array_filter($axis, static function ($key) {
+            return preg_match('/^[EISNTFJP]$/', (string) $key);
+        }, ARRAY_FILTER_USE_KEY);
+        $total = array_sum(array_map('floatval', $counts));
+        if ($total <= 0) {
+            return 50.0;
+        }
+
+        return max(0.0, min(100.0, round(($primaryCount * 100) / $total, 2)));
+    }
+
+    private function classifyMbtiFeatureCategory(string $category): string
+    {
+        $normalized = trim(mb_strtolower($category, 'UTF-8'));
+
+        $strengthTokens = ['strength', 'strengths', 'strong', 'قوت', 'نقطه قوت', 'مزیت', 'برتری', 'توانمندی'];
+        foreach ($strengthTokens as $token) {
+            if ($token !== '' && mb_strpos($normalized, $token) !== false) {
+                return 'strengths';
+            }
+        }
+
+        $growthTokens = ['growth', 'develop', 'weakness', 'challenge', 'improve', 'رشد', 'توسعه', 'بهبود', 'چالش', 'فرصت', 'قابل بهبود', 'قابلیت توسعه'];
+        foreach ($growthTokens as $token) {
+            if ($token !== '' && mb_strpos($normalized, $token) !== false) {
+                return 'growth';
+            }
+        }
+
+        return 'other';
+    }
+
+    private function buildPublicProfileDatasetFromAnswers(int $organizationId, int $evaluationId, int $evaluateeId): array
+    {
+        if ($organizationId <= 0 || $evaluationId <= 0 || $evaluateeId <= 0) {
+            return [];
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT a.answer_text, a.answer_payload, a.created_at, t.name AS tool_name, t.code, t.question_type, t.calculation_formula
+                 FROM organization_evaluation_exam_answers a
+                 INNER JOIN organization_evaluation_tools t ON t.id = a.tool_id
+                 WHERE a.organization_id = :organization_id
+                   AND a.evaluation_id = :evaluation_id
+                   AND a.evaluatee_id = :evaluatee_id
+                   AND (
+                        LOWER(t.code) LIKE "%profile%"
+                        OR LOWER(t.question_type) LIKE "%profile%"
+                        OR LOWER(t.calculation_formula) LIKE "%profile%"
+                   )
+                 ORDER BY a.id ASC',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                ]
+            ) ?: [];
+        } catch (Exception $exception) {
+            $rows = [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $profile = [
+            'headline' => '',
+            'persona_name' => '',
+            'style_name' => '',
+            'summary' => '',
+            'sections' => [],
+            'strengths' => [],
+            'collaboration_tips' => [],
+            'development_focus' => [],
+            'stress_signals' => [],
+            'source_tool' => '',
+            'updated_at' => null,
+            'updated_at_formatted' => '',
+        ];
+
+        foreach ($rows as $row) {
+            if ($profile['source_tool'] === '' && !empty($row['tool_name'])) {
+                $profile['source_tool'] = (string) $row['tool_name'];
+            }
+
+            $createdAtRaw = isset($row['created_at']) ? trim((string) $row['created_at']) : '';
+            if ($createdAtRaw !== '') {
+                if ($profile['updated_at'] === null) {
+                    $profile['updated_at'] = $createdAtRaw;
+                } else {
+                    $currentTs = strtotime((string) $profile['updated_at']);
+                    $candidateTs = strtotime($createdAtRaw);
+                    if ($candidateTs !== false && ($currentTs === false || $candidateTs > $currentTs)) {
+                        $profile['updated_at'] = $createdAtRaw;
+                    }
+                }
+            }
+
+            $payload = $this->decodePublicProfilePayload($row['answer_payload'] ?? null);
+            if (!empty($payload)) {
+                $this->mergePublicProfilePayload($profile, $payload);
+            }
+
+            $answerText = trim((string) ($row['answer_text'] ?? ''));
+            if ($answerText !== '') {
+                $profile['summary'] = $this->selectPublicProfileText($profile['summary'], $answerText);
+            }
+        }
+
+        if ($profile['updated_at'] !== null) {
+            $timestamp = strtotime((string) $profile['updated_at']);
+            if ($timestamp !== false) {
+                $profile['updated_at_formatted'] = UtilityHelper::englishToPersian(date('Y/m/d', $timestamp));
+            }
+        }
+
+        $profile['sections'] = $this->normalizePublicProfileSections($profile['sections']);
+
+        $hasContent = $profile['summary'] !== ''
+            || !empty($profile['sections'])
+            || !empty($profile['strengths'])
+            || !empty($profile['collaboration_tips'])
+            || !empty($profile['development_focus'])
+            || !empty($profile['stress_signals']);
+
+        if (!$hasContent) {
+            return [];
+        }
+
+        if ($profile['headline'] === '') {
+            unset($profile['headline']);
+        }
+        if ($profile['persona_name'] === '') {
+            unset($profile['persona_name']);
+        }
+        if ($profile['style_name'] === '') {
+            unset($profile['style_name']);
+        }
+        if ($profile['source_tool'] === '') {
+            unset($profile['source_tool']);
+        }
+        if ($profile['updated_at_formatted'] === '') {
+            unset($profile['updated_at_formatted']);
+        }
+        if ($profile['updated_at'] === null) {
+            unset($profile['updated_at']);
+        }
+
+        return $profile;
+    }
+
+    private function decodePublicProfilePayload($payload): array
+    {
+        if (is_array($payload)) {
+            return $payload;
+        }
+
+        if (is_string($payload)) {
+            $trimmed = trim($payload);
+            if ($trimmed === '') {
+                return [];
+            }
+            $decoded = json_decode($trimmed, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return [];
+    }
+
+    private function mergePublicProfilePayload(array &$profile, array $payload): void
+    {
+        foreach ($payload as $rawKey => $value) {
+            if (is_int($rawKey)) {
+                if (is_array($value)) {
+                    $this->mergePublicProfilePayload($profile, $value);
+                }
+                continue;
+            }
+
+            $normalizedKey = $this->normalizePublicProfileKey($rawKey);
+
+            if ($normalizedKey === '') {
+                if (is_array($value)) {
+                    $this->mergePublicProfilePayload($profile, $value);
+                }
+                continue;
+            }
+
+            switch ($normalizedKey) {
+                case 'summary':
+                case 'shortsummary':
+                case 'shortdescription':
+                case 'profilesummary':
+                case 'overview':
+                case 'description':
+                    $profile['summary'] = $this->selectPublicProfileText($profile['summary'], $this->normalizePublicProfileText($value));
+                    break;
+                case 'headline':
+                case 'profileheadline':
+                case 'profiletitle':
+                case 'title':
+                case 'sectiontitle':
+                    $headlineText = $this->normalizePublicProfileText($value);
+                    if ($headlineText !== '') {
+                        $profile['headline'] = $this->selectPublicProfileText($profile['headline'], $headlineText);
+                    }
+                    break;
+                case 'persona':
+                case 'personaname':
+                case 'personatitle':
+                case 'archetype':
+                    $personaText = $this->normalizePublicProfileText($value);
+                    if ($personaText !== '') {
+                        if ($profile['persona_name'] === '' || mb_strlen($personaText, 'UTF-8') > mb_strlen($profile['persona_name'], 'UTF-8')) {
+                            $profile['persona_name'] = $personaText;
+                        }
+                    }
+                    break;
+                case 'style':
+                case 'stylename':
+                case 'profilestyle':
+                case 'dominantstyle':
+                    $styleText = $this->normalizePublicProfileText($value);
+                    if ($styleText !== '') {
+                        if ($profile['style_name'] === '' || mb_strlen($styleText, 'UTF-8') > mb_strlen($profile['style_name'], 'UTF-8')) {
+                            $profile['style_name'] = $styleText;
+                        }
+                    }
+                    break;
+                case 'generaltendencies':
+                case 'generaltendency':
+                case 'tendencies':
+                case 'generaloverview':
+                case 'general':
+                    $this->assignPublicProfileSection($profile, 'general_tendencies', $value);
+                    break;
+                case 'workpreferences':
+                case 'workstyle':
+                case 'preferredworkstyle':
+                case 'workapproach':
+                case 'collaborationstyle':
+                    $this->assignPublicProfileSection($profile, 'work_preferences', $value);
+                    break;
+                case 'effectivenessrequirements':
+                case 'effectivenessneeds':
+                case 'successfactors':
+                case 'whatineedtoperform':
+                    $this->assignPublicProfileSection($profile, 'effectiveness_requirements', $value);
+                    break;
+                case 'companionrequirements':
+                case 'teamneeds':
+                case 'supportneeds':
+                case 'expectationsfromothers':
+                    $this->assignPublicProfileSection($profile, 'companion_requirements', $value);
+                    break;
+                case 'behavioroverview':
+                case 'behaviouroverview':
+                case 'behaviorpattern':
+                case 'behaviourpattern':
+                case 'behaviourstyle':
+                    $this->assignPublicProfileSection($profile, 'behavior_overview', $value);
+                    break;
+                case 'strengths':
+                case 'keystrengths':
+                case 'highlights':
+                case 'valueadd':
+                    $this->assignPublicProfileList($profile, 'strengths', $value);
+                    break;
+                case 'collaborationtips':
+                case 'collaboration':
+                case 'workingwithme':
+                case 'bestcollaboration':
+                    $this->assignPublicProfileList($profile, 'collaboration_tips', $value);
+                    break;
+                case 'developmentfocus':
+                case 'developmentareas':
+                case 'growthareas':
+                case 'developmentrecommendations':
+                case 'growthfocus':
+                    $this->assignPublicProfileList($profile, 'development_focus', $value);
+                    break;
+                case 'stresssignals':
+                case 'stressbehaviours':
+                case 'stressbehaviors':
+                case 'stressindicators':
+                    $this->assignPublicProfileList($profile, 'stress_signals', $value);
+                    break;
+                case 'sections':
+                case 'section':
+                case 'profilesections':
+                    if (is_array($value)) {
+                        foreach ($value as $sectionRow) {
+                            if (!is_array($sectionRow)) {
+                                continue;
+                            }
+                            $sectionKey = '';
+                            foreach (['key', 'id', 'slug', 'code', 'name'] as $metaKey) {
+                                if (!empty($sectionRow[$metaKey])) {
+                                    $sectionKey = $this->normalizePublicProfileKey((string) $sectionRow[$metaKey]);
+                                    break;
+                                }
+                            }
+                            if ($sectionKey === '') {
+                                continue;
+                            }
+                            $mappedSectionKey = $this->mapPublicProfileSectionKey($sectionKey);
+                            if ($mappedSectionKey !== null) {
+                                $this->assignPublicProfileSection($profile, $mappedSectionKey, $sectionRow);
+                            }
+                        }
+                    }
+                    break;
+                case 'lists':
+                case 'items':
+                    if (is_array($value)) {
+                        $this->mergePublicProfilePayload($profile, $value);
+                    }
+                    break;
+                case 'sourcetool':
+                case 'toolname':
+                case 'source':
+                case 'assessmenttool':
+                    if ($profile['source_tool'] === '') {
+                        $sourceText = $this->normalizePublicProfileText($value);
+                        if ($sourceText !== '') {
+                            $profile['source_tool'] = $sourceText;
+                        }
+                    }
+                    break;
+                case 'lastupdated':
+                case 'updatedat':
+                case 'generatedat':
+                case 'timestamp':
+                    $timestampCandidate = $this->normalizePublicProfileText($value);
+                    if ($timestampCandidate !== '') {
+                        $profile['updated_at'] = $timestampCandidate;
+                    }
+                    break;
+                default:
+                    if (is_array($value)) {
+                        $this->mergePublicProfilePayload($profile, $value);
+                    }
+                    break;
+            }
+        }
+    }
+
+    private function assignPublicProfileSection(array &$profile, string $sectionKey, $value): void
+    {
+        $defaultTitle = $this->getPublicProfileSectionTitle($sectionKey);
+
+        if (!isset($profile['sections'][$sectionKey]) || !is_array($profile['sections'][$sectionKey])) {
+            $profile['sections'][$sectionKey] = [
+                'title' => $defaultTitle,
+                'text' => '',
+                'bullets' => [],
+            ];
+        }
+
+        $section = &$profile['sections'][$sectionKey];
+
+        if (is_array($value)) {
+            if (isset($value['title']) && trim((string) $value['title']) !== '') {
+                $section['title'] = trim((string) $value['title']);
+            } elseif (isset($value['label']) && trim((string) $value['label']) !== '') {
+                $section['title'] = trim((string) $value['label']);
+            }
+
+            foreach (['text', 'content', 'summary', 'description', 'value'] as $textKey) {
+                if (!isset($value[$textKey])) {
+                    continue;
+                }
+                $textCandidate = $this->normalizePublicProfileText($value[$textKey]);
+                if ($textCandidate !== '') {
+                    $section['text'] = $this->selectPublicProfileText($section['text'], $textCandidate);
+                }
+            }
+
+            foreach (['bullets', 'items', 'list', 'highlights'] as $listKey) {
+                if (!isset($value[$listKey])) {
+                    continue;
+                }
+                $section['bullets'] = $this->mergeUniqueProfileList($section['bullets'], $this->normalizePublicProfileList($value[$listKey]));
+            }
+
+            foreach ($value as $nestedKey => $nestedValue) {
+                if (in_array($nestedKey, ['title', 'label', 'text', 'content', 'summary', 'description', 'value', 'bullets', 'items', 'list', 'highlights', 'key', 'id', 'slug', 'code', 'name'], true)) {
+                    continue;
+                }
+                if (is_array($nestedValue)) {
+                    $this->assignPublicProfileSection($profile, $sectionKey, $nestedValue);
+                } elseif (is_string($nestedValue) || is_numeric($nestedValue)) {
+                    $section['text'] = $this->selectPublicProfileText($section['text'], $this->normalizePublicProfileText($nestedValue));
+                }
+            }
+            return;
+        }
+
+        $section['text'] = $this->selectPublicProfileText($section['text'], $this->normalizePublicProfileText($value));
+    }
+
+    private function assignPublicProfileList(array &$profile, string $listKey, $value): void
+    {
+        if (!isset($profile[$listKey]) || !is_array($profile[$listKey])) {
+            $profile[$listKey] = [];
+        }
+
+        $profile[$listKey] = $this->mergeUniqueProfileList($profile[$listKey], $this->normalizePublicProfileList($value));
+    }
+
+    private function normalizePublicProfileText($value): string
+    {
+        if (is_string($value) || is_numeric($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_array($value)) {
+            $parts = [];
+            foreach ($value as $entry) {
+                $text = $this->normalizePublicProfileText($entry);
+                if ($text !== '') {
+                    $parts[] = $text;
+                }
+            }
+            if (!empty($parts)) {
+                return implode("\n", array_unique($parts));
+            }
+        }
+
+        return '';
+    }
+
+    private function normalizePublicProfileList($value): array
+    {
+        $items = [];
+
+        if (is_array($value)) {
+            if ($this->isAssocArray($value)) {
+                foreach ($value as $nested) {
+                    $items = $this->mergeUniqueProfileList($items, $this->normalizePublicProfileList($nested));
+                }
+            } else {
+                foreach ($value as $entry) {
+                    $text = $this->normalizePublicProfileText($entry);
+                    if ($text !== '') {
+                        $items[] = $text;
+                    }
+                }
+            }
+        } elseif (is_string($value) || is_numeric($value)) {
+            $string = trim((string) $value);
+            if ($string !== '') {
+                $parts = preg_split('/[\r\n]+|[•●▪◆◦]|[،؛;]/u', $string);
+                if (is_array($parts)) {
+                    foreach ($parts as $part) {
+                        $clean = trim((string) $part);
+                        if ($clean !== '') {
+                            $items[] = $clean;
+                        }
+                    }
+                } else {
+                    $items[] = $string;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($items, static function ($item) {
+            return $item !== '';
+        })));
+    }
+
+    private function mergeUniqueProfileList(array $existing, array $items): array
+    {
+        foreach ($items as $item) {
+            $clean = trim((string) $item);
+            if ($clean === '') {
+                continue;
+            }
+            if (!in_array($clean, $existing, true)) {
+                $existing[] = $clean;
+            }
+        }
+
+        return $existing;
+    }
+
+    private function selectPublicProfileText(string $current, string $candidate): string
+    {
+        $candidate = trim($candidate);
+        if ($candidate === '') {
+            return $current;
+        }
+        if ($current === '') {
+            return $candidate;
+        }
+        $currentLength = function_exists('mb_strlen') ? mb_strlen($current, 'UTF-8') : strlen($current);
+        $candidateLength = function_exists('mb_strlen') ? mb_strlen($candidate, 'UTF-8') : strlen($candidate);
+        return $candidateLength >= $currentLength ? $candidate : $current;
+    }
+
+    private function normalizePublicProfileSections(array $sections): array
+    {
+        $result = [];
+        foreach ($sections as $key => $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $text = isset($section['text']) ? trim((string) $section['text']) : '';
+            $bullets = isset($section['bullets']) && is_array($section['bullets'])
+                ? array_values(array_unique(array_filter(array_map('trim', $section['bullets']))))
+                : [];
+            if ($text === '' && empty($bullets)) {
+                continue;
+            }
+            $title = isset($section['title']) && trim((string) $section['title']) !== ''
+                ? trim((string) $section['title'])
+                : $this->getPublicProfileSectionTitle($key);
+            $result[$key] = [
+                'title' => $title,
+                'text' => $text,
+                'bullets' => $bullets,
+            ];
+        }
+
+        return $result;
+    }
+
+    private function getPublicProfileSectionTitle(string $sectionKey): string
+    {
+        $map = [
+            'general_tendencies' => 'گرایش‌های کلی',
+            'work_preferences' => 'ترجیحات کاری',
+            'effectiveness_requirements' => 'نیازهای موفقیت',
+            'companion_requirements' => 'انتظارات از دیگران',
+            'behavior_overview' => 'الگوی رفتاری',
+        ];
+
+        return $map[$sectionKey] ?? 'بخش پروفایل';
+    }
+
+    private function normalizePublicProfileKey(string $key): string
+    {
+        $normalized = strtolower(trim($key));
+        $normalized = str_replace([' ', '-', '_', '.', '/'], '', $normalized);
+        return $normalized;
+    }
+
+    private function mapPublicProfileSectionKey(string $normalizedKey): ?string
+    {
+        $map = [
+            'generaltendencies' => 'general_tendencies',
+            'generaltendency' => 'general_tendencies',
+            'tendencies' => 'general_tendencies',
+            'generaloverview' => 'general_tendencies',
+            'workpreferences' => 'work_preferences',
+            'workstyle' => 'work_preferences',
+            'preferredworkstyle' => 'work_preferences',
+            'effectivenessrequirements' => 'effectiveness_requirements',
+            'effectivenessneeds' => 'effectiveness_requirements',
+            'successfactors' => 'effectiveness_requirements',
+            'companionrequirements' => 'companion_requirements',
+            'teamneeds' => 'companion_requirements',
+            'supportneeds' => 'companion_requirements',
+            'expectationsfromothers' => 'companion_requirements',
+            'behavioroverview' => 'behavior_overview',
+            'behaviouroverview' => 'behavior_overview',
+            'behaviorpattern' => 'behavior_overview',
+            'behaviourpattern' => 'behavior_overview',
+        ];
+
+        return $map[$normalizedKey] ?? null;
+    }
+
+    private function isAssocArray(array $array): bool
+    {
+        if (empty($array)) {
+            return false;
+        }
+        return array_keys($array) !== range(0, count($array) - 1);
+    }
+
+    private function sanitizeCertificateBuilderElementProps(string $type, array $props, ?array $componentMap = null): array
+    {
+        if ($componentMap === null) {
+            $componentMap = [];
+            foreach ($this->getCertificateBuilderComponentLibrary() as $componentDefinition) {
+                $componentMap[$componentDefinition['type']] = $componentDefinition;
+            }
+        }
+
+        $definition = $componentMap[$type] ?? null;
+        if ($definition === null) {
+            return [];
+        }
+
+        $result = isset($definition['defaultProps']) && is_array($definition['defaultProps'])
+            ? $definition['defaultProps']
+            : [];
+
+        $fields = isset($definition['configFields']) && is_array($definition['configFields'])
+            ? $definition['configFields']
+            : [];
+
+        // Migration: Convert old 'variant' to new 'fontSize' for hero_heading
+        if ($type === 'hero_heading') {
+            if (isset($props['variant']) && !isset($props['fontSize'])) {
+                $variantSizes = ['display' => 48, 'headline' => 36, 'title' => 28];
+                $variant = is_string($props['variant']) ? strtolower(trim($props['variant'])) : '';
+                $props['fontSize'] = $variantSizes[$variant] ?? 48;
+            }
+            // Remove old variant property
+            unset($props['variant']);
+        }
+
+        if ($type === 'logo_display' && isset($props['layout']) && !isset($props['widthMode'])) {
+            $props['widthMode'] = $props['layout'];
+        }
+
+        foreach ($fields as $field) {
+            $key = $field['key'] ?? null;
+            if ($key === null) {
+                continue;
+            }
+
+            $dependencies = isset($field['dependsOn']) && is_array($field['dependsOn'])
+                ? $field['dependsOn']
+                : [];
+            if (!empty($dependencies) && !$this->areCertificateBuilderFieldDependenciesSatisfied($dependencies, $props, $result)) {
+                continue;
+            }
+
+            $fieldType = $field['type'] ?? 'text';
+            $value = $props[$key] ?? ($result[$key] ?? null);
+
+            $allowedValues = isset($field['options']) && is_array($field['options'])
+                ? array_column($field['options'], 'value')
+                : null;
+
+            switch ($fieldType) {
+                case 'note':
+                    continue 2;
+                case 'toggle':
+                    $result[$key] = in_array($value, [1, '1', true, 'true', 'on'], true) ? 1 : 0;
+                    break;
+                case 'select':
+                    $options = $allowedValues ?? [];
+                    if (!empty($options) && is_string($value) && in_array($value, $options, true)) {
+                        $result[$key] = $value;
+                    } elseif (!empty($options)) {
+                        $result[$key] = (string) $options[0];
+                    }
+                    break;
+                case 'number':
+                    $numeric = is_numeric($value) ? (float) $value : (isset($result[$key]) ? (float) $result[$key] : 0.0);
+                    if (isset($field['min']) && is_numeric($field['min']) && $numeric < (float) $field['min']) {
+                        $numeric = (float) $field['min'];
+                    }
+                    if (isset($field['max']) && is_numeric($field['max']) && $numeric > (float) $field['max']) {
+                        $numeric = (float) $field['max'];
+                    }
+                    if (isset($field['cast']) && $field['cast'] === 'int') {
+                        $numeric = (int) round($numeric);
+                    } elseif (!isset($field['cast'])) {
+                        $numeric = round($numeric, 4);
+                    }
+                    $result[$key] = $numeric;
+                    break;
+                case 'font_size':
+                    // Font size selector (6-200px)
+                    $fontSize = is_numeric($value) ? (int) $value : (isset($result[$key]) ? (int) $result[$key] : 16);
+                    $fontSize = max(6, min(200, $fontSize));
+                    $result[$key] = $fontSize;
+                    break;
+                case 'color':
+                    $fallback = isset($result[$key]) && is_string($result[$key]) ? $result[$key] : '#000000';
+                    $result[$key] = $this->sanitizeCertificateBuilderColorValue($value, $fallback);
+                    break;
+                case 'list':
+                    if (!isset($field['maxItems']) || !is_numeric($field['maxItems'])) {
+                        $maxItems = 12;
+                    } else {
+                        $maxItems = max(1, (int) $field['maxItems']);
+                    }
+                    $allowedOptions = is_array($allowedValues) ? $allowedValues : [];
+                    $rawItems = [];
+                    if (is_array($value)) {
+                        $rawItems = $value;
+                    } elseif (is_string($value)) {
+                        $decoded = json_decode($value, true);
+                        if (is_array($decoded)) {
+                            $rawItems = $decoded;
+                        }
+                    }
+                    $cleanItems = [];
+                    foreach ($rawItems as $itemValue) {
+                        if (!is_string($itemValue)) {
+                            continue;
+                        }
+                        $itemValue = trim($itemValue);
+                        if ($itemValue === '') {
+                            continue;
+                        }
+                        if (!empty($allowedOptions) && !in_array($itemValue, $allowedOptions, true)) {
+                            continue;
+                        }
+                        $cleanItems[] = $itemValue;
+                        if (count($cleanItems) >= $maxItems) {
+                            break;
+                        }
+                    }
+                    $result[$key] = $cleanItems;
+                    break;
+                case 'multi_select':
+                    $maxItems = isset($field['maxItems']) && is_numeric($field['maxItems'])
+                        ? max(1, (int) $field['maxItems'])
+                        : 20;
+                    $rawSelected = [];
+                    if (is_array($value)) {
+                        $rawSelected = $value;
+                    } elseif (is_string($value)) {
+                        $decoded = json_decode($value, true);
+                        if (is_array($decoded)) {
+                            $rawSelected = $decoded;
+                        } else {
+                            $rawSelected = array_map('trim', explode(',', $value));
+                        }
+                    }
+
+                    $cleanSelected = [];
+                    $allowedSet = null;
+                    if (is_array($allowedValues) && !empty($allowedValues)) {
+                        $allowedSet = [];
+                        foreach ($allowedValues as $allowedItem) {
+                            $allowedSet[(string) $allowedItem] = true;
+                        }
+                    }
+
+                    if (is_array($rawSelected)) {
+                        foreach ($rawSelected as $rawItem) {
+                            if (is_array($rawItem)) {
+                                if (isset($rawItem['value'])) {
+                                    $rawItem = $rawItem['value'];
+                                } elseif (isset($rawItem['id'])) {
+                                    $rawItem = $rawItem['id'];
+                                }
+                            }
+                            if (!is_string($rawItem) && !is_numeric($rawItem)) {
+                                continue;
+                            }
+                            $itemValue = trim((string) $rawItem);
+                            if ($itemValue === '') {
+                                continue;
+                            }
+                            if ($allowedSet !== null && !isset($allowedSet[$itemValue])) {
+                                continue;
+                            }
+                            if (in_array($itemValue, $cleanSelected, true)) {
+                                continue;
+                            }
+                            $cleanSelected[] = $itemValue;
+                            if (count($cleanSelected) >= $maxItems) {
+                                break;
+                            }
+                        }
+                    }
+
+                    $result[$key] = $cleanSelected;
+                    break;
+                case 'mbti_feature_picker':
+                    $selection = null;
+                    $rawSelection = $value;
+
+                    if (is_string($rawSelection)) {
+                        $decoded = json_decode($rawSelection, true);
+                        if (is_array($decoded)) {
+                            $rawSelection = $decoded;
+                        } else {
+                            $rawSelection = array_map('trim', explode(',', $rawSelection));
+                        }
+                    }
+
+                    if (is_array($rawSelection)) {
+                        $maxItems = isset($field['maxItems']) && is_numeric($field['maxItems'])
+                            ? max(1, (int) $field['maxItems'])
+                            : 16;
+                        $cleanSelection = [];
+                        foreach ($rawSelection as $rawItem) {
+                            if (!is_string($rawItem) && !is_numeric($rawItem)) {
+                                continue;
+                            }
+                            $itemValue = trim((string) $rawItem);
+                            if ($itemValue === '') {
+                                continue;
+                            }
+                            if (function_exists('mb_substr')) {
+                                $itemValue = mb_substr($itemValue, 0, 120, 'UTF-8');
+                            } else {
+                                $itemValue = substr($itemValue, 0, 120);
+                            }
+                            if (in_array($itemValue, $cleanSelection, true)) {
+                                continue;
+                            }
+                            $cleanSelection[] = $itemValue;
+                            if (count($cleanSelection) >= $maxItems) {
+                                break;
+                            }
+                        }
+                        $selection = $cleanSelection;
+                    } elseif ($rawSelection === null || $rawSelection === '') {
+                        $selection = null;
+                    }
+
+                    $result[$key] = $selection;
+                    break;
+                case 'mbti_feature_labels':
+                    $rawLabels = $value;
+                    if (is_string($rawLabels)) {
+                        $decoded = json_decode($rawLabels, true);
+                        if (is_array($decoded)) {
+                            $rawLabels = $decoded;
+                        } else {
+                            $rawLabels = [];
+                        }
+                    }
+
+                    $cleanLabels = [];
+
+                    $assignLabel = static function (&$map, $category, $label) {
+                        if (!is_string($category) && !is_numeric($category)) {
+                            return;
+                        }
+                        $categoryClean = trim((string) $category);
+                        if ($categoryClean === '') {
+                            return;
+                        }
+                        if (!is_string($label) && !is_numeric($label)) {
+                            return;
+                        }
+                        $labelClean = trim((string) $label);
+                        if ($labelClean === '') {
+                            return;
+                        }
+                        if (function_exists('mb_substr')) {
+                            $categoryClean = mb_substr($categoryClean, 0, 160, 'UTF-8');
+                            $labelClean = mb_substr($labelClean, 0, 160, 'UTF-8');
+                        } else {
+                            $categoryClean = substr($categoryClean, 0, 160);
+                            $labelClean = substr($labelClean, 0, 160);
+                        }
+                        $map[$categoryClean] = $labelClean;
+                    };
+
+                    if (is_array($rawLabels)) {
+                        if ($this->isAssocArray($rawLabels)) {
+                            foreach ($rawLabels as $categoryKey => $labelValue) {
+                                $assignLabel($cleanLabels, $categoryKey, $labelValue);
+                            }
+                        } else {
+                            foreach ($rawLabels as $entry) {
+                                if (!is_array($entry)) {
+                                    continue;
+                                }
+                                if (isset($entry['category']) && isset($entry['label'])) {
+                                    $assignLabel($cleanLabels, $entry['category'], $entry['label']);
+                                    continue;
+                                }
+                                $values = array_values($entry);
+                                if (count($values) >= 2) {
+                                    $assignLabel($cleanLabels, $values[0], $values[1]);
+                                }
+                            }
+                        }
+                    }
+
+                    $result[$key] = $cleanLabels;
+                    break;
+                case 'table_editor':
+                    $tableValue = $value;
+                    if (is_string($tableValue)) {
+                        $decoded = json_decode($tableValue, true);
+                        if (is_array($decoded)) {
+                            $tableValue = $decoded;
+                        }
+                    }
+                    $defaultTable = isset($result[$key]) && is_array($result[$key]) ? $result[$key] : ['columns' => [], 'rows' => []];
+                    $maxColumns = 8;
+                    $maxRows = 20;
+                    $columns = [];
+                    if (isset($tableValue['columns']) && is_array($tableValue['columns'])) {
+                        foreach ($tableValue['columns'] as $columnValue) {
+                            if (!is_string($columnValue)) {
+                                continue;
+                            }
+                            $columnValue = trim($columnValue);
+                            if ($columnValue === '') {
+                                $columnValue = 'ستون بدون عنوان';
+                            }
+                            if (function_exists('mb_substr')) {
+                                $columnValue = mb_substr($columnValue, 0, 120, 'UTF-8');
+                            } else {
+                                $columnValue = substr($columnValue, 0, 120);
+                            }
+                            $columns[] = $columnValue;
+                            if (count($columns) >= $maxColumns) {
+                                break;
+                            }
+                        }
+                    }
+                    if (empty($columns)) {
+                        $fallbackColumns = isset($defaultTable['columns']) && is_array($defaultTable['columns']) ? $defaultTable['columns'] : [];
+                        if (!empty($fallbackColumns)) {
+                            $columns = array_slice($fallbackColumns, 0, $maxColumns);
+                        }
+                    }
+                    if (empty($columns)) {
+                        $columns = ['ستون اول'];
+                    }
+
+                    $rows = [];
+                    if (isset($tableValue['rows']) && is_array($tableValue['rows'])) {
+                        foreach ($tableValue['rows'] as $rowValues) {
+                            if (!is_array($rowValues)) {
+                                continue;
+                            }
+                            $rowClean = [];
+                            foreach ($columns as $index => $columnTitle) {
+                                $cellValue = $rowValues[$index] ?? '';
+                                if (!is_string($cellValue)) {
+                                    $cellValue = (string) $cellValue;
+                                }
+                                $cellValue = trim($cellValue);
+                                if (function_exists('mb_substr')) {
+                                    $cellValue = mb_substr($cellValue, 0, 240, 'UTF-8');
+                                } else {
+                                    $cellValue = substr($cellValue, 0, 240);
+                                }
+                                $rowClean[] = $cellValue;
+                            }
+                            $rows[] = $rowClean;
+                            if (count($rows) >= $maxRows) {
+                                break;
+                            }
+                        }
+                    }
+                    if (empty($rows)) {
+                        $fallbackRows = isset($defaultTable['rows']) && is_array($defaultTable['rows']) ? $defaultTable['rows'] : [];
+                        foreach ($fallbackRows as $fallbackRow) {
+                            if (!is_array($fallbackRow)) {
+                                continue;
+                            }
+                            $rowClean = [];
+                            foreach ($columns as $index => $columnTitle) {
+                                $cellValue = $fallbackRow[$index] ?? '';
+                                if (!is_string($cellValue)) {
+                                    $cellValue = (string) $cellValue;
+                                }
+                                $cellValue = trim($cellValue);
+                                if (function_exists('mb_substr')) {
+                                    $cellValue = mb_substr($cellValue, 0, 240, 'UTF-8');
+                                } else {
+                                    $cellValue = substr($cellValue, 0, 240);
+                                }
+                                $rowClean[] = $cellValue;
+                            }
+                            $rows[] = $rowClean;
+                            if (count($rows) >= $maxRows) {
+                                break;
+                            }
+                        }
+                    }
+                    if (empty($rows)) {
+                        $rows[] = array_fill(0, count($columns), '');
+                    }
+
+                    $result[$key] = [
+                        'columns' => $columns,
+                        'rows' => $rows,
+                    ];
+                    break;
+                default:
+                    if (is_string($value)) {
+                        if (is_array($allowedValues) && !empty($allowedValues) && !in_array($value, $allowedValues, true)) {
+                            continue 2;
+                        }
+                        $value = trim($value);
+                        if (isset($field['maxLength']) && is_numeric($field['maxLength'])) {
+                            $maxLength = (int) $field['maxLength'];
+                            if ($maxLength > 0) {
+                                if (function_exists('mb_strlen')) {
+                                    if (mb_strlen($value, 'UTF-8') > $maxLength) {
+                                        $value = mb_substr($value, 0, $maxLength, 'UTF-8');
+                                    }
+                                } elseif (strlen($value) > $maxLength) {
+                                    $value = substr($value, 0, $maxLength);
+                                }
+                            }
+
+                            $applyFlag = $props['applyToAllPages'] ?? ($result['applyToAllPages'] ?? 0);
+                            $result['applyToAllPages'] = in_array($applyFlag, [1, '1', true, 'true', 'on'], true) ? 1 : 0;
+                        }
+                        $result[$key] = $value;
+                    }
+                    break;
+            }
+        }
+
+        $applyFlag = $props['applyToAllPages'] ?? ($result['applyToAllPages'] ?? 0);
+        $result['applyToAllPages'] = in_array($applyFlag, [1, '1', true, 'true', 'on'], true) ? 1 : 0;
+
+        return $result;
+    }
+
+    private function areCertificateBuilderFieldDependenciesSatisfied(array $dependencies, array $rawProps, array $currentProps): bool
+    {
+        foreach ($dependencies as $dependencyKey => $expectedValue) {
+            $currentValue = null;
+            if (array_key_exists($dependencyKey, $rawProps)) {
+                $currentValue = $rawProps[$dependencyKey];
+            } elseif (array_key_exists($dependencyKey, $currentProps)) {
+                $currentValue = $currentProps[$dependencyKey];
+            }
+
+            if (is_bool($expectedValue)) {
+                $normalizedCurrent = in_array($currentValue, [1, '1', true, 'true', 'on'], true);
+                if ($normalizedCurrent !== $expectedValue) {
+                    return false;
+                }
+            } elseif (is_numeric($expectedValue)) {
+                if ((float) $currentValue !== (float) $expectedValue) {
+                    return false;
+                }
+            } else {
+                if ((string) $currentValue !== (string) $expectedValue) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private function sanitizeCertificateBuilderColorValue($value, string $fallback): string
+    {
+        $fallback = $fallback !== '' ? $fallback : '#000000';
+
+        if (!is_string($value)) {
+            return $fallback;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            return $fallback;
+        }
+
+        if (strlen($value) > 64) {
+            $value = substr($value, 0, 64);
+        }
+
+        if (preg_match('/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $value)) {
+            return $value;
+        }
+
+        if (preg_match('/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(\s*,\s*(0|0?\.\d+|1(\.0+)?))?\s*\)$/', $value, $matches)) {
+            $r = (int) $matches[1];
+            $g = (int) $matches[2];
+            $b = (int) $matches[3];
+
+            if ($r > 255 || $g > 255 || $b > 255) {
+                return $fallback;
+            }
+
+            if (!empty($matches[4])) {
+                $alphaRaw = $matches[5] ?? '1';
+                $alpha = (float) $alphaRaw;
+                if ($alpha < 0.0 || $alpha > 1.0) {
+                    return $fallback;
+                }
+            }
+
+            return $value;
+        }
+
+        return $fallback;
+    }
+
+    private function sanitizeCertificateBuilderState(array $state): array
+    {
+        $templates = $this->getCertificateBuilderTemplateOptions();
+        $templateKeys = !empty($templates) ? array_column($templates, 'key') : ['classic'];
+
+        $componentDefinitions = $this->getCertificateBuilderComponentLibrary();
+        $componentMap = [];
+        foreach ($componentDefinitions as $componentDefinition) {
+            $componentMap[$componentDefinition['type']] = $componentDefinition;
+        }
+
+        $allowedPageSizes = ['a4', 'a5'];
+        $allowedOrientations = ['portrait', 'landscape'];
+
+        $result = [
+            'version' => 1,
+            'activePageId' => null,
+            'pages' => [],
+        ];
+
+        if (isset($state['version']) && is_numeric($state['version'])) {
+            $result['version'] = (int) max(1, min(999, (int) $state['version']));
+        }
+
+        $pagesInput = isset($state['pages']) && is_array($state['pages']) ? $state['pages'] : [];
+        $usedPageIds = [];
+
+        foreach ($pagesInput as $page) {
+            if (!is_array($page)) {
+                continue;
+            }
+
+            $pageIdRaw = isset($page['id']) && is_string($page['id']) ? trim($page['id']) : '';
+            $pageId = $pageIdRaw !== '' ? $pageIdRaw : 'page-' . UtilityHelper::generateRandomString(8);
+            while (isset($usedPageIds[$pageId])) {
+                $pageId = 'page-' . UtilityHelper::generateRandomString(8);
+            }
+            $usedPageIds[$pageId] = true;
+
+            $name = isset($page['name']) && is_string($page['name']) ? trim($page['name']) : 'صفحه بدون عنوان';
+            if (function_exists('mb_strlen')) {
+                if (mb_strlen($name, 'UTF-8') > 80) {
+                    $name = mb_substr($name, 0, 80, 'UTF-8');
+                }
+            } elseif (strlen($name) > 80) {
+                $name = substr($name, 0, 80);
+            }
+
+            $template = isset($page['template']) && is_string($page['template']) ? trim($page['template']) : 'classic';
+            if (!in_array($template, $templateKeys, true)) {
+                $template = $templateKeys[0] ?? 'classic';
+            }
+
+            $sizeRaw = isset($page['size']) && is_string($page['size']) ? strtolower(trim($page['size'])) : 'a4';
+            $size = in_array($sizeRaw, $allowedPageSizes, true) ? $sizeRaw : 'a4';
+
+            $orientationRaw = isset($page['orientation']) && is_string($page['orientation']) ? strtolower(trim($page['orientation'])) : 'portrait';
+            $orientation = in_array($orientationRaw, $allowedOrientations, true) ? $orientationRaw : 'portrait';
+
+            $elements = [];
+            $elementsInput = isset($page['elements']) && is_array($page['elements']) ? $page['elements'] : [];
+            $usedElementIds = [];
+
+            foreach ($elementsInput as $element) {
+                if (!is_array($element)) {
+                    continue;
+                }
+
+                $type = isset($element['type']) && is_string($element['type']) ? trim($element['type']) : '';
+                if ($type === '' || !isset($componentMap[$type])) {
+                    continue;
+                }
+
+                $elementIdRaw = isset($element['id']) && is_string($element['id']) ? trim($element['id']) : '';
+                $elementId = $elementIdRaw !== '' ? $elementIdRaw : 'el-' . UtilityHelper::generateRandomString(10);
+                while (isset($usedElementIds[$elementId])) {
+                    $elementId = 'el-' . UtilityHelper::generateRandomString(10);
+                }
+                $usedElementIds[$elementId] = true;
+
+                $props = isset($element['props']) && is_array($element['props']) ? $element['props'] : [];
+
+                $elements[] = [
+                    'id' => $elementId,
+                    'type' => $type,
+                    'props' => $this->sanitizeCertificateBuilderElementProps($type, $props, $componentMap),
+                ];
+            }
+
+            $result['pages'][] = [
+                'id' => $pageId,
+                'name' => $name,
+                'template' => $template,
+                'size' => $size,
+                'orientation' => $orientation,
+                'elements' => $elements,
+            ];
+        }
+
+        if (empty($result['pages'])) {
+            $fallbackId = 'page-' . UtilityHelper::generateRandomString(6);
+            $result['pages'][] = [
+                'id' => $fallbackId,
+                'name' => 'صفحه ۱',
+                'template' => $templateKeys[0] ?? 'classic',
+                'size' => 'a4',
+                'orientation' => 'portrait',
+                'elements' => [],
+            ];
+        }
+
+        $activeIdCandidate = isset($state['activePageId']) && is_string($state['activePageId'])
+            ? trim($state['activePageId'])
+            : '';
+
+        $pageIds = array_column($result['pages'], 'id');
+        if ($activeIdCandidate === '' || !in_array($activeIdCandidate, $pageIds, true)) {
+            $activeIdCandidate = $pageIds[0];
+        }
+
+        $result['activePageId'] = $activeIdCandidate;
+
+        return $result;
+    }
+
+    private function collectCertificateBuilderMetadata(array $state): array
+    {
+        $templateSet = [];
+        $componentSet = [];
+        $toolSet = [];
+
+        if (!isset($state['pages']) || !is_array($state['pages'])) {
+            return [
+                'templates' => [],
+                'components' => [],
+                'assessment_tool_ids' => [],
+            ];
+        }
+
+        foreach ($state['pages'] as $page) {
+            if (!is_array($page)) {
+                continue;
+            }
+
+            $templateKey = isset($page['template']) && is_string($page['template'])
+                ? trim($page['template'])
+                : '';
+            if ($templateKey !== '') {
+                $templateSet[$templateKey] = true;
+            }
+
+            if (!isset($page['elements']) || !is_array($page['elements'])) {
+                continue;
+            }
+
+            foreach ($page['elements'] as $element) {
+                if (!is_array($element)) {
+                    continue;
+                }
+
+                $elementType = isset($element['type']) && is_string($element['type'])
+                    ? trim($element['type'])
+                    : '';
+                if ($elementType !== '') {
+                    $componentSet[$elementType] = true;
+                }
+
+                $props = isset($element['props']) && is_array($element['props']) ? $element['props'] : [];
+                foreach ($this->extractCertificateBuilderToolIds($elementType, $props) as $toolId) {
+                    $toolSet[$toolId] = true;
+                }
+            }
+        }
+
+        return [
+            'templates' => array_values(array_keys($templateSet)),
+            'components' => array_values(array_keys($componentSet)),
+            'assessment_tool_ids' => array_values(array_keys($toolSet)),
+        ];
+    }
+
+    private function extractCertificateBuilderToolIds(string $elementType, array $props): array
+    {
+        $result = [];
+        $stack = [$props];
+
+        $targetKeys = [
+            'selectedtoolids',
+            'toolids',
+            'tool_id',
+            'toolid',
+            'assessment_tool_id',
+            'assessment_tool_ids',
+            'assessmenttoolid',
+            'assessmenttoolids',
+        ];
+        $targetLookup = array_fill_keys($targetKeys, true);
+
+        while (!empty($stack)) {
+            $current = array_pop($stack);
+            if (!is_array($current)) {
+                continue;
+            }
+
+            foreach ($current as $key => $value) {
+                $normalizedKey = is_string($key) ? strtolower(trim($key)) : '';
+
+                if ($normalizedKey !== '' && isset($targetLookup[$normalizedKey])) {
+                    foreach ($this->normalizeCertificateBuilderToolValues($value) as $toolId) {
+                        $result[$toolId] = true;
+                    }
+                }
+
+                if ($normalizedKey === 'displaymode'
+                    && $elementType === 'assessment_tool_cards'
+                    && is_string($value)
+                    && strtolower(trim($value)) === 'all'
+                ) {
+                    $result['__all__'] = true;
+                }
+
+                if ($normalizedKey === 'mode'
+                    && $elementType === 'dynamic_table'
+                    && is_string($value)
+                    && strtolower(trim($value)) === 'evaluation_tools'
+                ) {
+                    $result['__all__'] = true;
+                }
+
+                if (is_array($value)) {
+                    $stack[] = $value;
+                }
+            }
+        }
+
+        return array_values(array_keys($result));
+    }
+
+    private function normalizeCertificateBuilderToolValues($value): array
+    {
+        $collected = [];
+
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                if (is_array($item)) {
+                    if (isset($item['value'])) {
+                        $collected = array_merge($collected, $this->normalizeCertificateBuilderToolValues($item['value']));
+                    } elseif (isset($item['id'])) {
+                        $collected = array_merge($collected, $this->normalizeCertificateBuilderToolValues($item['id']));
+                    } else {
+                        $collected = array_merge($collected, $this->normalizeCertificateBuilderToolValues($item));
+                    }
+                } else {
+                    $collected = array_merge($collected, $this->normalizeCertificateBuilderToolValues($item));
+                }
+            }
+            return $this->deduplicateCertificateBuilderToolIds($collected);
+        }
+
+        if (is_string($value) || is_numeric($value)) {
+            $token = trim((string) $value);
+            if ($token === '') {
+                return [];
+            }
+
+            if ($token !== '' && ($token[0] === '[' || $token[0] === '{')) {
+                $decoded = json_decode($token, true);
+                if (is_array($decoded)) {
+                    return $this->normalizeCertificateBuilderToolValues($decoded);
+                }
+            }
+
+            if (strpos($token, ',') !== false) {
+                $parts = array_filter(array_map('trim', explode(',', $token)), static function ($part) {
+                    return $part !== '';
+                });
+                if (!empty($parts)) {
+                    return $this->deduplicateCertificateBuilderToolIds($parts);
+                }
+            }
+
+            return [$token];
+        }
+
+        return [];
+    }
+
+    private function deduplicateCertificateBuilderToolIds(array $values): array
+    {
+        $set = [];
+        foreach ($values as $value) {
+            if (!is_string($value) && !is_numeric($value)) {
+                continue;
+            }
+            $token = trim((string) $value);
+            if ($token === '') {
+                continue;
+            }
+            $set[$token] = true;
+        }
+        return array_values(array_keys($set));
     }
 
     private function fetchOrganization(int $organizationId): ?array

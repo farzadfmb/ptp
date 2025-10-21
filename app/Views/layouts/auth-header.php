@@ -21,7 +21,7 @@ $baseAssets = UtilityHelper::baseUrl('public/assets');
     <link rel="stylesheet" href="<?= htmlspecialchars($baseAssets . '/css/calendar.css', ENT_QUOTES, 'UTF-8'); ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars($baseAssets . '/css/jquery-jvectormap-2.0.5.css', ENT_QUOTES, 'UTF-8'); ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars($baseAssets . '/css/main.css', ENT_QUOTES, 'UTF-8'); ?>">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vazirmatn@33/dist/font-face.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
     <link rel="stylesheet" href="<?= htmlspecialchars($baseAssets . '/css/persian-fonts-local.css', ENT_QUOTES, 'UTF-8'); ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars($baseAssets . '/css/theme-rtl.css', ENT_QUOTES, 'UTF-8'); ?>">
     <?php foreach ($additional_css as $cssFile): ?>

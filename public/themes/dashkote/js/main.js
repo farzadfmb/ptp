@@ -177,7 +177,10 @@ function theme8() {
 
 
 
-  new PerfectScrollbar(".header-notifications-list")
+  var headerNotifications = document.querySelector(".header-notifications-list")
+  if (headerNotifications) {
+    new PerfectScrollbar(headerNotifications)
+  }
 
 
     // Tooltops

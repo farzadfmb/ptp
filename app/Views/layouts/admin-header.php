@@ -45,7 +45,7 @@ if (!class_exists('UtilityHelper')) {
     <!-- Main css -->
     <link rel="stylesheet" href="<?php echo UtilityHelper::baseUrl('public/assets/css/main.css'); ?>">
     <!-- Persian Fonts -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vazirmatn@33/dist/font-face.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
     <link rel="stylesheet" href="<?php echo UtilityHelper::baseUrl('public/assets/css/persian-fonts-local.css'); ?>">
     <!-- RTL Custom -->
     <link rel="stylesheet" href="<?php echo UtilityHelper::baseUrl('public/assets/css/rtl-local.css'); ?>">
