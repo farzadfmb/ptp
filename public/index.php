@@ -3,6 +3,10 @@
 // Load helpers
 require_once '../app/Helpers/autoload.php';
 
+if (class_exists('ErrorHandlerHelper')) {
+	ErrorHandlerHelper::register();
+}
+
 // Serve existing public assets (e.g., uploaded images) directly
 $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
@@ -46,6 +50,10 @@ if ($publicRoot !== false) {
 			exit;
 		}
 	}
+}
+
+if (class_exists('TrafficHelper')) {
+	TrafficHelper::capture();
 }
 
 // Load Router

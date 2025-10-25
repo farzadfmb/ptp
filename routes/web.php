@@ -214,6 +214,8 @@ $routes = [
     'GET:/supperadmin/settings' => ['controller' => 'AdminController', 'method' => 'settings'],
     'GET:/supperadmin/settings/general' => ['controller' => 'AdminController', 'method' => 'settings'],
     'GET:/supperadmin/settings/security' => ['controller' => 'AdminController', 'method' => 'securityLogs'],
+    'GET:/supperadmin/traffic-report' => ['controller' => 'AdminController', 'method' => 'trafficReport'],
+    'GET:/supperadmin/traffic-report/live' => ['controller' => 'AdminController', 'method' => 'trafficReportData'],
     'GET:/supperadmin/roles' => ['controller' => 'AdminController', 'method' => 'roles'],
     'GET:/supperadmin/roles/edit' => ['controller' => 'AdminController', 'method' => 'editRole'],
     'GET:/supperadmin/users' => ['controller' => 'AdminController', 'method' => 'users'],

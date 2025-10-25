@@ -188,6 +188,9 @@ $sidebarAvatarUrl = UtilityHelper::baseUrl('public/' . ltrim($sidebarAvatarPath,
                             <a href="<?php echo UtilityHelper::baseUrl('supperadmin/reports/organizations'); ?>" class="sidebar-submenu__link">گزارش سازمان‌ها</a>
                         </li>
                         <li class="sidebar-submenu__item">
+                            <a href="<?php echo UtilityHelper::baseUrl('supperadmin/traffic-report'); ?>" class="sidebar-submenu__link">گزارش ترافیک</a>
+                        </li>
+                        <li class="sidebar-submenu__item">
                             <a href="<?php echo UtilityHelper::baseUrl('supperadmin/reports/users'); ?>" class="sidebar-submenu__link">گزارش کاربران</a>
                         </li>
                         <li class="sidebar-submenu__item">

@@ -3,6 +3,14 @@
 // Load helpers
 require_once './app/Helpers/autoload.php';
 
+if (class_exists('ErrorHandlerHelper')) {
+	ErrorHandlerHelper::register();
+}
+
+if (class_exists('TrafficHelper')) {
+	TrafficHelper::capture();
+}
+
 // Load Router
 require_once './app/Router.php';
 

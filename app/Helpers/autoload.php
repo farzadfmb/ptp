@@ -19,6 +19,8 @@ $helperFiles = [
     'ResponseHelper.php',
     'LogHelper.php',
     'PermissionHelper.php',
+    'ErrorHandlerHelper.php',
+    'TrafficHelper.php',
     'JalaliHelper.php'
 ];
 

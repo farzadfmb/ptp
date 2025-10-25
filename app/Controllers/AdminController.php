@@ -294,6 +294,98 @@ class AdminController {
         include __DIR__ . '/../Views/supperAdmin/settings/security.php';
     }
 
+    public function trafficReport()
+    {
+        $this->ensureAdminSession();
+
+        $window = isset($_GET['window']) ? (int) $_GET['window'] : 10;
+        if ($window <= 0) {
+            $window = 10;
+        }
+
+        $trafficData = class_exists('TrafficHelper')
+            ? TrafficHelper::getDashboardData($window)
+            : [
+                'summary' => [
+                    'online_total' => 0,
+                    'online_logged_in' => 0,
+                    'online_guests' => 0,
+                    'views_last_15_minutes' => 0,
+                    'views_last_hour' => 0,
+                    'unique_today' => 0,
+                    'page_views_today' => 0,
+                    'avg_session_duration' => 0,
+                    'avg_requests_per_session' => 0,
+                ],
+                'active_sessions' => [],
+                'top_pages_today' => [],
+                'device_breakdown' => [],
+                'browser_breakdown' => [],
+                'os_breakdown' => [],
+                'top_referers' => [],
+                'top_users' => [],
+                'activity_trend' => [],
+                'recent_events' => [],
+                'daily_unique_trend' => [],
+            ];
+
+        try {
+            LogHelper::info('traffic.report_viewed', [
+                'window_minutes' => $window,
+                'online_total' => $trafficData['summary']['online_total'] ?? 0,
+            ], 'traffic_dashboard');
+        } catch (Exception $exception) {
+            // Logging failures should not block the dashboard.
+        }
+
+        $activeWindowMinutes = $window;
+
+        include __DIR__ . '/../Views/supperAdmin/traffic/report.php';
+    }
+
+    public function trafficReportData()
+    {
+        $this->ensureAdminSession();
+
+        $window = isset($_GET['window']) ? (int) $_GET['window'] : 10;
+        if ($window <= 0) {
+            $window = 10;
+        }
+
+        $trafficData = class_exists('TrafficHelper')
+            ? TrafficHelper::getDashboardData($window)
+            : [
+                'summary' => [
+                    'online_total' => 0,
+                    'online_logged_in' => 0,
+                    'online_guests' => 0,
+                    'views_last_15_minutes' => 0,
+                    'views_last_hour' => 0,
+                    'unique_today' => 0,
+                    'page_views_today' => 0,
+                    'avg_session_duration' => 0,
+                    'avg_requests_per_session' => 0,
+                ],
+                'active_sessions' => [],
+                'top_pages_today' => [],
+                'device_breakdown' => [],
+                'browser_breakdown' => [],
+                'os_breakdown' => [],
+                'top_referers' => [],
+                'top_users' => [],
+                'activity_trend' => [],
+                'recent_events' => [],
+                'daily_unique_trend' => [],
+            ];
+
+        ResponseHelper::json([
+            'success' => true,
+            'generated_at' => date('Y-m-d H:i:s'),
+            'window_minutes' => $window,
+            'data' => $trafficData,
+        ]);
+    }
+
     public function roles()
     {
         $this->ensureAdminSession();
