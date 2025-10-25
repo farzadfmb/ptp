@@ -83,6 +83,50 @@ CSS;
         }
         $summaryCounts['not_participated'] = max(0, $summaryCounts['total'] - $summaryCounts['participated']);
 
+        $parsePersianEvaluationDate = static function (string $input): ?DateTimeImmutable {
+            $normalized = str_replace('/', '-', UtilityHelper::persianToEnglish(trim($input)));
+            if ($normalized === '') {
+                return null;
+            }
+
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $normalized)) {
+                return null;
+            }
+
+            $timezone = new DateTimeZone('Asia/Tehran');
+            $year = (int) substr($normalized, 0, 4);
+
+            if ($year >= 1300 && $year <= 1700 && class_exists('IntlDateFormatter')) {
+                $formatter = new IntlDateFormatter(
+                    'fa_IR@calendar=persian',
+                    IntlDateFormatter::NONE,
+                    IntlDateFormatter::NONE,
+                    'Asia/Tehran',
+                    IntlDateFormatter::TRADITIONAL,
+                    'yyyy-MM-dd'
+                );
+
+                if ($formatter !== false) {
+                    $timestamp = $formatter->parse($normalized);
+                    if ($timestamp !== false) {
+                        return (new DateTimeImmutable('@' . $timestamp))->setTimezone($timezone);
+                    }
+                }
+            }
+
+            try {
+                return new DateTimeImmutable($normalized, $timezone);
+            } catch (Exception $exception) {
+                return null;
+            }
+        };
+
+        try {
+            $todayGregorian = new DateTimeImmutable('today', new DateTimeZone('Asia/Tehran'));
+        } catch (Exception $exception) {
+            $todayGregorian = null;
+        }
+
         include __DIR__ . '/../../layouts/home-header.php';
         include __DIR__ . '/../../layouts/home-sidebar.php';
         ?>
@@ -158,10 +202,44 @@ CSS;
                                                 $completedLabel = !empty($completedToolNames) ? implode('، ', $completedToolNames) : '—';
                                                 $remainingLabel = !empty($incompleteToolNames) ? implode('، ', $incompleteToolNames) : '—';
                                                 $allToolsCompleted = !empty($item['all_tools_completed']);
-                                                $statusLabel = $item['status_label'] ?? 'نامشخص';
-                                                $statusClass = $item['status_class'] ?? 'bg-secondary-subtle text-secondary';
-                                                $statusCode = $item['status_code'] ?? 'scheduled';
                                                 $startExamUrl = $item['start_exam_url'] ?? null;
+
+                                                $statusLabel = 'نامشخص';
+                                                $statusClass = 'bg-secondary-subtle text-secondary';
+                                                $statusCode = $item['status_code'] ?? 'scheduled';
+
+                                                $evaluationDateRaw = trim((string) ($item['evaluation_date'] ?? ''));
+                                                $evaluationDateObject = $parsePersianEvaluationDate($evaluationDateRaw);
+
+                                                $isEvaluationPast = false;
+                                                $isEvaluationTodayOrFuture = false;
+
+                                                if ($evaluationDateObject && $todayGregorian) {
+                                                    $evalKey = (int) $evaluationDateObject->format('Ymd');
+                                                    $todayKey = (int) $todayGregorian->format('Ymd');
+
+                                                    if ($evalKey < $todayKey) {
+                                                        $isEvaluationPast = true;
+                                                    } else {
+                                                        $isEvaluationTodayOrFuture = true;
+                                                    }
+                                                }
+
+                                                if ($isEvaluationPast) {
+                                                    $statusLabel = 'تاریخ آزمون گذشته';
+                                                    $statusClass = 'bg-danger-subtle text-danger';
+                                                } elseif ($isEvaluationTodayOrFuture) {
+                                                    $statusLabel = 'آماده شروع';
+                                                    $statusClass = 'bg-success-subtle text-success';
+                                                } else {
+                                                    $statusLabel = $item['status_label'] ?? 'نامشخص';
+                                                    $statusClass = $item['status_class'] ?? 'bg-secondary-subtle text-secondary';
+                                                }
+
+                                                $canShowStartButton = false;
+                                                if ($isEvaluationTodayOrFuture && !empty($startExamUrl) && !empty($item['has_exam_tools']) && !$allToolsCompleted) {
+                                                    $canShowStartButton = true;
+                                                }
                                             ?>
                                             <tr>
                                                 <td class="text-center fw-semibold"><?= htmlspecialchars(UtilityHelper::englishToPersian((string) ($index + 1)), ENT_QUOTES, 'UTF-8'); ?></td>
@@ -192,10 +270,12 @@ CSS;
                                                     </div>
                                                     <?php if ($allToolsCompleted): ?>
                                                         <div class="text-success small mt-2">تمام آزمون‌ها تکمیل شده است.</div>
-                                                    <?php elseif (!empty($startExamUrl) && !empty($item['can_start_exam'])): ?>
+                                                    <?php elseif ($canShowStartButton && !empty($item['can_start_exam'])): ?>
                                                         <a href="<?= htmlspecialchars($startExamUrl, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-sm btn-primary rounded-pill mt-2">
                                                             <?= $statusCode === 'in_progress' ? 'ادامه آزمون' : 'شروع آزمون'; ?>
                                                         </a>
+                                                    <?php elseif ($isEvaluationPast): ?>
+                                                        <div class="text-danger small mt-2">این ارزیابی مربوط به تاریخ گذشته است.</div>
                                                     <?php elseif (empty($item['has_exam_tools'])): ?>
                                                         <div class="text-muted small mt-2">برای این ارزیابی هنوز آزمونی تعریف نشده است.</div>
                                                     <?php else: ?>

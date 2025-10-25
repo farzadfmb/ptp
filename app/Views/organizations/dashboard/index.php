@@ -24,7 +24,7 @@ if ($isOwnerAccount) {
     $additional_js[] = 'public/assets/js/apexcharts.min.js';
 }
 
-$inline_styles .= "\n    body {\n        background: #f5f7fb;\n    }\n";
+$inline_styles .= "\n    body {\n        background: #f5f7fb;\n    }\n    .hover-shadow {\n        transition: all 0.3s ease;\n    }\n    .hover-shadow:hover {\n        transform: translateY(-4px);\n        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1) !important;\n    }\n    .transition {\n        transition: all 0.3s ease;\n    }\n    .flex-center {\n        display: flex;\n        align-items: center;\n        justify-content: center;\n    }\n";
 
 include __DIR__ . '/../../layouts/organization-header.php';
 include __DIR__ . '/../../layouts/organization-sidebar.php';
@@ -224,107 +224,27 @@ JS;
     <div class="page-content">
         <?php if ($isOwnerAccount): ?>
         <div class="row g-4">
-            <!-- KPI: Users/Evaluations summary -->
+            <!-- Statistics Cards -->
             <?php if (!empty($summaryCards)): ?>
-                <?php foreach (array_slice($summaryCards, 0, 4) as $card): ?>
+                <?php foreach ($summaryCards as $card): ?>
                     <div class="col-xl-3 col-md-6">
-                        <div class="card border-0 shadow-sm rounded-24 h-100">
+                        <div class="card border-0 shadow-sm rounded-24 h-100 hover-shadow transition">
                             <div class="card-body p-24">
-                                <span class="text-gray-500 text-sm d-block mb-8"><?= htmlspecialchars($card['label']); ?></span>
-                                <h3 class="mb-0 text-gray-900 fw-bold"><?= $card['value']; ?></h3>
+                                <div class="d-flex align-items-start justify-content-between mb-16">
+                                    <div class="w-56 h-56 rounded-circle bg-main-50 text-main-600 flex-center">
+                                        <i class="fas fa-<?= htmlspecialchars($card['icon'] ?? 'chart-bar'); ?> fs-4"></i>
+                                    </div>
+                                    <span class="badge bg-success-50 text-success-600 rounded-pill px-12 py-6">فعال</span>
+                                </div>
+                                <h6 class="text-gray-500 mb-8 fw-normal"><?= htmlspecialchars($card['label']); ?></h6>
+                                <h2 class="mb-0 text-gray-900 fw-bold"><?= $card['value']; ?></h2>
                             </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
             <?php endif; ?>
 
-
-
-            <?php if (!empty($summaryCards)): ?>
-                <?php foreach (array_slice($summaryCards, 4) as $card): ?>
-                    <div class="col-xl-3 col-md-6">
-                        <div class="card border-0 shadow-sm rounded-24 h-100">
-                            <div class="card-body p-24">
-                                <div class="d-flex justify-content-between align-items-start mb-12">
-                                    <span class="text-gray-500 text-sm"><?= htmlspecialchars($card['label']); ?></span>
-                                    <?php if (!empty($card['trend'])): ?>
-                                        <span class="badge bg-main-50 text-main-600 rounded-pill">
-                                            <i class="fas fa-chart-line ms-4"></i>
-                                            <?= htmlspecialchars($card['trend']); ?>
-                                        </span>
-                                    <?php endif; ?>
-                                </div>
-                                <h3 class="mb-12 text-gray-900 fw-bold"><?= $card['value']; ?></h3>
-                                <div class="progress rounded-pill bg-gray-100" style="height: 8px;">
-                                    <div class="progress-bar bg-main-500" role="progressbar" style="width: <?= min(100, max(0, ($card['percent'] ?? 0))); ?>%;"></div>
-                                </div>
-                                <div class="d-flex justify-content-between text-gray-400 text-xs mt-10">
-                                    <span>ماه جاری</span>
-                                    <span>ماه گذشته</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-
-            <div class="col-xl-6">
-                <div class="card border-0 shadow-sm rounded-24 h-100">
-                    <div class="card-body p-24">
-                        <div class="d-flex justify-content-between align-items-center mb-16">
-                            <h4 class="mb-0 text-gray-900">
-                                <i class="fas fa-donut-small ms-10 text-main-500"></i>
-                                وضعیت اعتبار سازمان
-                            </h4>
-                            <span class="badge bg-success-50 text-success-600 rounded-pill">پایداری مطلوب</span>
-                        </div>
-                        <div id="credit-usage-chart" style="max-width: 100%; height: 280px;"></div>
-                        <div class="row mt-16">
-                            <div class="col-6">
-                                <div class="d-flex align-items-center gap-10">
-                                    <span class="w-12 h-12 rounded-circle bg-danger-500 d-inline-block"></span>
-                                    <div>
-                                        <p class="mb-1 text-gray-500 text-sm">اعتبار مصرف‌شده</p>
-                                        <h6 class="mb-0 text-gray-900"><?= $formatMoney($creditUsedDisplay); ?></h6>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="d-flex align-items-center gap-10">
-                                    <span class="w-12 h-12 rounded-circle bg-success-500 d-inline-block"></span>
-                                    <div>
-                                        <p class="mb-1 text-gray-500 text-sm">اعتبار باقی‌مانده</p>
-                                        <h6 class="mb-0 text-gray-900"><?= $formatMoney($creditRemainingDisplay); ?></h6>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <?php if ($creditParticipantsCompleted > 0): ?>
-                            <div class="text-gray-400 text-sm mt-16 text-end">
-                                <i class="fas fa-user-check ms-6"></i>
-                                <?= UtilityHelper::englishToPersian(number_format($creditParticipantsCompleted, 0)); ?> آزمون تکمیل شده در این دوره محاسبه شده است.
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-xl-6">
-                <div class="card border-0 shadow-sm rounded-24 h-100">
-                    <div class="card-body p-24">
-                        <div class="d-flex justify-content-between align-items-center mb-16">
-                            <h4 class="mb-0 text-gray-900">
-                                <i class="fas fa-chart-area ms-10 text-main-500"></i>
-                                روند مشارکت کارکنان
-                            </h4>
-                            <span class="text-gray-400 text-sm">۶ ماه گذشته</span>
-                        </div>
-                        <div id="participants-chart" style="max-width: 100%; height: 280px;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- New charts: periodic exams + exams in current month -->
+            <!-- Charts: Periodic Exams (6 months) -->
             <div class="col-xl-6">
                 <div class="card border-0 shadow-sm rounded-24 h-100">
                     <div class="card-body p-24">
@@ -354,89 +274,22 @@ JS;
                 </div>
             </div>
 
-            <div class="col-xl-7">
-                <div class="card border-0 shadow-sm rounded-24 h-100">
-                    <div class="card-body p-24">
-                        <div class="d-flex justify-content-between align-items-center mb-16">
-                            <h4 class="mb-0 text-gray-900">
-                                <i class="fas fa-calendar-check ms-10 text-main-500"></i>
-                                ارزیابی‌های پیش‌رو
-                            </h4>
-                            <a href="#" class="btn btn-sm btn-outline-main rounded-pill px-16">تقویم کامل</a>
-                        </div>
-                        <div class="timeline">
-                            <?php foreach ($upcomingEvaluations as $evaluation): ?>
-                                <div class="timeline-item mb-16">
-                                    <div class="timeline-badge bg-main-500 text-white">
-                                        <i class="fas fa-bullseye"></i>
-                                    </div>
-                                    <div class="timeline-content">
-                                        <div class="d-flex justify-content-between align-items-center mb-4">
-                                            <h6 class="mb-0 text-gray-900"><?= htmlspecialchars($evaluation['title']); ?></h6>
-                                            <span class="badge bg-main-50 text-main-600 rounded-pill"><?= htmlspecialchars($evaluation['status']); ?></span>
-                                        </div>
-                                        <p class="mb-0 text-gray-500 text-sm">تاریخ اجرا: <?= htmlspecialchars($evaluation['date']); ?></p>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-
-                            <?php if (empty($upcomingEvaluations)): ?>
-                                <div class="text-center py-40 text-gray-400">
-                                    ارزیابی برنامه‌ریزی‌شده‌ای وجود ندارد.
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-xl-5">
-                <div class="card border-0 shadow-sm rounded-24 h-100">
-                    <div class="card-body p-24">
-                        <div class="d-flex justify-content-between align-items-center mb-16">
-                            <h4 class="mb-0 text-gray-900">
-                                <i class="fas fa-stream ms-10 text-main-500"></i>
-                                فعالیت‌های اخیر
-                            </h4>
-                            <a href="#" class="btn btn-sm btn-outline-gray rounded-pill px-16">مشاهده همه</a>
-                        </div>
-                        <div class="d-flex flex-column gap-16">
-                            <?php foreach ($recentActivities as $activity): ?>
-                                <div class="border border-gray-100 rounded-16 p-16 d-flex align-items-center gap-12">
-                                    <div class="w-40 h-40 rounded-circle bg-main-50 text-main-600 flex-center">
-                                        <i class="fas fa-history"></i>
-                                    </div>
-                                    <div class="flex-grow-1 text-end">
-                                        <h6 class="mb-4 text-gray-900"><?= htmlspecialchars($activity['description']); ?></h6>
-                                        <span class="text-gray-400 text-sm"><?= htmlspecialchars($activity['time']); ?></span>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-
-                            <?php if (empty($recentActivities)): ?>
-                                <div class="text-center py-40 text-gray-400">
-                                    فعالیتی ثبت نشده است.
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+            <!-- Competency Models Showcase -->
             <div class="col-12">
                 <div class="card border-0 shadow-sm rounded-24">
                     <div class="card-body p-24">
-                        <div class="d-flex justify-content-between align-items-center mb-16">
+                        <div class="d-flex justify-content-between align-items-center mb-20">
                             <h4 class="mb-0 text-gray-900">
                                 <i class="fas fa-layer-group ms-10 text-main-500"></i>
-                                گالری مدل‌های شایستگی
+                                تصاویر مدل‌های شایستگی
                             </h4>
-                            <a href="<?= UtilityHelper::baseUrl('organizations/competency-models'); ?>" class="btn btn-sm btn-outline-main rounded-pill px-16">
+                            <a href="<?= UtilityHelper::baseUrl('organizations/competency-models'); ?>" class="btn btn-sm btn-main rounded-pill px-20">
+                                <i class="fas fa-cog ms-6"></i>
                                 مدیریت مدل‌ها
                             </a>
                         </div>
                         <?php if (!empty($competencyModelShowcase)): ?>
-                            <div class="row g-16">
+                            <div class="row g-20">
                                 <?php foreach ($competencyModelShowcase as $model): ?>
                                     <?php
                                     $rawImagePath = trim((string) ($model['image_path'] ?? ''));
@@ -463,69 +316,55 @@ JS;
                                         }
                                     }
                                     ?>
-                                    <div class="col-xl-4 col-md-6">
-                                        <div class="h-100 border border-gray-100 rounded-24 p-16 d-flex flex-column gap-12">
-                                            <div class="w-100" style="height: 200px; border-radius: 18px; overflow: hidden; background: #f1f5f9;">
+                                    <div class="col-xl-4 col-lg-6">
+                                        <div class="card border-0 shadow-sm rounded-20 h-100 hover-shadow transition">
+                                            <div class="position-relative overflow-hidden d-flex align-items-center justify-content-center" style="height: 240px; border-radius: 20px 20px 0 0; background: #f8fafc;">
                                                 <?php if (!empty($imageUrl)): ?>
-                                                    <img src="<?= htmlspecialchars($imageUrl); ?>" alt="<?= htmlspecialchars($model['title']); ?>" class="w-100 h-100" style="object-fit: cover;">
+                                                    <img src="<?= htmlspecialchars($imageUrl); ?>" 
+                                                         alt="<?= htmlspecialchars($model['title']); ?>" 
+                                                         class="w-100 h-100" 
+                                                         style="object-fit: contain; object-position: center;">
                                                 <?php else: ?>
-                                                    <div class="w-100 h-100 d-flex align-items-center justify-content-center text-gray-400">
-                                                        تصویری ثبت نشده است.
+                                                    <div class="w-100 h-100 d-flex flex-column align-items-center justify-content-center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                                        <i class="fas fa-image text-white mb-12" style="font-size: 48px; opacity: 0.5;"></i>
+                                                        <span class="text-white opacity-75">تصویری ثبت نشده</span>
                                                     </div>
                                                 <?php endif; ?>
                                             </div>
-                                            <div class="flex-grow-1 text-end">
-                                                <h6 class="mb-6 text-gray-900 fw-bold"><?= htmlspecialchars($model['title']); ?></h6>
-                                                <?php if ($codeLabel !== ''): ?>
-                                                    <p class="mb-2 text-gray-400 text-sm">کد مدل: <?= htmlspecialchars(UtilityHelper::englishToPersian($codeLabel)); ?></p>
-                                                <?php endif; ?>
-                                                <?php if ($updatedLabel !== ''): ?>
-                                                    <p class="mb-0 text-gray-400 text-xs">آخرین بروزرسانی: <?= htmlspecialchars($updatedLabel); ?></p>
-                                                <?php endif; ?>
+                                            <div class="card-body p-20">
+                                                <h5 class="mb-12 text-gray-900 fw-bold"><?= htmlspecialchars($model['title']); ?></h5>
+                                                <div class="d-flex align-items-center justify-content-between text-sm">
+                                                    <?php if ($codeLabel !== ''): ?>
+                                                        <span class="badge bg-main-50 text-main-600 rounded-pill px-12 py-6">
+                                                            <i class="fas fa-hashtag ms-4"></i>
+                                                            <?= htmlspecialchars(UtilityHelper::englishToPersian($codeLabel)); ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                    <?php if ($updatedLabel !== ''): ?>
+                                                        <span class="text-gray-400 text-xs">
+                                                            <i class="fas fa-calendar-alt ms-4"></i>
+                                                            <?= htmlspecialchars($updatedLabel); ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
                         <?php else: ?>
-                            <div class="text-center text-gray-400 py-40">
-                                تاکنون تصویری برای مدل‌های شایستگی ثبت نشده است.
+                            <div class="text-center py-64">
+                                <div class="mb-20">
+                                    <i class="fas fa-layer-group text-gray-300" style="font-size: 64px;"></i>
+                                </div>
+                                <h5 class="text-gray-500 mb-12">هنوز مدل شایستگی‌ای ایجاد نشده است</h5>
+                                <p class="text-gray-400 mb-20">برای شروع، اولین مدل شایستگی خود را ایجاد کنید.</p>
+                                <a href="<?= UtilityHelper::baseUrl('organizations/competency-models'); ?>" class="btn btn-main rounded-pill px-24">
+                                    <i class="fas fa-plus ms-6"></i>
+                                    ایجاد مدل جدید
+                                </a>
                             </div>
                         <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-12">
-                <div class="card border-0 shadow-sm rounded-24">
-                    <div class="card-body p-24">
-                        <div class="d-flex justify-content-between align-items-center mb-16">
-                            <h4 class="mb-0 text-gray-900">
-                                <i class="fas fa-th-large ms-10 text-main-500"></i>
-                                میانبرهای سریع
-                            </h4>
-                        </div>
-                        <div class="row g-16">
-                            <?php foreach ($quickLinks as $link): ?>
-                                <div class="col-lg-3 col-md-4 col-sm-6">
-                                    <a href="<?= htmlspecialchars($link['url']); ?>" class="card shadow-sm border-0 rounded-20 h-100 hover-shadow p-20 d-block text-end">
-                                        <div class="d-flex justify-content-between align-items-center mb-12">
-                                            <span class="w-44 h-44 rounded-circle bg-main-50 text-main-600 flex-center">
-                                                <i class="fas fa-arrow-circle-left"></i>
-                                            </span>
-                                            <i class="fas fa-angle-left text-gray-300"></i>
-                                        </div>
-                                        <h6 class="text-gray-900 mb-0"><?= htmlspecialchars($link['label']); ?></h6>
-                                    </a>
-                                </div>
-                            <?php endforeach; ?>
-
-                            <?php if (empty($quickLinks)): ?>
-                                <div class="col-12 text-center text-gray-400 py-32">
-                                    میانبری تعریف نشده است.
-                                </div>
-                            <?php endif; ?>
-                        </div>
                     </div>
                 </div>
             </div>

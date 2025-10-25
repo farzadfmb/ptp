@@ -124,6 +124,21 @@ class OrganizationController
         'storeOrganizationDevelopmentProgram' => ['courses_manage'],
         'updateOrganizationDevelopmentProgram' => ['courses_manage'],
         'deleteOrganizationDevelopmentProgram' => ['courses_manage'],
+        'organizationCourses' => ['courses_view', 'courses_manage'],
+        'createOrganizationCourse' => ['courses_manage'],
+        'editOrganizationCourse' => ['courses_manage'],
+        'storeOrganizationCourse' => ['courses_manage'],
+        'updateOrganizationCourse' => ['courses_manage'],
+        'deleteOrganizationCourse' => ['courses_manage'],
+        'organizationCourseLessons' => ['courses_manage'],
+        'storeOrganizationCourseLesson' => ['courses_manage'],
+        'updateOrganizationCourseLesson' => ['courses_manage'],
+        'deleteOrganizationCourseLesson' => ['courses_manage'],
+        'viewOrganizationCourse' => ['courses_view'],
+        'watchOrganizationCourseLesson' => ['courses_view'],
+        'enrollUserToOrganizationCourse' => ['courses_manage'],
+        'unenrollUserFromOrganizationCourse' => ['courses_manage'],
+        'submitOrganizationCourseQuestion' => ['courses_view'],
         'organizationUsers' => ['users_manage_users'],
         'createOrganizationUser' => ['users_manage_users'],
         'uploadOrganizationUsersForm' => ['users_manage_users'],
@@ -174,6 +189,25 @@ class OrganizationController
 
         $title = 'داشبورد سازمان';
 
+        // Ensure tables exist
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationEvaluationsTableExists();
+        $this->ensureOrganizationEvaluationToolsTableExists();
+        $this->ensureOrganizationEvaluationExamAnswersTableExists();
+        $this->ensureOrganizationEvaluationAgreedScoresTableExists();
+        $this->ensureOrganizationCompetencyModelsTableExists();
+
+        // Get statistics
+        $summaryCards = $this->getDashboardSummaryCards($organizationId);
+        $periodicExamsData = $this->getPeriodicExamsChart($organizationId);
+        $monthlyExamsData = $this->getMonthlyExamsChart($organizationId);
+        $competencyModelShowcase = $this->getCompetencyModelShowcase($organizationId);
+
+        $periodicExamsLabels = $periodicExamsData['labels'] ?? [];
+        $periodicExamsSeries = $periodicExamsData['series'] ?? [];
+        $monthlyExamsLabels = $monthlyExamsData['labels'] ?? [];
+        $monthlyExamsSeries = $monthlyExamsData['series'] ?? [];
+
         $creditUsageChart = [
             'used' => 0,
             'remaining' => 0,
@@ -183,15 +217,9 @@ class OrganizationController
             'completed_participations' => 0,
         ];
 
-        $summaryCards = [];
         $monthlyOverview = [];
         $upcomingEvaluations = [];
         $recentActivities = [];
-        $competencyModelShowcase = [];
-        $periodicExamsLabels = [];
-        $periodicExamsSeries = [];
-        $monthlyExamsLabels = [];
-        $monthlyExamsSeries = [];
 
         $quickLinks = [
             [
@@ -221,6 +249,327 @@ class OrganizationController
         $organizationSubdomain = $organization['subdomain'] ?? '---';
 
         include __DIR__ . '/../Views/organizations/dashboard/index.php';
+    }
+
+    private function getDashboardSummaryCards(int $organizationId): array
+    {
+        if ($organizationId <= 0) {
+            return [];
+        }
+
+        $cards = [];
+
+        // Total users count
+        try {
+            $usersCount = DatabaseHelper::fetchOne(
+                'SELECT COUNT(*) as cnt FROM organization_users WHERE organization_id = :organization_id',
+                ['organization_id' => $organizationId]
+            );
+            $totalUsers = (int) ($usersCount['cnt'] ?? 0);
+        } catch (Exception $e) {
+            $totalUsers = 0;
+        }
+
+        $cards[] = [
+            'label' => 'تعداد کل کاربران سیستم',
+            'value' => UtilityHelper::englishToPersian(number_format($totalUsers, 0)),
+            'icon' => 'users',
+        ];
+
+        // Evaluatee count (users with is_evaluee flag)
+        try {
+            $evaluateeCount = DatabaseHelper::fetchOne(
+                'SELECT COUNT(*) as cnt FROM organization_users 
+                 WHERE organization_id = :organization_id AND is_evaluee = 1',
+                ['organization_id' => $organizationId]
+            );
+            $totalEvaluatees = (int) ($evaluateeCount['cnt'] ?? 0);
+        } catch (Exception $e) {
+            $totalEvaluatees = 0;
+        }
+
+        $cards[] = [
+            'label' => 'تعداد ارزیابی‌شوندگان',
+            'value' => UtilityHelper::englishToPersian(number_format($totalEvaluatees, 0)),
+            'icon' => 'user-check',
+        ];
+
+        // Evaluator count (users with is_evaluator flag)
+        try {
+            $evaluatorCount = DatabaseHelper::fetchOne(
+                'SELECT COUNT(*) as cnt FROM organization_users 
+                 WHERE organization_id = :organization_id AND is_evaluator = 1',
+                ['organization_id' => $organizationId]
+            );
+            $totalEvaluators = (int) ($evaluatorCount['cnt'] ?? 0);
+        } catch (Exception $e) {
+            $totalEvaluators = 0;
+        }
+
+        $cards[] = [
+            'label' => 'تعداد ارزیابان',
+            'value' => UtilityHelper::englishToPersian(number_format($totalEvaluators, 0)),
+            'icon' => 'user-star',
+        ];
+
+        // Total evaluations count
+        try {
+            $evaluationsCount = DatabaseHelper::fetchOne(
+                'SELECT COUNT(*) as cnt FROM organization_evaluations WHERE organization_id = :organization_id',
+                ['organization_id' => $organizationId]
+            );
+            $totalEvaluations = (int) ($evaluationsCount['cnt'] ?? 0);
+        } catch (Exception $e) {
+            $totalEvaluations = 0;
+        }
+
+        $cards[] = [
+            'label' => 'تعداد آزمون‌های ارزیابی',
+            'value' => UtilityHelper::englishToPersian(number_format($totalEvaluations, 0)),
+            'icon' => 'clipboard',
+        ];
+
+        return $cards;
+    }
+
+    private function getPeriodicExamsChart(int $organizationId): array
+    {
+        if ($organizationId <= 0) {
+            return ['labels' => [], 'series' => []];
+        }
+
+        try {
+            // Get last 6 months data
+            $sixMonthsAgo = (new DateTime('now', new DateTimeZone('Asia/Tehran')))->modify('-6 months')->format('Y-m-01');
+            
+            $rows = DatabaseHelper::fetchAll(
+                "SELECT 
+                    evaluation_date
+                 FROM organization_evaluations
+                 WHERE organization_id = :organization_id
+                   AND evaluation_date >= :six_months_ago
+                   AND evaluation_date IS NOT NULL
+                 ORDER BY evaluation_date ASC",
+                [
+                    'organization_id' => $organizationId,
+                    'six_months_ago' => $sixMonthsAgo,
+                ]
+            );
+
+            $labels = [];
+            $series = [];
+            $monthData = [];
+
+            $persianMonths = [
+                1 => 'فروردین', 2 => 'اردیبهشت', 3 => 'خرداد',
+                4 => 'تیر', 5 => 'مرداد', 6 => 'شهریور',
+                7 => 'مهر', 8 => 'آبان', 9 => 'آذر',
+                10 => 'دی', 11 => 'بهمن', 12 => 'اسفند',
+            ];
+
+            // Group by Jalali month
+            foreach ($rows as $row) {
+                $evaluationDate = $row['evaluation_date'] ?? '';
+                
+                if (empty($evaluationDate)) {
+                    continue;
+                }
+
+                try {
+                    $date = new DateTime($evaluationDate, new DateTimeZone('Asia/Tehran'));
+                    $jalaliDate = $this->gregorianToJalali((int)$date->format('Y'), (int)$date->format('m'), (int)$date->format('d'));
+                    $jalaliYear = $jalaliDate[0];
+                    $jalaliMonth = $jalaliDate[1];
+                    $monthKey = $jalaliYear . '-' . str_pad($jalaliMonth, 2, '0', STR_PAD_LEFT);
+                    
+                    if (!isset($monthData[$monthKey])) {
+                        $monthData[$monthKey] = [
+                            'year' => $jalaliYear,
+                            'month' => $jalaliMonth,
+                            'count' => 0,
+                        ];
+                    }
+                    $monthData[$monthKey]['count']++;
+                } catch (Exception $e) {
+                    continue;
+                }
+            }
+
+            ksort($monthData);
+            foreach ($monthData as $data) {
+                $monthName = $persianMonths[$data['month']] ?? $data['month'];
+                $year = UtilityHelper::englishToPersian((string) $data['year']);
+                $labels[] = $monthName . ' ' . $year;
+                $series[] = $data['count'];
+            }
+
+            return ['labels' => $labels, 'series' => $series];
+        } catch (Exception $e) {
+            return ['labels' => [], 'series' => []];
+        }
+    }
+
+    private function getMonthlyExamsChart(int $organizationId): array
+    {
+        if ($organizationId <= 0) {
+            return ['labels' => [], 'series' => []];
+        }
+
+        try {
+            // Get current Jalali month
+            $now = new DateTime('now', new DateTimeZone('Asia/Tehran'));
+            $currentJalali = $this->gregorianToJalali((int)$now->format('Y'), (int)$now->format('m'), (int)$now->format('d'));
+            $jalaliYear = $currentJalali[0];
+            $jalaliMonth = $currentJalali[1];
+            
+            // Get first day of current Jalali month in Gregorian
+            $firstDayGregorian = $this->jalaliToGregorian($jalaliYear, $jalaliMonth, 1);
+            $firstDayOfMonth = sprintf('%04d-%02d-%02d', $firstDayGregorian[0], $firstDayGregorian[1], $firstDayGregorian[2]);
+            
+            $rows = DatabaseHelper::fetchAll(
+                "SELECT 
+                    evaluation_date
+                 FROM organization_evaluations
+                 WHERE organization_id = :organization_id
+                   AND evaluation_date >= :first_day_of_month
+                   AND evaluation_date IS NOT NULL
+                 ORDER BY evaluation_date ASC",
+                [
+                    'organization_id' => $organizationId,
+                    'first_day_of_month' => $firstDayOfMonth,
+                ]
+            );
+
+            $labels = [];
+            $series = [];
+            $dayData = [];
+
+            foreach ($rows as $row) {
+                $evaluationDate = $row['evaluation_date'] ?? '';
+                
+                if (empty($evaluationDate)) {
+                    continue;
+                }
+
+                try {
+                    $date = new DateTime($evaluationDate, new DateTimeZone('Asia/Tehran'));
+                    $jalaliDate = $this->gregorianToJalali((int)$date->format('Y'), (int)$date->format('m'), (int)$date->format('d'));
+                    
+                    // Only include dates from current Jalali month
+                    if ($jalaliDate[0] == $jalaliYear && $jalaliDate[1] == $jalaliMonth) {
+                        $dayNum = $jalaliDate[2];
+                        if (!isset($dayData[$dayNum])) {
+                            $dayData[$dayNum] = 0;
+                        }
+                        $dayData[$dayNum]++;
+                    }
+                } catch (Exception $e) {
+                    continue;
+                }
+            }
+
+            ksort($dayData);
+            foreach ($dayData as $day => $count) {
+                $labels[] = UtilityHelper::englishToPersian((string) $day);
+                $series[] = $count;
+            }
+
+            return ['labels' => $labels, 'series' => $series];
+        } catch (Exception $e) {
+            return ['labels' => [], 'series' => []];
+        }
+    }
+
+    private function getCompetencyModelShowcase(int $organizationId): array
+    {
+        if ($organizationId <= 0) {
+            return [];
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT id, code, title, image_path, updated_at 
+                 FROM organization_competency_models 
+                 WHERE organization_id = :organization_id 
+                 ORDER BY updated_at DESC',
+                ['organization_id' => $organizationId]
+            );
+
+            $models = [];
+            foreach ($rows as $row) {
+                $models[] = [
+                    'id' => (int) ($row['id'] ?? 0),
+                    'code' => $row['code'] ?? '',
+                    'title' => $row['title'] ?? '',
+                    'image_path' => $row['image_path'] ?? '',
+                    'updated_at' => $row['updated_at'] ?? null,
+                    'is_external' => false,
+                ];
+            }
+
+            return $models;
+        } catch (Exception $e) {
+            return [];
+        }
+    }
+
+    private function gregorianToJalali(int $gy, int $gm, int $gd): array
+    {
+        $g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+        $gy2 = ($gm > 2) ? ($gy + 1) : $gy;
+        $days = 355666 + (365 * $gy) + ((int)(($gy2 + 3) / 4)) - ((int)(($gy2 + 99) / 100)) + ((int)(($gy2 + 399) / 400)) + $gd + $g_d_m[$gm - 1];
+        $jy = -1595 + (33 * ((int)($days / 12053)));
+        $days %= 12053;
+        $jy += 4 * ((int)($days / 1461));
+        $days %= 1461;
+        if ($days > 365) {
+            $jy += (int)(($days - 1) / 365);
+            $days = ($days - 1) % 365;
+        }
+        if ($days < 186) {
+            $jm = 1 + (int)($days / 31);
+            $jd = 1 + ($days % 31);
+        } else {
+            $jm = 7 + (int)(($days - 186) / 30);
+            $jd = 1 + (($days - 186) % 30);
+        }
+        return [$jy, $jm, $jd];
+    }
+
+    private function jalaliToGregorian(int $jy, int $jm, int $jd): array
+    {
+        $jy += 1595;
+        $days = 365 * $jy + ((int)($jy / 33)) * 8 + (int)(($jy % 33 + 3) / 4) + 78 + $jd + (($jm < 7) ? ($jm - 1) * 31 : (($jm - 7) * 30) + 186);
+        $gy = 400 * ((int)($days / 146097));
+        $days %= 146097;
+        $flag = true;
+        if ($days >= 36525) {
+            $days--;
+            $gy += 100 * ((int)($days / 36524));
+            $days %= 36524;
+            if ($days >= 365) {
+                $days++;
+            } else {
+                $flag = false;
+            }
+        }
+        $gy += 4 * ((int)($days / 1461));
+        $days %= 1461;
+        if ($flag) {
+            if ($days >= 366) {
+                $days--;
+                $gy += (int)($days / 365);
+                $days = $days % 365;
+            }
+        }
+        $gd = $days + 1;
+        $sal_a = [0, 31, (($gy % 4 == 0 && $gy % 100 != 0) || ($gy % 400 == 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        $gm = 0;
+        while ($gm < 13 && $gd > $sal_a[$gm]) {
+            $gd -= $sal_a[$gm];
+            $gm++;
+        }
+        return [$gy, $gm, $gd];
     }
 
     public function organizationProfile(): void
@@ -9893,9 +10242,50 @@ class OrganizationController
 
     public function organizationSelfAssessmentCertificate(): void
     {
-        $sessionData = $this->ensureOrganizationSession(['reports_self_view']);
-
         AuthHelper::startSession();
+
+        $currentUser = AuthHelper::getUser();
+        $accountSourceRaw = (string) ($currentUser['account_source'] ?? '');
+        $accountSource = $accountSourceRaw !== '' && function_exists('mb_strtolower')
+            ? mb_strtolower($accountSourceRaw, 'UTF-8')
+            : strtolower($accountSourceRaw);
+        $isOrganizationPortalUser = ($accountSource === 'organizations');
+        $isEvaluateeRequest = false;
+
+        if ($isOrganizationPortalUser) {
+            $sessionData = $this->ensureOrganizationSession(['reports_self_view']);
+            $organization = $sessionData['organization'] ?? [];
+            $user = $sessionData['user'] ?? [];
+            $redirectUrl = UtilityHelper::baseUrl('organizations/reports/self-assessment');
+        } else {
+            AuthHelper::requireAuth(UtilityHelper::baseUrl('user/login'));
+
+            $organizationIdEvaluatee = (int)($currentUser['organization_id'] ?? 0);
+            if ($organizationIdEvaluatee <= 0) {
+                ResponseHelper::flashError('حساب سازمانی شما نامعتبر است.');
+                UtilityHelper::redirect(UtilityHelper::baseUrl('tests/reports'));
+            }
+
+            try {
+                $organization = $this->fetchOrganization($organizationIdEvaluatee);
+            } catch (Exception $exception) {
+                $organization = null;
+            }
+
+            if (!$organization) {
+                ResponseHelper::flashError('سازمان شما یافت نشد.');
+                UtilityHelper::redirect(UtilityHelper::baseUrl('tests/reports'));
+            }
+
+            $sessionData = [
+                'organization' => $organization,
+                'user' => $currentUser,
+            ];
+
+            $user = $currentUser;
+            $redirectUrl = UtilityHelper::baseUrl('tests/reports');
+            $isEvaluateeRequest = true;
+        }
 
         $this->ensureOrganizationUsersTableExists();
         $this->ensureOrganizationEvaluationsTableExists();
@@ -9905,22 +10295,26 @@ class OrganizationController
         $this->ensureOrganizationEvaluationExamAnswersTableExists();
         $this->ensureOrganizationEvaluationExamParticipationsTableExists();
 
-        $organization = $sessionData['organization'] ?? [];
-        $user = $sessionData['user'] ?? [];
-
         $organizationId = (int) ($organization['id'] ?? 0);
 
         $evaluationId = (int) UtilityHelper::persianToEnglish(trim((string) ($_GET['evaluation_id'] ?? '0')));
         $evaluateeId = (int) UtilityHelper::persianToEnglish(trim((string) ($_GET['evaluatee_id'] ?? '0')));
 
-    $redirectUrl = UtilityHelper::baseUrl('organizations/reports/self-assessment');
     // Optional preview mode to bypass completion gate for authorized org users (owners/admins/settings-managers)
     $previewParam = isset($_GET['preview']) ? trim((string) $_GET['preview']) : '';
-    $isPreviewRequested = in_array($previewParam, ['1','true','yes'], true);
+    $isPreviewRequested = $isOrganizationPortalUser && in_array($previewParam, ['1','true','yes'], true);
 
         if ($organizationId <= 0 || $evaluationId <= 0 || $evaluateeId <= 0) {
             ResponseHelper::flashError('پارامترهای ورودی نامعتبر است.');
             UtilityHelper::redirect($redirectUrl);
+        }
+
+        if ($isEvaluateeRequest) {
+            $currentEvaluateeId = (int)($user['organization_user_id'] ?? 0);
+            if ($currentEvaluateeId <= 0 || $currentEvaluateeId !== $evaluateeId) {
+                ResponseHelper::flashError('به این گواهی دسترسی ندارید.');
+                UtilityHelper::redirect($redirectUrl);
+            }
         }
 
         try {
@@ -9949,6 +10343,38 @@ class OrganizationController
         if (!$evaluation) {
             ResponseHelper::flashError('برنامه ارزیابی یافت نشد.');
             UtilityHelper::redirect($redirectUrl);
+        }
+
+        if ($isEvaluateeRequest) {
+            $this->ensureOrganizationEvaluationUserVisibilityTableExists();
+
+            $isVisibleToEvaluatee = false;
+            try {
+                $visibilityRow = DatabaseHelper::fetchOne(
+                    'SELECT is_visible
+                     FROM organization_evaluation_user_visibility
+                     WHERE organization_id = :organization_id
+                       AND evaluation_id = :evaluation_id
+                       AND evaluatee_id = :evaluatee_id
+                     LIMIT 1',
+                    [
+                        'organization_id' => $organizationId,
+                        'evaluation_id' => $evaluationId,
+                        'evaluatee_id' => $evaluateeId,
+                    ]
+                );
+
+                if ($visibilityRow) {
+                    $isVisibleToEvaluatee = (int)($visibilityRow['is_visible'] ?? 0) === 1;
+                }
+            } catch (Exception $exception) {
+                $isVisibleToEvaluatee = false;
+            }
+
+            if (!$isVisibleToEvaluatee) {
+                ResponseHelper::flashWarning('نمایش نتایج این ارزیابی برای شما هنوز فعال نشده است.');
+                UtilityHelper::redirect($redirectUrl);
+            }
         }
 
         // Check completion: all exam tools of this evaluation completed by this evaluatee
@@ -12517,6 +12943,63 @@ class OrganizationController
             }
         }
 
+        // Check selected resumes status
+        $this->ensureOrganizationEvaluationSelectedResumesTableExists();
+        $selectedResumes = [];
+        if (!empty($evaluationIds) && !empty($allEvaluateeIds)) {
+            $evalPh = implode(',', array_fill(0, count($evaluationIds), '?'));
+            $usrPh = implode(',', array_fill(0, count($allEvaluateeIds), '?'));
+            $params = array_merge([$organizationId], $evaluationIds, $allEvaluateeIds);
+            try {
+                $selectedRows = DatabaseHelper::fetchAll(
+                    "SELECT evaluation_id, evaluatee_id, id
+                     FROM organization_evaluation_selected_resumes
+                     WHERE organization_id = ?
+                       AND evaluation_id IN ({$evalPh})
+                       AND evaluatee_id IN ({$usrPh})",
+                    $params
+                );
+            } catch (Exception $exception) {
+                $selectedRows = [];
+            }
+            foreach ($selectedRows as $sr) {
+                $eid = (int) ($sr['evaluation_id'] ?? 0);
+                $uid = (int) ($sr['evaluatee_id'] ?? 0);
+                if ($eid <= 0 || $uid <= 0) { continue; }
+                if (!isset($selectedResumes[$eid])) { $selectedResumes[$eid] = []; }
+                $selectedResumes[$eid][$uid] = true;
+            }
+        }
+
+        // Check user visibility status
+        $this->ensureOrganizationEvaluationUserVisibilityTableExists();
+        $userVisibility = [];
+        if (!empty($evaluationIds) && !empty($allEvaluateeIds)) {
+            $evalPh = implode(',', array_fill(0, count($evaluationIds), '?'));
+            $usrPh = implode(',', array_fill(0, count($allEvaluateeIds), '?'));
+            $params = array_merge([$organizationId], $evaluationIds, $allEvaluateeIds);
+            try {
+                $visibilityRows = DatabaseHelper::fetchAll(
+                    "SELECT evaluation_id, evaluatee_id, is_visible
+                     FROM organization_evaluation_user_visibility
+                     WHERE organization_id = ?
+                       AND evaluation_id IN ({$evalPh})
+                       AND evaluatee_id IN ({$usrPh})",
+                    $params
+                );
+            } catch (Exception $exception) {
+                $visibilityRows = [];
+            }
+            foreach ($visibilityRows as $vr) {
+                $eid = (int) ($vr['evaluation_id'] ?? 0);
+                $uid = (int) ($vr['evaluatee_id'] ?? 0);
+                $isVisible = (int) ($vr['is_visible'] ?? 0);
+                if ($eid <= 0 || $uid <= 0) { continue; }
+                if (!isset($userVisibility[$eid])) { $userVisibility[$eid] = []; }
+                $userVisibility[$eid][$uid] = ($isVisible === 1);
+            }
+        }
+
         $formatDateTimeDisplay = static function (?string $dateTime): string {
             if ($dateTime === null || trim($dateTime) === '') {
                 return '—';
@@ -12676,6 +13159,8 @@ class OrganizationController
                     'last_scored_at' => $lastScoredAt,
                     'last_scored_at_display' => $formatDateTimeDisplay($lastScoredAt),
                     'exam_results_viewable' => $examResultsViewable,
+                    'is_selected' => !empty($selectedResumes[$evaluationId][$evaluateeId]),
+                    'is_visible_to_user' => !empty($userVisibility[$evaluationId][$evaluateeId]),
                 ];
             }
         }
@@ -19829,6 +20314,74 @@ SQL;
         $ensured = true;
     }
 
+    private function ensureOrganizationEvaluationSelectedResumesTableExists(): void
+    {
+        static $ensured = false;
+
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_evaluation_selected_resumes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    organization_id INT NOT NULL,
+    evaluation_id INT NOT NULL,
+    evaluatee_id INT NOT NULL,
+    selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    selected_by INT,
+    UNIQUE KEY unique_selection (organization_id, evaluation_id, evaluatee_id),
+    INDEX idx_org_eval (organization_id, evaluation_id),
+    INDEX idx_selected_by (selected_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to create organization_evaluation_selected_resumes table: ' . $exception->getMessage());
+            }
+        }
+
+        $ensured = true;
+    }
+
+    private function ensureOrganizationEvaluationUserVisibilityTableExists(): void
+    {
+        static $ensured = false;
+
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_evaluation_user_visibility (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    organization_id INT NOT NULL,
+    evaluation_id INT NOT NULL,
+    evaluatee_id INT NOT NULL,
+    is_visible TINYINT(1) DEFAULT 1,
+    enabled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    enabled_by INT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_visibility (organization_id, evaluation_id, evaluatee_id),
+    INDEX idx_org_eval (organization_id, evaluation_id),
+    INDEX idx_enabled_by (enabled_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to create organization_evaluation_user_visibility table: ' . $exception->getMessage());
+            }
+        }
+
+        $ensured = true;
+    }
+
     private function ensureOrganizationEvaluationToolScoresTableExists(): void
     {
         static $ensured = false;
@@ -22556,25 +23109,57 @@ SQL;
         }
 
         $calendarLocale = 'fa_IR@calendar=persian';
-        $numericFormatter = new IntlDateFormatter(
+        
+        // First try to get year, month, day separately to avoid padding issues
+        $yearFormatter = new IntlDateFormatter(
             $calendarLocale,
             IntlDateFormatter::FULL,
             IntlDateFormatter::NONE,
             $dateTime->getTimezone(),
             IntlDateFormatter::TRADITIONAL,
-            'yyyy-MM-dd'
+            'y'
+        );
+        
+        $monthFormatter = new IntlDateFormatter(
+            $calendarLocale,
+            IntlDateFormatter::FULL,
+            IntlDateFormatter::NONE,
+            $dateTime->getTimezone(),
+            IntlDateFormatter::TRADITIONAL,
+            'M'
+        );
+        
+        $dayFormatter = new IntlDateFormatter(
+            $calendarLocale,
+            IntlDateFormatter::FULL,
+            IntlDateFormatter::NONE,
+            $dateTime->getTimezone(),
+            IntlDateFormatter::TRADITIONAL,
+            'd'
         );
 
-        if ($numericFormatter !== false) {
-            $formatted = $numericFormatter->format($dateTime);
-            if ($formatted !== false && $formatted !== null) {
-                $formatted = UtilityHelper::persianToEnglish($formatted);
-                $parts = explode('-', $formatted);
-                if (count($parts) === 3) {
-                    $year = (int) $parts[0];
-                    $month = (int) $parts[1];
-                    $day = (int) $parts[2];
-
+        if ($yearFormatter !== false && $monthFormatter !== false && $dayFormatter !== false) {
+            $yearStr = $yearFormatter->format($dateTime);
+            $monthStr = $monthFormatter->format($dateTime);
+            $dayStr = $dayFormatter->format($dateTime);
+            
+            if ($yearStr !== false && $monthStr !== false && $dayStr !== false) {
+                // Convert Persian/Arabic numerals to English
+                $yearStr = UtilityHelper::persianToEnglish($yearStr);
+                $monthStr = UtilityHelper::persianToEnglish($monthStr);
+                $dayStr = UtilityHelper::persianToEnglish($dayStr);
+                
+                // Clean up any non-numeric characters
+                $yearStr = preg_replace('/[^0-9]/', '', $yearStr);
+                $monthStr = preg_replace('/[^0-9]/', '', $monthStr);
+                $dayStr = preg_replace('/[^0-9]/', '', $dayStr);
+                
+                $year = (int) $yearStr;
+                $month = (int) $monthStr;
+                $day = (int) $dayStr;
+                
+                // Validate the values
+                if ($year > 0 && $year < 9999 && $month >= 1 && $month <= 12 && $day >= 1 && $day <= 31) {
                     return [
                         'display' => UtilityHelper::englishToPersian(sprintf('%04d/%02d/%02d', $year, $month, $day)),
                         'year' => $year,
@@ -31044,6 +31629,1828 @@ SQL;
             return DatabaseHelper::fetchOne('SELECT * FROM organizations WHERE id = :id LIMIT 1', ['id' => $organizationId]);
         } catch (Exception $exception) {
             return null;
+        }
+    }
+
+    /**
+     * Select resume - marks an evaluation as selected resume
+     */
+    public function organizationSelfAssessmentSelectResume(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $sessionData = $this->ensureOrganizationSession(['reports_self_view']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationEvaluationsTableExists();
+        $this->ensureOrganizationEvaluationSelectedResumesTableExists();
+
+        $organization = $sessionData['organization'] ?? [];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $evaluationId = (int) UtilityHelper::persianToEnglish(trim((string) ($_POST['evaluation_id'] ?? '0')));
+        $evaluateeId = (int) UtilityHelper::persianToEnglish(trim((string) ($_POST['evaluatee_id'] ?? '0')));
+
+        if ($organizationId <= 0 || $evaluationId <= 0 || $evaluateeId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'پارامترهای ورودی نامعتبر است.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        try {
+            // Check if evaluation and user exist
+            $evaluation = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_evaluations WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $evaluationId, 'organization_id' => $organizationId]
+            );
+
+            if (!$evaluation) {
+                echo json_encode(['success' => false, 'message' => 'ارزیابی یافت نشد.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            $evaluatee = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_users WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $evaluateeId, 'organization_id' => $organizationId]
+            );
+
+            if (!$evaluatee) {
+                echo json_encode(['success' => false, 'message' => 'کاربر یافت نشد.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            // Check if already selected
+            $existing = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_evaluation_selected_resumes WHERE organization_id = :organization_id AND evaluation_id = :evaluation_id AND evaluatee_id = :evaluatee_id LIMIT 1',
+                ['organization_id' => $organizationId, 'evaluation_id' => $evaluationId, 'evaluatee_id' => $evaluateeId]
+            );
+
+            if ($existing) {
+                echo json_encode(['success' => false, 'message' => 'این رزومه قبلاً انتخاب شده است.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            // Insert selection
+            $userId = (int) ($sessionData['user']['id'] ?? 0);
+            DatabaseHelper::query(
+                'INSERT INTO organization_evaluation_selected_resumes (organization_id, evaluation_id, evaluatee_id, selected_by) VALUES (:organization_id, :evaluation_id, :evaluatee_id, :selected_by)',
+                [
+                    'organization_id' => $organizationId,
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                    'selected_by' => $userId
+                ]
+            );
+
+            echo json_encode(['success' => true, 'message' => 'رزومه با موفقیت انتخاب شد.'], JSON_UNESCAPED_UNICODE);
+        } catch (Exception $exception) {
+            echo json_encode(['success' => false, 'message' => 'خطا: ' . $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    /**
+     * Unselect resume - removes an evaluation from selected resumes
+     */
+    public function organizationSelfAssessmentUnselectResume(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $sessionData = $this->ensureOrganizationSession(['reports_self_view']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationEvaluationsTableExists();
+        $this->ensureOrganizationEvaluationSelectedResumesTableExists();
+
+        $organization = $sessionData['organization'] ?? [];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $evaluationId = (int) UtilityHelper::persianToEnglish(trim((string) ($_POST['evaluation_id'] ?? '0')));
+        $evaluateeId = (int) UtilityHelper::persianToEnglish(trim((string) ($_POST['evaluatee_id'] ?? '0')));
+
+        if ($organizationId <= 0 || $evaluationId <= 0 || $evaluateeId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'پارامترهای ورودی نامعتبر است.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        try {
+            // Check if exists
+            $existing = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_evaluation_selected_resumes WHERE organization_id = :organization_id AND evaluation_id = :evaluation_id AND evaluatee_id = :evaluatee_id LIMIT 1',
+                ['organization_id' => $organizationId, 'evaluation_id' => $evaluationId, 'evaluatee_id' => $evaluateeId]
+            );
+
+            if (!$existing) {
+                echo json_encode(['success' => false, 'message' => 'این رزومه در لیست منتخب نیست.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            // Delete record
+            DatabaseHelper::query(
+                'DELETE FROM organization_evaluation_selected_resumes WHERE organization_id = :organization_id AND evaluation_id = :evaluation_id AND evaluatee_id = :evaluatee_id',
+                ['organization_id' => $organizationId, 'evaluation_id' => $evaluationId, 'evaluatee_id' => $evaluateeId]
+            );
+
+            echo json_encode(['success' => true, 'message' => 'رزومه با موفقیت از لیست منتخب حذف شد.'], JSON_UNESCAPED_UNICODE);
+        } catch (Exception $exception) {
+            echo json_encode(['success' => false, 'message' => 'خطا: ' . $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    /**
+     * Toggle visibility - enables/disables results visibility for user
+     */
+    public function organizationSelfAssessmentToggleVisibility(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $sessionData = $this->ensureOrganizationSession(['reports_self_view']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationEvaluationsTableExists();
+        $this->ensureOrganizationEvaluationUserVisibilityTableExists();
+
+        $organization = $sessionData['organization'] ?? [];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $evaluationId = (int) UtilityHelper::persianToEnglish(trim((string) ($_POST['evaluation_id'] ?? '0')));
+        $evaluateeId = (int) UtilityHelper::persianToEnglish(trim((string) ($_POST['evaluatee_id'] ?? '0')));
+        $visible = (int) UtilityHelper::persianToEnglish(trim((string) ($_POST['visible'] ?? '1')));
+
+        if ($organizationId <= 0 || $evaluationId <= 0 || $evaluateeId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'پارامترهای ورودی نامعتبر است.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        try {
+            // Check if evaluation and user exist
+            $evaluation = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_evaluations WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $evaluationId, 'organization_id' => $organizationId]
+            );
+
+            if (!$evaluation) {
+                echo json_encode(['success' => false, 'message' => 'ارزیابی یافت نشد.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            $evaluatee = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_users WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $evaluateeId, 'organization_id' => $organizationId]
+            );
+
+            if (!$evaluatee) {
+                echo json_encode(['success' => false, 'message' => 'کاربر یافت نشد.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            // Check if already exists
+            $existing = DatabaseHelper::fetchOne(
+                'SELECT id, is_visible FROM organization_evaluation_user_visibility WHERE organization_id = :organization_id AND evaluation_id = :evaluation_id AND evaluatee_id = :evaluatee_id LIMIT 1',
+                ['organization_id' => $organizationId, 'evaluation_id' => $evaluationId, 'evaluatee_id' => $evaluateeId]
+            );
+
+            $userId = (int) ($sessionData['user']['id'] ?? 0);
+
+            if ($existing) {
+                // Update existing record
+                DatabaseHelper::query(
+                    'UPDATE organization_evaluation_user_visibility SET is_visible = :is_visible, enabled_by = :enabled_by WHERE organization_id = :organization_id AND evaluation_id = :evaluation_id AND evaluatee_id = :evaluatee_id',
+                    [
+                        'is_visible' => $visible,
+                        'enabled_by' => $userId,
+                        'organization_id' => $organizationId,
+                        'evaluation_id' => $evaluationId,
+                        'evaluatee_id' => $evaluateeId
+                    ]
+                );
+            } else {
+                // Insert new record
+                DatabaseHelper::query(
+                    'INSERT INTO organization_evaluation_user_visibility (organization_id, evaluation_id, evaluatee_id, is_visible, enabled_by) VALUES (:organization_id, :evaluation_id, :evaluatee_id, :is_visible, :enabled_by)',
+                    [
+                        'organization_id' => $organizationId,
+                        'evaluation_id' => $evaluationId,
+                        'evaluatee_id' => $evaluateeId,
+                        'is_visible' => $visible,
+                        'enabled_by' => $userId
+                    ]
+                );
+            }
+
+            $message = $visible ? 'نتایج با موفقیت برای کاربر فعال شد.' : 'نتایج با موفقیت برای کاربر غیرفعال شد.';
+            echo json_encode(['success' => true, 'message' => $message], JSON_UNESCAPED_UNICODE);
+        } catch (Exception $exception) {
+            echo json_encode(['success' => false, 'message' => 'خطا: ' . $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    /**
+     * View selected resumes page
+     */
+    public function organizationSelectedResumes(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_self_view']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationEvaluationsTableExists();
+        $this->ensureOrganizationEvaluationSelectedResumesTableExists();
+
+        $organization = $sessionData['organization'] ?? [];
+        $user = $sessionData['user'] ?? [];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        if ($organizationId <= 0) {
+            ResponseHelper::flashError('شناسه سازمان نامعتبر است.');
+            UtilityHelper::redirect(UtilityHelper::baseUrl('organizations/dashboard'));
+        }
+
+        // Fetch selected resumes with user and evaluation details
+        try {
+            $selectedResumes = DatabaseHelper::fetchAll(
+                "SELECT 
+                    sr.id,
+                    sr.evaluation_id,
+                    sr.evaluatee_id,
+                    sr.selected_at,
+                    sr.selected_by,
+                    u.username,
+                    u.national_code,
+                    u.first_name,
+                    u.last_name,
+                    u.personnel_code,
+                    u.organization_post,
+                    u.service_location,
+                    e.title AS evaluation_title,
+                    e.evaluation_date,
+                    selector.first_name AS selected_by_first_name,
+                    selector.last_name AS selected_by_last_name,
+                    CONCAT(COALESCE(selector.first_name, ''), ' ', COALESCE(selector.last_name, '')) AS selected_by_name
+                FROM organization_evaluation_selected_resumes sr
+                INNER JOIN organization_users u ON sr.evaluatee_id = u.id AND sr.organization_id = u.organization_id
+                INNER JOIN organization_evaluations e ON sr.evaluation_id = e.id AND sr.organization_id = e.organization_id
+                LEFT JOIN organization_users selector ON sr.selected_by = selector.id AND sr.organization_id = selector.organization_id
+                WHERE sr.organization_id = :organization_id
+                ORDER BY sr.selected_at DESC",
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $selectedResumes = [];
+        }
+
+        $organizationData = $organization;
+        $userData = $user;
+
+        require __DIR__ . '/../Views/organizations/reports/selected-resumes.php';
+    }
+
+    /**
+     * Remove selected resume
+     */
+    public function organizationRemoveSelectedResume(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $sessionData = $this->ensureOrganizationSession(['reports_self_view']);
+
+        AuthHelper::startSession();
+
+        $organization = $sessionData['organization'] ?? [];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $resumeId = (int) UtilityHelper::persianToEnglish(trim((string) ($_POST['resume_id'] ?? '0')));
+
+        if ($organizationId <= 0 || $resumeId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'پارامترهای ورودی نامعتبر است.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        try {
+            // Check if exists
+            $existing = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_evaluation_selected_resumes WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $resumeId, 'organization_id' => $organizationId]
+            );
+
+            if (!$existing) {
+                echo json_encode(['success' => false, 'message' => 'رزومه در لیست منتخب یافت نشد.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            // Delete record
+            DatabaseHelper::query(
+                'DELETE FROM organization_evaluation_selected_resumes WHERE id = :id AND organization_id = :organization_id',
+                ['id' => $resumeId, 'organization_id' => $organizationId]
+            );
+
+            echo json_encode(['success' => true, 'message' => 'رزومه با موفقیت از لیست منتخب حذف شد.'], JSON_UNESCAPED_UNICODE);
+        } catch (Exception $exception) {
+            echo json_encode(['success' => false, 'message' => 'خطا: ' . $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    // ==================== Development Courses ====================
+
+    private function ensureOrganizationCoursesTableExists(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_courses (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    organization_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+    category VARCHAR(100) NULL,
+    instructor_name VARCHAR(255) NULL,
+    price DECIMAL(10,2) DEFAULT 0.00,
+    duration_hours INT DEFAULT 0,
+    cover_image VARCHAR(255) NULL,
+    status ENUM('draft', 'published', 'archived', 'presale') DEFAULT 'draft',
+    sort_order INT DEFAULT 0,
+    published_at DATE NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_organization (organization_id),
+    INDEX idx_status (status),
+    INDEX idx_sort (sort_order),
+    INDEX idx_published_at (published_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to create organization_courses table: ' . $exception->getMessage());
+            }
+        }
+
+        $ensured = true;
+    }
+
+    private function ensureOrganizationCourseLessonsTableExists(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_course_lessons (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    course_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+    short_description TEXT NULL,
+    learning_objectives TEXT NULL,
+    resources TEXT NULL,
+    text_content LONGTEXT NULL,
+    content_type ENUM('video', 'pdf', 'ppt', 'link', 'text') DEFAULT 'video',
+    content_url VARCHAR(500) NULL,
+    content_file VARCHAR(255) NULL,
+    thumbnail_path VARCHAR(255) NULL,
+    duration_minutes INT DEFAULT 0,
+    sort_order INT DEFAULT 0,
+    is_free TINYINT(1) DEFAULT 0,
+    is_published TINYINT(1) DEFAULT 1,
+    available_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_course (course_id),
+    INDEX idx_sort (sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+            DatabaseHelper::query($createTableSql);
+
+            $columns = DatabaseHelper::fetchAll('SHOW COLUMNS FROM organization_course_lessons');
+            $columnNames = array_map(static fn($column) => $column['Field'] ?? '', $columns);
+
+            $this->ensureLessonColumn($columnNames, 'short_description', "ALTER TABLE organization_course_lessons ADD COLUMN short_description TEXT NULL AFTER description");
+            $this->ensureLessonColumn($columnNames, 'learning_objectives', "ALTER TABLE organization_course_lessons ADD COLUMN learning_objectives TEXT NULL AFTER short_description");
+            $this->ensureLessonColumn($columnNames, 'resources', "ALTER TABLE organization_course_lessons ADD COLUMN resources TEXT NULL AFTER learning_objectives");
+            $this->ensureLessonColumn($columnNames, 'text_content', "ALTER TABLE organization_course_lessons ADD COLUMN text_content LONGTEXT NULL AFTER resources");
+            $this->ensureLessonColumn($columnNames, 'thumbnail_path', "ALTER TABLE organization_course_lessons ADD COLUMN thumbnail_path VARCHAR(255) NULL AFTER content_file");
+            $this->ensureLessonColumn($columnNames, 'is_published', "ALTER TABLE organization_course_lessons ADD COLUMN is_published TINYINT(1) DEFAULT 1 AFTER is_free");
+            $this->ensureLessonColumn($columnNames, 'available_at', "ALTER TABLE organization_course_lessons ADD COLUMN available_at DATETIME NULL AFTER is_published");
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to create organization_course_lessons table: ' . $exception->getMessage());
+            }
+        }
+
+        $ensured = true;
+    }
+
+    private function ensureLessonColumn(array $columnNames, string $column, string $alterSql): void
+    {
+        if (!in_array($column, $columnNames, true)) {
+            try {
+                DatabaseHelper::query($alterSql);
+            } catch (Exception $exception) {
+                if (class_exists('LogHelper')) {
+                    LogHelper::warning('Unable to add column ' . $column . ' to organization_course_lessons: ' . $exception->getMessage());
+                }
+            }
+        }
+    }
+
+    private function resolveUploadErrorMessage(int $errorCode): string
+    {
+        switch ($errorCode) {
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                $maxUpload = ini_get('upload_max_filesize');
+                $maxPost = ini_get('post_max_size');
+                return sprintf(
+                    'حجم فایل بیشتر از حد مجاز است. حداکثر حجم مجاز: %s (مقدار فرم: %s).',
+                    $maxUpload ?: 'نامشخص',
+                    $maxPost ?: 'نامشخص'
+                );
+            case UPLOAD_ERR_PARTIAL:
+                return 'فایل به طور کامل بارگذاری نشد. لطفاً دوباره تلاش کنید.';
+            case UPLOAD_ERR_NO_TMP_DIR:
+                return 'پوشه موقت سرور در دسترس نیست. لطفاً با پشتیبانی تماس بگیرید.';
+            case UPLOAD_ERR_CANT_WRITE:
+                return 'ذخیره‌سازی فایل روی سرور با خطا روبه‌رو شد. لطفاً با پشتیبانی تماس بگیرید.';
+            case UPLOAD_ERR_EXTENSION:
+                return 'بارگذاری فایل به دلیل محدودیت سرور متوقف شد. با پشتیبانی تماس بگیرید.';
+            default:
+                return 'خطا در بارگذاری فایل محتوا. لطفاً دوباره تلاش کنید.';
+        }
+    }
+
+    private function ensureOrganizationCourseEnrollmentsTableExists(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_course_enrollments (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    organization_id BIGINT UNSIGNED NOT NULL,
+    course_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL,
+    progress_percentage DECIMAL(5,2) DEFAULT 0.00,
+    UNIQUE KEY unique_enrollment (organization_id, course_id, user_id),
+    INDEX idx_organization (organization_id),
+    INDEX idx_course (course_id),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to create organization_course_enrollments table: ' . $exception->getMessage());
+            }
+        }
+
+        $ensured = true;
+    }
+
+    private function ensureOrganizationCourseProgressTableExists(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_course_progress (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    enrollment_id BIGINT UNSIGNED NOT NULL,
+    lesson_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    is_completed TINYINT(1) DEFAULT 0,
+    completed_at TIMESTAMP NULL,
+    watch_duration_seconds INT DEFAULT 0,
+    last_watched_at TIMESTAMP NULL,
+    UNIQUE KEY unique_progress (enrollment_id, lesson_id),
+    INDEX idx_user (user_id),
+    INDEX idx_lesson (lesson_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to create organization_course_progress table: ' . $exception->getMessage());
+            }
+        }
+
+        $ensured = true;
+    }
+
+    private function ensureOrganizationCourseQuestionsTableExists(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_course_questions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    course_id BIGINT UNSIGNED NOT NULL,
+    lesson_id BIGINT UNSIGNED NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    question TEXT NOT NULL,
+    answer TEXT NULL,
+    answered_by BIGINT UNSIGNED NULL,
+    is_answered TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    answered_at TIMESTAMP NULL,
+    INDEX idx_course (course_id),
+    INDEX idx_lesson (lesson_id),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to create organization_course_questions table: ' . $exception->getMessage());
+            }
+        }
+
+        $ensured = true;
+    }
+
+    public function organizationCourses(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_view', 'courses_manage']);
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationCourseLessonsTableExists();
+        $this->ensureOrganizationCourseEnrollmentsTableExists();
+
+        $title = 'دوره‌های توسعه فردی';
+        $user = $sessionData['user'];
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        // Get all courses
+        try {
+            $courses = DatabaseHelper::fetchAll(
+                'SELECT * FROM organization_courses WHERE organization_id = :organization_id ORDER BY sort_order ASC, created_at DESC',
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $courses = [];
+        }
+
+        // Get lesson counts and enrollment counts for each course
+        foreach ($courses as &$course) {
+            $courseId = (int) ($course['id'] ?? 0);
+            
+            // Count lessons
+            try {
+                $lessonCount = DatabaseHelper::fetchOne(
+                    'SELECT COUNT(*) as count FROM organization_course_lessons WHERE course_id = :course_id',
+                    ['course_id' => $courseId]
+                );
+                $course['lesson_count'] = (int) ($lessonCount['count'] ?? 0);
+            } catch (Exception $exception) {
+                $course['lesson_count'] = 0;
+            }
+
+            // Count enrollments
+            try {
+                $enrollmentCount = DatabaseHelper::fetchOne(
+                    'SELECT COUNT(*) as count FROM organization_course_enrollments WHERE course_id = :course_id',
+                    ['course_id' => $courseId]
+                );
+                $course['enrollment_count'] = (int) ($enrollmentCount['count'] ?? 0);
+            } catch (Exception $exception) {
+                $course['enrollment_count'] = 0;
+            }
+        }
+        unset($course);
+
+        $successMessage = flash('success');
+        $errorMessage = flash('error');
+
+        include __DIR__ . '/../Views/organizations/courses/index.php';
+    }
+
+    public function createOrganizationCourse(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCoursesTableExists();
+
+        $title = 'ایجاد دوره جدید';
+        $user = $sessionData['user'];
+        $organization = $sessionData['organization'];
+
+        include __DIR__ . '/../Views/organizations/courses/create.php';
+    }
+
+    public function storeOrganizationCourse(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCoursesTableExists();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $title = trim((string) ($_POST['title'] ?? ''));
+        $description = trim((string) ($_POST['description'] ?? ''));
+        $category = trim((string) ($_POST['category'] ?? ''));
+        $instructorName = trim((string) ($_POST['instructor_name'] ?? ''));
+        $price = (float) ($_POST['price'] ?? 0);
+        $durationHours = (int) ($_POST['duration_hours'] ?? 0);
+        $status = trim((string) ($_POST['status'] ?? 'draft'));
+        $sortOrder = (int) ($_POST['sort_order'] ?? 0);
+        $publishedAt = !empty($_POST['published_at']) ? trim((string) $_POST['published_at']) : null;
+
+        if ($title === '') {
+            ResponseHelper::flashError('عنوان دوره الزامی است.');
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses/create'));
+            exit;
+        }
+
+        // Handle file upload
+        $coverImage = '';
+        if (!empty($_FILES['cover_image']['name'])) {
+            $uploadDir = dirname(__DIR__, 2) . '/public/uploads/courses/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            $fileExtension = pathinfo($_FILES['cover_image']['name'], PATHINFO_EXTENSION);
+            $fileName = 'course_' . time() . '_' . uniqid() . '.' . $fileExtension;
+            $uploadPath = $uploadDir . $fileName;
+
+            if (move_uploaded_file($_FILES['cover_image']['tmp_name'], $uploadPath)) {
+                $coverImage = $fileName; // فقط نام فایل
+            }
+        }
+
+        try {
+            DatabaseHelper::query(
+                'INSERT INTO organization_courses (organization_id, title, description, category, instructor_name, price, duration_hours, cover_image, status, sort_order, published_at) VALUES (:organization_id, :title, :description, :category, :instructor_name, :price, :duration_hours, :cover_image, :status, :sort_order, :published_at)',
+                [
+                    'organization_id' => $organizationId,
+                    'title' => $title,
+                    'description' => $description,
+                    'category' => $category,
+                    'instructor_name' => $instructorName,
+                    'price' => $price,
+                    'duration_hours' => $durationHours,
+                    'cover_image' => $coverImage,
+                    'status' => $status,
+                    'sort_order' => $sortOrder,
+                    'published_at' => $publishedAt,
+                ]
+            );
+
+            ResponseHelper::flashSuccess('دوره با موفقیت ایجاد شد.');
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
+        } catch (Exception $exception) {
+            ResponseHelper::flashError('خطا در ایجاد دوره: ' . $exception->getMessage());
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses/create'));
+        }
+        exit;
+    }
+
+    public function editOrganizationCourse(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCoursesTableExists();
+
+        $title = 'ویرایش دوره';
+        $user = $sessionData['user'];
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $courseId = (int) ($_GET['id'] ?? 0);
+
+        if ($courseId <= 0) {
+            ResponseHelper::flashError('شناسه دوره نامعتبر است.');
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
+            exit;
+        }
+
+        try {
+            $course = DatabaseHelper::fetchOne(
+                'SELECT * FROM organization_courses WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $courseId, 'organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $course = null;
+        }
+
+        if (!$course) {
+            ResponseHelper::flashError('دوره یافت نشد.');
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
+            exit;
+        }
+
+        include __DIR__ . '/../Views/organizations/courses/edit.php';
+    }
+
+    public function updateOrganizationCourse(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCoursesTableExists();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $courseId = (int) ($_POST['course_id'] ?? $_POST['id'] ?? 0);
+        $title = trim((string) ($_POST['title'] ?? ''));
+        $description = trim((string) ($_POST['description'] ?? ''));
+        $category = trim((string) ($_POST['category'] ?? ''));
+        $instructorName = trim((string) ($_POST['instructor_name'] ?? ''));
+        $price = (float) ($_POST['price'] ?? 0);
+        $durationHours = (int) ($_POST['duration_hours'] ?? 0);
+        $status = trim((string) ($_POST['status'] ?? 'draft'));
+        $sortOrder = (int) ($_POST['sort_order'] ?? 0);
+        $publishedAt = !empty($_POST['published_at']) ? trim((string) $_POST['published_at']) : null;
+
+        if ($courseId <= 0 || $title === '') {
+            ResponseHelper::flashError('اطلاعات نامعتبر است.');
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
+            exit;
+        }
+
+        // Check course exists
+        try {
+            $course = DatabaseHelper::fetchOne(
+                'SELECT * FROM organization_courses WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $courseId, 'organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $course = null;
+        }
+
+        if (!$course) {
+            ResponseHelper::flashError('دوره یافت نشد.');
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
+            exit;
+        }
+
+        $coverImage = (string) ($course['cover_image'] ?? '');
+
+        // Handle file upload
+        if (!empty($_FILES['cover_image']['name'])) {
+            $uploadDir = dirname(__DIR__, 2) . '/public/uploads/courses/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            $fileExtension = pathinfo($_FILES['cover_image']['name'], PATHINFO_EXTENSION);
+            $fileName = 'course_' . time() . '_' . uniqid() . '.' . $fileExtension;
+            $uploadPath = $uploadDir . $fileName;
+
+            if (move_uploaded_file($_FILES['cover_image']['tmp_name'], $uploadPath)) {
+                // Delete old image
+                if (!empty($coverImage)) {
+                    $oldImagePath = dirname(__DIR__, 2) . '/public/uploads/courses/' . $coverImage;
+                    if (file_exists($oldImagePath)) {
+                        unlink($oldImagePath);
+                    }
+                }
+                $coverImage = $fileName; // فقط نام فایل
+            }
+        }
+
+        try {
+            DatabaseHelper::query(
+                'UPDATE organization_courses SET title = :title, description = :description, category = :category, instructor_name = :instructor_name, price = :price, duration_hours = :duration_hours, cover_image = :cover_image, status = :status, sort_order = :sort_order, published_at = :published_at WHERE id = :id AND organization_id = :organization_id',
+                [
+                    'id' => $courseId,
+                    'organization_id' => $organizationId,
+                    'title' => $title,
+                    'description' => $description,
+                    'category' => $category,
+                    'instructor_name' => $instructorName,
+                    'price' => $price,
+                    'duration_hours' => $durationHours,
+                    'cover_image' => $coverImage,
+                    'status' => $status,
+                    'sort_order' => $sortOrder,
+                    'published_at' => $publishedAt,
+                ]
+            );
+
+            ResponseHelper::flashSuccess('دوره با موفقیت به‌روزرسانی شد.');
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
+        } catch (Exception $exception) {
+            ResponseHelper::flashError('خطا در به‌روزرسانی دوره: ' . $exception->getMessage());
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses/edit?id=' . $courseId));
+        }
+        exit;
+    }
+
+    public function deleteOrganizationCourse(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCoursesTableExists();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $courseId = (int) ($_POST['course_id'] ?? $_POST['id'] ?? 0);
+
+        if ($courseId <= 0) {
+            echo json_encode(['success' => false, 'message' => 'شناسه دوره نامعتبر است.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        try {
+            // Check course exists
+            $course = DatabaseHelper::fetchOne(
+                'SELECT * FROM organization_courses WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $courseId, 'organization_id' => $organizationId]
+            );
+
+            if (!$course) {
+                echo json_encode(['success' => false, 'message' => 'دوره یافت نشد.'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            // Delete cover image
+            $coverImage = (string) ($course['cover_image'] ?? '');
+            if (!empty($coverImage)) {
+                $imagePath = dirname(__DIR__, 2) . '/public/uploads/courses/' . $coverImage;
+                if (file_exists($imagePath)) {
+                    unlink($imagePath);
+                }
+            }
+
+            // Delete course
+            DatabaseHelper::query(
+                'DELETE FROM organization_courses WHERE id = :id AND organization_id = :organization_id',
+                ['id' => $courseId, 'organization_id' => $organizationId]
+            );
+
+            echo json_encode(['success' => true, 'message' => 'دوره با موفقیت حذف شد.'], JSON_UNESCAPED_UNICODE);
+        } catch (Exception $exception) {
+            echo json_encode(['success' => false, 'message' => 'خطا: ' . $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    /**
+     * Display course lessons management page
+     */
+    public function organizationCourseLessons(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+        
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $courseId = $_GET['course_id'] ?? null;
+        
+        if (!$courseId) {
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
+            exit;
+        }
+
+        // Get course details
+        $course = DatabaseHelper::fetchOne(
+            'SELECT * FROM organization_courses WHERE id = :id AND organization_id = :organization_id',
+            ['id' => $courseId, 'organization_id' => $organizationId]
+        );
+
+        if (!$course) {
+            header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
+            exit;
+        }
+
+        // Get all lessons for this course
+        $this->ensureOrganizationCourseLessonsTableExists();
+        
+        $lessons = DatabaseHelper::fetchAll(
+            'SELECT * FROM organization_course_lessons WHERE course_id = :course_id ORDER BY sort_order ASC, id ASC',
+            ['course_id' => $courseId]
+        );
+
+        // Count lessons
+        $totalLessons = count($lessons);
+        $totalDuration = array_sum(array_column($lessons, 'duration_minutes'));
+
+        $user = $sessionData['user'];
+        $successMessage = ResponseHelper::getFlash('success');
+        $errorMessage = ResponseHelper::getFlash('error');
+        $warningMessage = ResponseHelper::getFlash('warning');
+        $infoMessage = ResponseHelper::getFlash('info');
+
+        include __DIR__ . '/../Views/organizations/courses/lessons.php';
+    }
+
+    public function getOrganizationCourseEvaluatees(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationCourseEnrollmentsTableExists();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $courseId = (int) ($_GET['course_id'] ?? 0);
+
+        if ($courseId <= 0 || $organizationId <= 0) {
+            ResponseHelper::error('شناسه دوره نامعتبر است.', null, 422);
+        }
+
+        try {
+            $course = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_courses WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $courseId, 'organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $course = null;
+        }
+
+        if (!$course) {
+            ResponseHelper::error('دوره یافت نشد.', null, 404);
+        }
+
+        try {
+            $enrolledRows = DatabaseHelper::fetchAll(
+                'SELECT e.user_id, e.enrolled_at, e.completed_at, e.progress_percentage, u.first_name, u.last_name, u.email, u.evaluation_code
+                 FROM organization_course_enrollments e
+                 LEFT JOIN organization_users u ON u.id = e.user_id
+                 WHERE e.course_id = :course_id AND e.organization_id = :organization_id
+                 ORDER BY u.last_name ASC, u.first_name ASC',
+                ['course_id' => $courseId, 'organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $enrolledRows = [];
+        }
+
+        $enrolledUsers = [];
+        $enrolledUserIds = [];
+
+        foreach ($enrolledRows as $row) {
+            $userId = (int) ($row['user_id'] ?? 0);
+            if ($userId > 0) {
+                $enrolledUserIds[] = $userId;
+            }
+
+            $fullName = trim((string) ($row['first_name'] ?? '') . ' ' . (string) ($row['last_name'] ?? ''));
+            if ($fullName === '') {
+                $fullName = 'کاربر بدون نام';
+            }
+
+            $enrolledUsers[] = [
+                'id' => $userId,
+                'name' => $fullName,
+                'email' => (string) ($row['email'] ?? ''),
+                'evaluation_code' => (string) ($row['evaluation_code'] ?? ''),
+                'enrolled_at' => (string) ($row['enrolled_at'] ?? ''),
+                'completed_at' => (string) ($row['completed_at'] ?? ''),
+                'progress_percentage' => (float) ($row['progress_percentage'] ?? 0),
+            ];
+        }
+
+        $availableParams = ['organization_id' => $organizationId];
+        $exclusions = '';
+
+        if (!empty($enrolledUserIds)) {
+            $placeholders = [];
+            foreach ($enrolledUserIds as $index => $userId) {
+                $placeholder = ':exclude_' . $index;
+                $placeholders[] = $placeholder;
+                $availableParams[$placeholder] = $userId;
+            }
+
+            $exclusions = ' AND u.id NOT IN (' . implode(',', $placeholders) . ')';
+        }
+
+        $availableUsers = [];
+
+        try {
+            $availableRows = DatabaseHelper::fetchAll(
+                'SELECT u.id, u.first_name, u.last_name, u.email, u.evaluation_code
+                 FROM organization_users u
+                 WHERE u.organization_id = :organization_id AND u.is_evaluee = 1' . $exclusions . '
+                 ORDER BY u.last_name ASC, u.first_name ASC',
+                $availableParams
+            );
+        } catch (Exception $exception) {
+            $availableRows = [];
+        }
+
+        foreach ($availableRows as $row) {
+            $fullName = trim((string) ($row['first_name'] ?? '') . ' ' . (string) ($row['last_name'] ?? ''));
+            if ($fullName === '') {
+                $fullName = 'کاربر بدون نام';
+            }
+
+            $availableUsers[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'name' => $fullName,
+                'email' => (string) ($row['email'] ?? ''),
+                'evaluation_code' => (string) ($row['evaluation_code'] ?? ''),
+            ];
+        }
+
+        ResponseHelper::success('لیست کاربران با موفقیت بازیابی شد.', [
+            'enrolled_users' => $enrolledUsers,
+            'available_users' => $availableUsers,
+        ]);
+    }
+
+    public function enrollUserToOrganizationCourse(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            ResponseHelper::error('درخواست نامعتبر است.', null, 405);
+        }
+
+        $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationCourseEnrollmentsTableExists();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $courseId = (int) ($_POST['course_id'] ?? 0);
+        $userId = (int) ($_POST['user_id'] ?? 0);
+
+        if ($organizationId <= 0 || $courseId <= 0 || $userId <= 0) {
+            ResponseHelper::error('شناسه‌های ارسال شده نامعتبر هستند.', null, 422);
+        }
+
+        try {
+            $course = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_courses WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $courseId, 'organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $course = null;
+        }
+
+        if (!$course) {
+            ResponseHelper::error('دوره یافت نشد.', null, 404);
+        }
+
+        try {
+            $userRow = DatabaseHelper::fetchOne(
+                'SELECT id, first_name, last_name, email, evaluation_code, is_evaluee
+                 FROM organization_users
+                 WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $userId, 'organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $userRow = null;
+        }
+
+        if (!$userRow) {
+            ResponseHelper::error('کاربر یافت نشد.', null, 404);
+        }
+
+        if ((int) ($userRow['is_evaluee'] ?? 0) !== 1) {
+            ResponseHelper::error('فقط کاربران ارزیابی‌شونده قابل افزودن هستند.', null, 422);
+        }
+
+        try {
+            $existing = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_course_enrollments
+                 WHERE organization_id = :organization_id AND course_id = :course_id AND user_id = :user_id LIMIT 1',
+                ['organization_id' => $organizationId, 'course_id' => $courseId, 'user_id' => $userId]
+            );
+        } catch (Exception $exception) {
+            $existing = null;
+        }
+
+        if ($existing) {
+            ResponseHelper::error('این کاربر قبلاً به دوره اضافه شده است.', null, 409);
+        }
+
+        $enrolledAt = date('Y-m-d H:i:s');
+
+        try {
+            DatabaseHelper::insert('organization_course_enrollments', [
+                'organization_id' => $organizationId,
+                'course_id' => $courseId,
+                'user_id' => $userId,
+                'enrolled_at' => $enrolledAt,
+                'completed_at' => null,
+                'progress_percentage' => 0,
+            ]);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to enroll user to course: ' . $exception->getMessage());
+            }
+
+            ResponseHelper::error('در ثبت نام کاربر خطایی رخ داد.', null, 500);
+        }
+
+        $fullName = trim((string) ($userRow['first_name'] ?? '') . ' ' . (string) ($userRow['last_name'] ?? ''));
+        if ($fullName === '') {
+            $fullName = 'کاربر بدون نام';
+        }
+
+        ResponseHelper::success('کاربر با موفقیت به دوره اضافه شد.', [
+            'user' => [
+                'id' => (int) ($userRow['id'] ?? 0),
+                'name' => $fullName,
+                'email' => (string) ($userRow['email'] ?? ''),
+                'evaluation_code' => (string) ($userRow['evaluation_code'] ?? ''),
+                'enrolled_at' => $enrolledAt,
+            ],
+        ]);
+    }
+
+    public function unenrollUserFromOrganizationCourse(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            ResponseHelper::error('درخواست نامعتبر است.', null, 405);
+        }
+
+        $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationCourseEnrollmentsTableExists();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $courseId = (int) ($_POST['course_id'] ?? 0);
+        $userId = (int) ($_POST['user_id'] ?? 0);
+
+        if ($organizationId <= 0 || $courseId <= 0 || $userId <= 0) {
+            ResponseHelper::error('شناسه‌های ارسال شده نامعتبر هستند.', null, 422);
+        }
+
+        try {
+            $deleted = DatabaseHelper::delete(
+                'organization_course_enrollments',
+                'organization_id = :organization_id AND course_id = :course_id AND user_id = :user_id',
+                ['organization_id' => $organizationId, 'course_id' => $courseId, 'user_id' => $userId]
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to unenroll user from course: ' . $exception->getMessage());
+            }
+
+            ResponseHelper::error('در حذف کاربر از دوره خطایی رخ داد.', null, 500);
+        }
+
+        if ($deleted <= 0) {
+            ResponseHelper::error('رکوردی برای حذف یافت نشد.', null, 404);
+        }
+
+        ResponseHelper::success('کاربر از دوره حذف شد.');
+    }
+
+    /**
+     * Show create lesson page
+     */
+    public function createOrganizationCourseLessonPage(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $courseId = $_GET['course_id'] ?? null;
+
+        if (!$courseId) {
+            ResponseHelper::flashError('شناسه دوره نامعتبر است.');
+            UtilityHelper::redirect(UtilityHelper::baseUrl('organizations/courses'));
+        }
+
+        $course = DatabaseHelper::fetchOne(
+            'SELECT * FROM organization_courses WHERE id = :id AND organization_id = :organization_id',
+            ['id' => $courseId, 'organization_id' => $organizationId]
+        );
+
+        if (!$course) {
+            ResponseHelper::flashError('دوره یافت نشد.');
+            UtilityHelper::redirect(UtilityHelper::baseUrl('organizations/courses'));
+        }
+
+        $this->ensureOrganizationCourseLessonsTableExists();
+
+        $lesson = null;
+        $isEdit = false;
+        $user = $sessionData['user'];
+        $successMessage = ResponseHelper::getFlash('success');
+        $errorMessage = ResponseHelper::getFlash('error');
+        $warningMessage = ResponseHelper::getFlash('warning');
+        $infoMessage = ResponseHelper::getFlash('info');
+
+        include __DIR__ . '/../Views/organizations/courses/lesson-form.php';
+    }
+
+    /**
+     * Show edit lesson page
+     */
+    public function editOrganizationCourseLessonPage(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $lessonId = $_GET['lesson_id'] ?? null;
+
+        if (!$lessonId) {
+            ResponseHelper::flashError('شناسه درس نامعتبر است.');
+            UtilityHelper::redirect(UtilityHelper::baseUrl('organizations/courses'));
+        }
+
+        $this->ensureOrganizationCourseLessonsTableExists();
+
+        $lesson = DatabaseHelper::fetchOne(
+            'SELECT l.*, c.organization_id FROM organization_course_lessons l JOIN organization_courses c ON c.id = l.course_id WHERE l.id = :id',
+            ['id' => $lessonId]
+        );
+
+        if (!$lesson || (int) ($lesson['organization_id'] ?? 0) !== $organizationId) {
+            ResponseHelper::flashError('به این درس دسترسی ندارید.');
+            UtilityHelper::redirect(UtilityHelper::baseUrl('organizations/courses'));
+        }
+
+        $course = DatabaseHelper::fetchOne(
+            'SELECT * FROM organization_courses WHERE id = :id AND organization_id = :organization_id',
+            ['id' => $lesson['course_id'], 'organization_id' => $organizationId]
+        );
+
+        if (!$course) {
+            ResponseHelper::flashError('دوره مرتبط با این درس یافت نشد.');
+            UtilityHelper::redirect(UtilityHelper::baseUrl('organizations/courses'));
+        }
+
+        $isEdit = true;
+        $user = $sessionData['user'];
+        $successMessage = ResponseHelper::getFlash('success');
+        $errorMessage = ResponseHelper::getFlash('error');
+        $warningMessage = ResponseHelper::getFlash('warning');
+        $infoMessage = ResponseHelper::getFlash('info');
+
+        include __DIR__ . '/../Views/organizations/courses/lesson-form.php';
+    }
+
+    /**
+     * Store new lesson
+     */
+    public function storeOrganizationCourseLesson(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $courseId = $_POST['course_id'] ?? ($_GET['course_id'] ?? null);
+        $courseId = $courseId !== null ? (int) $courseId : null;
+
+        $courseListUrl = UtilityHelper::baseUrl('organizations/courses');
+        $redirectBack = $courseId
+            ? UtilityHelper::baseUrl('organizations/courses/lessons/create?course_id=' . $courseId)
+            : $courseListUrl;
+        $lessonsUrl = $courseId
+            ? UtilityHelper::baseUrl('organizations/courses/lessons?course_id=' . $courseId)
+            : UtilityHelper::baseUrl('organizations/courses/lessons');
+
+        if (empty($_POST) && empty($_FILES) && isset($_SERVER['CONTENT_LENGTH']) && (int) $_SERVER['CONTENT_LENGTH'] > 0) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('organizationCourseLesson store oversized payload', [
+                    'content_length' => (int) $_SERVER['CONTENT_LENGTH'],
+                    'post_max_size' => ini_get('post_max_size'),
+                    'upload_max_filesize' => ini_get('upload_max_filesize'),
+                    'course_id' => $courseId,
+                ]);
+            }
+            ResponseHelper::redirectWithFlash(
+                $redirectBack,
+                'error',
+                'حجم فایل یا داده‌های ارسالی بیش از حد مجاز است. لطفاً حجم فایل را کاهش دهید یا با پشتیبانی تماس بگیرید.'
+            );
+        }
+
+        if (!$courseId) {
+            ResponseHelper::redirectWithFlash(
+                $courseListUrl,
+                'error',
+                'شناسه دوره الزامی است.'
+            );
+        }
+
+        // Verify course belongs to organization
+        $course = DatabaseHelper::fetchOne(
+            'SELECT id FROM organization_courses WHERE id = :id AND organization_id = :organization_id',
+            ['id' => $courseId, 'organization_id' => $organizationId]
+        );
+
+        if (!$course) {
+            ResponseHelper::redirectWithFlash(
+                $courseListUrl,
+                'error',
+                'دوره یافت نشد.'
+            );
+        }
+
+        $this->ensureOrganizationCourseLessonsTableExists();
+
+        try {
+            $title = trim($_POST['title'] ?? '');
+            if (empty($title)) {
+                ResponseHelper::redirectWithFlash($redirectBack, 'error', 'عنوان درس الزامی است.');
+            }
+
+            $contentType = $_POST['content_type'] ?? 'video';
+            $contentUrl = trim($_POST['content_url'] ?? '');
+            $contentFile = null;
+            $shortDescription = trim($_POST['short_description'] ?? '');
+            $learningObjectives = trim($_POST['learning_objectives'] ?? '');
+            $resources = trim($_POST['resources'] ?? '');
+            $textContent = trim($_POST['text_content'] ?? '');
+            $isPublished = isset($_POST['is_published']) ? 1 : 0;
+            $availableAtRaw = trim($_POST['available_at'] ?? '');
+            $availableAt = $availableAtRaw !== '' ? date('Y-m-d H:i:s', strtotime($availableAtRaw)) : null;
+            $thumbnailPath = null;
+
+            // Handle file upload for video, pdf, ppt
+            if (in_array($contentType, ['video', 'pdf', 'ppt'])) {
+                $contentFileError = $_FILES['content_file']['error'] ?? UPLOAD_ERR_NO_FILE;
+
+                if ($contentFileError === UPLOAD_ERR_OK) {
+                    $uploadDir = __DIR__ . '/../../public/uploads/lessons/';
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0755, true);
+                    }
+
+                    $fileExtension = pathinfo($_FILES['content_file']['name'], PATHINFO_EXTENSION);
+                    $fileName = 'lesson_' . time() . '_' . uniqid() . '.' . $fileExtension;
+                    $uploadPath = $uploadDir . $fileName;
+
+                    if (!move_uploaded_file($_FILES['content_file']['tmp_name'], $uploadPath)) {
+                        if (class_exists('LogHelper')) {
+                            LogHelper::error('organizationCourseLesson store move upload failed', [
+                                'target' => $uploadPath,
+                                'tmp_name' => $_FILES['content_file']['tmp_name'] ?? null,
+                                'error' => $_FILES['content_file']['error'] ?? null,
+                            ]);
+                        }
+                        ResponseHelper::redirectWithFlash($redirectBack, 'error', 'ذخیره‌سازی فایل محتوا با خطا روبه‌رو شد.');
+                    }
+
+                    $contentFile = $fileName;
+                } elseif ($contentFileError !== UPLOAD_ERR_NO_FILE) {
+                    if (class_exists('LogHelper')) {
+                        LogHelper::warning('organizationCourseLesson store upload error', [
+                            'error_code' => $contentFileError,
+                        ]);
+                    }
+                    ResponseHelper::redirectWithFlash($redirectBack, 'error', $this->resolveUploadErrorMessage($contentFileError));
+                }
+
+                if ($contentFile === null) {
+                    if (class_exists('LogHelper')) {
+                        LogHelper::warning('organizationCourseLesson store missing content file after upload block', [
+                            'content_type' => $contentType,
+                        ]);
+                    }
+                    ResponseHelper::redirectWithFlash($redirectBack, 'error', 'لطفاً فایل محتوای درس را بارگذاری کنید.');
+                }
+            }
+
+            // Handle thumbnail upload
+            if (isset($_FILES['thumbnail']) && ($_FILES['thumbnail']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                if ($_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
+                    $thumbnailDir = __DIR__ . '/../../public/uploads/lessons/thumbnails/';
+                    if (!is_dir($thumbnailDir)) {
+                        mkdir($thumbnailDir, 0755, true);
+                    }
+
+                    $thumbnailExtension = pathinfo($_FILES['thumbnail']['name'], PATHINFO_EXTENSION);
+                    $thumbnailFile = 'lesson_thumb_' . time() . '_' . uniqid() . '.' . $thumbnailExtension;
+                    $thumbnailFullPath = $thumbnailDir . $thumbnailFile;
+
+                    if (!move_uploaded_file($_FILES['thumbnail']['tmp_name'], $thumbnailFullPath)) {
+                        ResponseHelper::redirectWithFlash($redirectBack, 'error', 'ذخیره‌سازی تصویر درس با خطا روبه‌رو شد.');
+                    }
+
+                    $thumbnailPath = 'thumbnails/' . $thumbnailFile;
+                } else {
+                    ResponseHelper::redirectWithFlash($redirectBack, 'error', 'خطا در بارگذاری تصویر درس.');
+                }
+            }
+
+            // Get max sort order
+            $maxSort = DatabaseHelper::fetchOne(
+                'SELECT COALESCE(MAX(sort_order), 0) as max_sort FROM organization_course_lessons WHERE course_id = :course_id',
+                ['course_id' => $courseId]
+            );
+            $sortOrder = ($maxSort['max_sort'] ?? 0) + 1;
+
+            DatabaseHelper::query(
+                'INSERT INTO organization_course_lessons (
+                    course_id,
+                    title,
+                    description,
+                    short_description,
+                    learning_objectives,
+                    resources,
+                    text_content,
+                    content_type,
+                    content_url,
+                    content_file,
+                    thumbnail_path,
+                    duration_minutes,
+                    sort_order,
+                    is_free,
+                    is_published,
+                    available_at
+                ) VALUES (
+                    :course_id,
+                    :title,
+                    :description,
+                    :short_description,
+                    :learning_objectives,
+                    :resources,
+                    :text_content,
+                    :content_type,
+                    :content_url,
+                    :content_file,
+                    :thumbnail_path,
+                    :duration_minutes,
+                    :sort_order,
+                    :is_free,
+                    :is_published,
+                    :available_at
+                )',
+                [
+                    'course_id' => $courseId,
+                    'title' => $title,
+                    'description' => $_POST['description'] ?? null,
+                    'short_description' => $shortDescription ?: null,
+                    'learning_objectives' => $learningObjectives ?: null,
+                    'resources' => $resources ?: null,
+                    'text_content' => $textContent ?: null,
+                    'content_type' => $contentType,
+                    'content_url' => $contentUrl ?: null,
+                    'content_file' => $contentFile,
+                    'thumbnail_path' => $thumbnailPath,
+                    'duration_minutes' => (int)($_POST['duration_minutes'] ?? 0),
+                    'sort_order' => $sortOrder,
+                    'is_free' => isset($_POST['is_free']) ? 1 : 0,
+                    'is_published' => $isPublished,
+                    'available_at' => $availableAt
+                ]
+            );
+            ResponseHelper::redirectWithFlash($lessonsUrl, 'success', 'درس با موفقیت ایجاد شد.');
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('organizationCourseLesson store exception', ['error' => $exception->getMessage()]);
+            }
+
+            ResponseHelper::redirectWithFlash($redirectBack, 'error', 'ثبت درس با خطا مواجه شد: ' . $exception->getMessage());
+        }
+    }
+
+    /**
+     * Update existing lesson
+     */
+    public function updateOrganizationCourseLesson(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $lessonId = $_POST['lesson_id'] ?? ($_GET['lesson_id'] ?? null);
+        $lessonId = $lessonId !== null ? (int) $lessonId : null;
+
+        $courseListUrl = UtilityHelper::baseUrl('organizations/courses');
+
+        if (!$lessonId) {
+            ResponseHelper::redirectWithFlash(
+                $courseListUrl,
+                'error',
+                'شناسه درس الزامی است.'
+            );
+        }
+
+        // Verify lesson belongs to organization's course
+        $this->ensureOrganizationCourseLessonsTableExists();
+
+        $lesson = DatabaseHelper::fetchOne(
+            'SELECT l.*, c.organization_id 
+            FROM organization_course_lessons l 
+            JOIN organization_courses c ON l.course_id = c.id 
+            WHERE l.id = :id AND c.organization_id = :organization_id',
+            ['id' => $lessonId, 'organization_id' => $organizationId]
+        );
+
+        if (!$lesson) {
+            ResponseHelper::redirectWithFlash(
+                $courseListUrl,
+                'error',
+                'درس یافت نشد.'
+            );
+        }
+
+        $redirectBack = UtilityHelper::baseUrl('organizations/courses/lessons/edit?lesson_id=' . $lessonId);
+        $lessonsUrl = UtilityHelper::baseUrl('organizations/courses/lessons?course_id=' . ($lesson['course_id'] ?? 0));
+
+        if (empty($_POST) && empty($_FILES) && isset($_SERVER['CONTENT_LENGTH']) && (int) $_SERVER['CONTENT_LENGTH'] > 0) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('organizationCourseLesson update oversized payload', [
+                    'content_length' => (int) $_SERVER['CONTENT_LENGTH'],
+                    'post_max_size' => ini_get('post_max_size'),
+                    'upload_max_filesize' => ini_get('upload_max_filesize'),
+                    'lesson_id' => $lessonId,
+                ]);
+            }
+            ResponseHelper::redirectWithFlash(
+                $redirectBack,
+                'error',
+                'حجم فایل یا داده‌های ارسالی بیش از حد مجاز است. لطفاً حجم فایل را کاهش دهید یا با پشتیبانی تماس بگیرید.'
+            );
+        }
+
+        try {
+            $title = trim($_POST['title'] ?? '');
+            if (empty($title)) {
+                ResponseHelper::redirectWithFlash($redirectBack, 'error', 'عنوان درس الزامی است.');
+            }
+
+            $contentType = $_POST['content_type'] ?? $lesson['content_type'];
+            $contentUrl = trim($_POST['content_url'] ?? '');
+            $contentFile = $lesson['content_file'];
+            $thumbnailPath = $lesson['thumbnail_path'] ?? null;
+            $shortDescription = trim($_POST['short_description'] ?? '');
+            $learningObjectives = trim($_POST['learning_objectives'] ?? '');
+            $resources = trim($_POST['resources'] ?? '');
+            $textContent = trim($_POST['text_content'] ?? '');
+            $isPublished = isset($_POST['is_published']) ? 1 : 0;
+            $availableAtRaw = trim($_POST['available_at'] ?? '');
+            $availableAt = $availableAtRaw !== '' ? date('Y-m-d H:i:s', strtotime($availableAtRaw)) : null;
+
+            // Handle file upload
+            if (in_array($contentType, ['video', 'pdf', 'ppt'])) {
+                $contentFileError = $_FILES['content_file']['error'] ?? UPLOAD_ERR_NO_FILE;
+
+                if ($contentFileError === UPLOAD_ERR_OK) {
+                    $uploadDir = __DIR__ . '/../../public/uploads/lessons/';
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0755, true);
+                    }
+
+                    if ($contentFile && file_exists($uploadDir . $contentFile)) {
+                        @unlink($uploadDir . $contentFile);
+                    }
+
+                    $fileExtension = pathinfo($_FILES['content_file']['name'], PATHINFO_EXTENSION);
+                    $fileName = 'lesson_' . time() . '_' . uniqid() . '.' . $fileExtension;
+                    $uploadPath = $uploadDir . $fileName;
+
+                    if (!move_uploaded_file($_FILES['content_file']['tmp_name'], $uploadPath)) {
+                        if (class_exists('LogHelper')) {
+                            LogHelper::error('organizationCourseLesson update move upload failed', [
+                                'target' => $uploadPath,
+                                'tmp_name' => $_FILES['content_file']['tmp_name'] ?? null,
+                                'error' => $_FILES['content_file']['error'] ?? null,
+                                'lesson_id' => $lessonId,
+                            ]);
+                        }
+                        ResponseHelper::redirectWithFlash($redirectBack, 'error', 'ذخیره‌سازی فایل محتوا با خطا روبه‌رو شد.');
+                    }
+
+                    $contentFile = $fileName;
+                } elseif ($contentFileError !== UPLOAD_ERR_NO_FILE) {
+                    if (class_exists('LogHelper')) {
+                        LogHelper::warning('organizationCourseLesson update upload error', [
+                            'error_code' => $contentFileError,
+                            'lesson_id' => $lessonId,
+                        ]);
+                    }
+                    ResponseHelper::redirectWithFlash($redirectBack, 'error', $this->resolveUploadErrorMessage($contentFileError));
+                }
+            } else {
+                if ($contentFile) {
+                    $uploadDir = __DIR__ . '/../../public/uploads/lessons/';
+                    if (file_exists($uploadDir . $contentFile)) {
+                        @unlink($uploadDir . $contentFile);
+                    }
+                }
+                $contentFile = null;
+            }
+
+            if (isset($_FILES['thumbnail']) && ($_FILES['thumbnail']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                if ($_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
+                    $thumbnailDir = __DIR__ . '/../../public/uploads/lessons/thumbnails/';
+                    if (!is_dir($thumbnailDir)) {
+                        mkdir($thumbnailDir, 0755, true);
+                    }
+
+                    $thumbnailExtension = pathinfo($_FILES['thumbnail']['name'], PATHINFO_EXTENSION);
+                    $thumbnailFile = 'lesson_thumb_' . time() . '_' . uniqid() . '.' . $thumbnailExtension;
+                    $thumbnailFullPath = $thumbnailDir . $thumbnailFile;
+
+                    if (!move_uploaded_file($_FILES['thumbnail']['tmp_name'], $thumbnailFullPath)) {
+                        ResponseHelper::redirectWithFlash($redirectBack, 'error', 'ذخیره‌سازی تصویر درس با خطا روبه‌رو شد.');
+                    }
+
+                    if (!empty($lesson['thumbnail_path'])) {
+                        $existingThumb = __DIR__ . '/../../public/uploads/lessons/' . ltrim($lesson['thumbnail_path'], '/');
+                        if (file_exists($existingThumb)) {
+                            @unlink($existingThumb);
+                        }
+                    }
+
+                    $thumbnailPath = 'thumbnails/' . $thumbnailFile;
+                } else {
+                    ResponseHelper::redirectWithFlash($redirectBack, 'error', 'خطا در بارگذاری تصویر درس.');
+                }
+            }
+
+            if (isset($_POST['remove_thumbnail']) && $_POST['remove_thumbnail'] === '1' && !empty($lesson['thumbnail_path'])) {
+                $existingThumb = __DIR__ . '/../../public/uploads/lessons/' . ltrim($lesson['thumbnail_path'], '/');
+                if (file_exists($existingThumb)) {
+                    @unlink($existingThumb);
+                }
+                $thumbnailPath = null;
+            }
+
+            DatabaseHelper::query(
+                'UPDATE organization_course_lessons 
+                SET title = :title,
+                    description = :description,
+                    short_description = :short_description,
+                    learning_objectives = :learning_objectives,
+                    resources = :resources,
+                    text_content = :text_content,
+                    content_type = :content_type,
+                    content_url = :content_url,
+                    content_file = :content_file,
+                    thumbnail_path = :thumbnail_path,
+                    duration_minutes = :duration_minutes,
+                    is_free = :is_free,
+                    is_published = :is_published,
+                    available_at = :available_at
+                WHERE id = :id',
+                [
+                    'id' => $lessonId,
+                    'title' => $title,
+                    'description' => $_POST['description'] ?? null,
+                    'short_description' => $shortDescription ?: null,
+                    'learning_objectives' => $learningObjectives ?: null,
+                    'resources' => $resources ?: null,
+                    'text_content' => $textContent ?: null,
+                    'content_type' => $contentType,
+                    'content_url' => $contentUrl ?: null,
+                    'content_file' => $contentFile,
+                    'thumbnail_path' => $thumbnailPath,
+                    'duration_minutes' => (int)($_POST['duration_minutes'] ?? 0),
+                    'is_free' => isset($_POST['is_free']) ? 1 : 0,
+                    'is_published' => $isPublished,
+                    'available_at' => $availableAt
+                ]
+            );
+
+            ResponseHelper::redirectWithFlash($lessonsUrl, 'success', 'تغییرات درس با موفقیت ذخیره شد.');
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('organizationCourseLesson update exception', ['error' => $exception->getMessage()]);
+            }
+
+            ResponseHelper::redirectWithFlash($redirectBack, 'error', 'ویرایش درس با خطا مواجه شد: ' . $exception->getMessage());
+        }
+    }
+
+    /**
+     * Delete lesson
+     */
+    public function deleteOrganizationCourseLesson(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $lessonId = $_POST['lesson_id'] ?? null;
+
+        if (!$lessonId) {
+            ResponseHelper::json(['success' => false, 'message' => 'شناسه درس الزامی است.']);
+        }
+
+        $this->ensureOrganizationCourseLessonsTableExists();
+
+        try {
+            // Get lesson with file info
+            $lesson = DatabaseHelper::fetchOne(
+                'SELECT l.*, c.organization_id 
+                FROM organization_course_lessons l 
+                JOIN organization_courses c ON l.course_id = c.id 
+                WHERE l.id = :id AND c.organization_id = :organization_id',
+                ['id' => $lessonId, 'organization_id' => $organizationId]
+            );
+
+            if (!$lesson) {
+                ResponseHelper::json(['success' => false, 'message' => 'درس یافت نشد.']);
+            }
+
+            // Delete file if exists
+            if ($lesson['content_file']) {
+                $filePath = __DIR__ . '/../../public/uploads/lessons/' . $lesson['content_file'];
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
+            }
+
+            if (!empty($lesson['thumbnail_path'])) {
+                $thumbnailPath = __DIR__ . '/../../public/uploads/lessons/' . ltrim($lesson['thumbnail_path'], '/');
+                if (file_exists($thumbnailPath)) {
+                    @unlink($thumbnailPath);
+                }
+            }
+
+            // Delete lesson
+            DatabaseHelper::query(
+                'DELETE FROM organization_course_lessons WHERE id = :id',
+                ['id' => $lessonId]
+            );
+
+            ResponseHelper::json(['success' => true, 'message' => 'درس با موفقیت حذف شد.']);
+        } catch (Exception $exception) {
+            ResponseHelper::json(['success' => false, 'message' => 'خطا: ' . $exception->getMessage()]);
+        }
+    }
+
+    /**
+     * Update lessons order
+     */
+    public function updateOrganizationCourseLessonsOrder(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $courseId = $_POST['course_id'] ?? null;
+        $lessonIds = $_POST['lesson_ids'] ?? [];
+
+        if (!$courseId || empty($lessonIds)) {
+            ResponseHelper::json(['success' => false, 'message' => 'داده‌های ناقص ارسال شده است.']);
+        }
+
+        // Verify course belongs to organization
+        $course = DatabaseHelper::fetchOne(
+            'SELECT id FROM organization_courses WHERE id = :id AND organization_id = :organization_id',
+            ['id' => $courseId, 'organization_id' => $organizationId]
+        );
+
+        if (!$course) {
+            ResponseHelper::json(['success' => false, 'message' => 'دوره یافت نشد.']);
+        }
+
+        $this->ensureOrganizationCourseLessonsTableExists();
+
+        try {
+            foreach ($lessonIds as $index => $lessonId) {
+                DatabaseHelper::query(
+                    'UPDATE organization_course_lessons SET sort_order = :sort_order WHERE id = :id AND course_id = :course_id',
+                    [
+                        'id' => $lessonId,
+                        'course_id' => $courseId,
+                        'sort_order' => $index + 1
+                    ]
+                );
+            }
+
+            ResponseHelper::json(['success' => true, 'message' => 'ترتیب درس‌ها به‌روزرسانی شد.']);
+        } catch (Exception $exception) {
+            ResponseHelper::json(['success' => false, 'message' => 'خطا: ' . $exception->getMessage()]);
         }
     }
 }

@@ -205,10 +205,17 @@ $oldDateForInput = '';
 $oldDateOriginal = is_string($oldDate) ? trim($oldDate) : '';
 if ($oldDateOriginal !== '') {
     $oldDateEnglish = UtilityHelper::persianToEnglish($oldDateOriginal);
+    $oldDateHyphenated = str_replace('/', '-', $oldDateEnglish);
 
-    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $oldDateEnglish)) {
+    $isNormalizedDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $oldDateHyphenated) === 1;
+    $yearComponent = $isNormalizedDate ? (int) substr($oldDateHyphenated, 0, 4) : 0;
+
+    if ($isNormalizedDate && $yearComponent >= 1300 && $yearComponent <= 1700) {
+        // Treat as a Jalali date coming from the calendar module; keep the value as-is.
+        $oldDateForInput = str_replace('-', '/', $oldDateHyphenated);
+    } elseif ($isNormalizedDate) {
         try {
-            $dateTime = new DateTime($oldDateEnglish, new DateTimeZone('Asia/Tehran'));
+            $dateTime = new DateTime($oldDateHyphenated, new DateTimeZone('Asia/Tehran'));
             if (class_exists('IntlDateFormatter')) {
                 $formatter = new IntlDateFormatter(
                     'fa_IR@calendar=persian',
@@ -226,10 +233,10 @@ if ($oldDateOriginal !== '') {
                 }
             }
             if ($oldDateForInput === '') {
-                $oldDateForInput = str_replace('-', '/', $oldDateEnglish);
+                $oldDateForInput = str_replace('-', '/', $oldDateHyphenated);
             }
         } catch (Exception $exception) {
-            $oldDateForInput = str_replace('-', '/', $oldDateEnglish);
+            $oldDateForInput = str_replace('-', '/', $oldDateHyphenated);
         }
     }
 

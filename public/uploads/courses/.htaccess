@@ -1,0 +1,9 @@
+# Allow access to uploaded course images
+<FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
+    Allow from all
+</FilesMatch>
+
+# Deny access to PHP files for security
+<FilesMatch "\.php$">
+    Deny from all
+</FilesMatch>

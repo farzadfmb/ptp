@@ -124,6 +124,8 @@ $navbarUser = $user;
                                         $evaluationId = (int) ($row['evaluation_id'] ?? 0);
                                         $evaluateeId = (int) ($row['evaluatee_id'] ?? 0);
                                         $viewable = !empty($row['exam_results_viewable']);
+                                        $isSelected = !empty($row['is_selected']);
+                                        $isVisibleToUser = !empty($row['is_visible_to_user']);
                                         $avg = $row['average_score'];
                                         $avgDisplay = ($avg !== null && $avg !== '') ? UtilityHelper::englishToPersian((string) $avg) : '-';
                                         $lastDisplay = (string) ($row['last_scored_at_display'] ?? '—');
@@ -142,17 +144,37 @@ $navbarUser = $user;
                                         <td class="text-center">
                                             <?php if ($evaluationId > 0 && $evaluateeId > 0): ?>
                                                 <?php if ($viewable): ?>
-                                                    <a href="<?= htmlspecialchars($certUrl, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-success btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6" title="مشاهده گواهی">
-                                                        <ion-icon name="ribbon-outline"></ion-icon>
-                                                        گواهی
-                                                    </a>
-                                                    <button type="button" class="btn btn-primary btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 ms-6 download-cert-btn" 
-                                                            data-evaluation-id="<?= (int) $evaluationId; ?>" 
-                                                            data-evaluatee-id="<?= (int) $evaluateeId; ?>" 
-                                                            title="دانلود گواهی به صورت PDF">
-                                                        <ion-icon name="download-outline"></ion-icon>
-                                                        دانلود
-                                                    </button>
+                                                    <div class="d-flex gap-6 justify-content-center flex-wrap">
+                                                        <a href="<?= htmlspecialchars($certUrl, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-success btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6" title="مشاهده گواهی">
+                                                            <ion-icon name="ribbon-outline"></ion-icon>
+                                                            گواهی
+                                                        </a>
+                                                        <button type="button" class="btn btn-primary btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 download-cert-btn" 
+                                                                data-evaluation-id="<?= (int) $evaluationId; ?>" 
+                                                                data-evaluatee-id="<?= (int) $evaluateeId; ?>" 
+                                                                title="دانلود گواهی به صورت PDF">
+                                                            <ion-icon name="download-outline"></ion-icon>
+                                                            دانلود
+                                                        </button>
+                                                        <button type="button" class="btn <?= $isSelected ? 'btn-info' : 'btn-outline-info'; ?> btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 select-resume-btn"
+                                                                data-evaluation-id="<?= (int) $evaluationId; ?>" 
+                                                                data-evaluatee-id="<?= (int) $evaluateeId; ?>"
+                                                                data-evaluatee-name="<?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8'); ?>"
+                                                                data-is-selected="<?= $isSelected ? '1' : '0'; ?>"
+                                                                title="<?= $isSelected ? 'حذف از رزومه منتخب' : 'انتخاب برای رزومه منتخب'; ?>">
+                                                            <ion-icon name="<?= $isSelected ? 'star' : 'star-outline'; ?>"></ion-icon>
+                                                            <?= $isSelected ? 'منتخب شده' : 'رزومه منتخب'; ?>
+                                                        </button>
+                                                        <button type="button" class="btn <?= $isVisibleToUser ? 'btn-warning' : 'btn-outline-warning'; ?> btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 show-to-user-btn"
+                                                                data-evaluation-id="<?= (int) $evaluationId; ?>" 
+                                                                data-evaluatee-id="<?= (int) $evaluateeId; ?>"
+                                                                data-evaluatee-name="<?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8'); ?>"
+                                                                data-is-visible="<?= $isVisibleToUser ? '1' : '0'; ?>"
+                                                                title="نمایش نتایج برای کاربر">
+                                                            <ion-icon name="<?= $isVisibleToUser ? 'eye' : 'eye-outline'; ?>"></ion-icon>
+                                                            <?= $isVisibleToUser ? 'قابل مشاهده' : 'نمایش برای کاربر'; ?>
+                                                        </button>
+                                                    </div>
                                                 <?php else: ?>
                                                     <span class="d-inline-block" tabindex="0" data-bs-toggle="tooltip" title="برای دریافت گواهی، باید همه آزمون‌ها و WashUp تکمیل شده باشند.">
                                                         <a href="#" class="btn btn-outline-secondary btn-sm rounded-pill px-16 disabled d-inline-flex align-items-center gap-6" tabindex="-1" aria-disabled="true">
@@ -179,6 +201,18 @@ $navbarUser = $user;
         </div>
     </div>
 </div>
+
+<?php
+$selectResumeUrl = UtilityHelper::baseUrl('organizations/reports/self-assessment/select-resume');
+$unselectResumeUrl = UtilityHelper::baseUrl('organizations/reports/self-assessment/unselect-resume');
+$toggleVisibilityUrl = UtilityHelper::baseUrl('organizations/reports/self-assessment/toggle-visibility');
+?>
+
+<script>
+var SELECT_RESUME_URL = '<?= $selectResumeUrl; ?>';
+var UNSELECT_RESUME_URL = '<?= $unselectResumeUrl; ?>';
+var TOGGLE_VISIBILITY_URL = '<?= $toggleVisibilityUrl; ?>';
+</script>
 
 <?php
 $inline_scripts .= <<<'SCRIPT'
@@ -242,6 +276,170 @@ $inline_scripts .= <<<'SCRIPT'
                         window.removeEventListener('message', messageHandler);
                     }
                 }, 30000);
+            });
+        });
+
+        // Handle select resume button (toggle functionality)
+        document.querySelectorAll('.select-resume-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var evaluationId = this.getAttribute('data-evaluation-id');
+                var evaluateeId = this.getAttribute('data-evaluatee-id');
+                var evaluateeName = this.getAttribute('data-evaluatee-name');
+                var isSelected = this.getAttribute('data-is-selected') === '1';
+                
+                if (!evaluationId || !evaluateeId) {
+                    alert('خطا: اطلاعات کاربر یافت نشد');
+                    return;
+                }
+                
+                var confirmMessage = isSelected 
+                    ? 'آیا می‌خواهید "' + evaluateeName + '" را از لیست رزومه‌های منتخب حذف کنید؟'
+                    : 'آیا می‌خواهید "' + evaluateeName + '" را به عنوان رزومه منتخب انتخاب کنید؟';
+                
+                if (confirm(confirmMessage)) {
+                    var originalHTML = this.innerHTML;
+                    var originalClass = this.className;
+                    this.disabled = true;
+                    this.innerHTML = '<ion-icon name="hourglass-outline"></ion-icon> در حال ثبت...';
+                    
+                    var self = this;
+                    var url = isSelected ? UNSELECT_RESUME_URL : SELECT_RESUME_URL;
+                    
+                    console.log('Sending request to:', url);
+                    console.log('Data:', {evaluation_id: evaluationId, evaluatee_id: evaluateeId});
+                    
+                    fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: 'evaluation_id=' + evaluationId + '&evaluatee_id=' + evaluateeId
+                    })
+                    .then(function(response) {
+                        console.log('Response status:', response.status);
+                        console.log('Response headers:', response.headers);
+                        if (!response.ok) {
+                            throw new Error('HTTP error! status: ' + response.status);
+                        }
+                        return response.text();
+                    })
+                    .then(function(text) {
+                        console.log('Response text:', text);
+                        try {
+                            var data = JSON.parse(text);
+                            console.log('Parsed data:', data);
+                        } catch(e) {
+                            console.error('JSON parse error:', e);
+                            throw new Error('Invalid JSON response: ' + text.substring(0, 100));
+                        }
+                        
+                        if (data.success) {
+                            if (isSelected) {
+                                // Changed from selected to unselected
+                                alert('رزومه با موفقیت از لیست منتخب حذف شد.');
+                                self.innerHTML = '<ion-icon name="star-outline"></ion-icon> رزومه منتخب';
+                                self.className = 'btn btn-outline-info btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 select-resume-btn';
+                                self.setAttribute('data-is-selected', '0');
+                                self.setAttribute('title', 'انتخاب برای رزومه منتخب');
+                            } else {
+                                // Changed from unselected to selected
+                                alert('رزومه با موفقیت به عنوان منتخب انتخاب شد.');
+                                self.innerHTML = '<ion-icon name="star"></ion-icon> منتخب شده';
+                                self.className = 'btn btn-info btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 select-resume-btn';
+                                self.setAttribute('data-is-selected', '1');
+                                self.setAttribute('title', 'حذف از رزومه منتخب');
+                            }
+                            self.disabled = false;
+                        } else {
+                            alert('خطا: ' + (data.message || 'عملیات ناموفق بود'));
+                            self.innerHTML = originalHTML;
+                            self.className = originalClass;
+                            self.disabled = false;
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('Fetch error:', error);
+                        alert('خطا در ارتباط با سرور: ' + error.message);
+                        self.innerHTML = originalHTML;
+                        self.className = originalClass;
+                        self.disabled = false;
+                    });
+                }
+            });
+        });
+
+        // Handle show to user button (toggle visibility)
+        document.querySelectorAll('.show-to-user-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var evaluationId = this.getAttribute('data-evaluation-id');
+                var evaluateeId = this.getAttribute('data-evaluatee-id');
+                var evaluateeName = this.getAttribute('data-evaluatee-name');
+                var isVisible = this.getAttribute('data-is-visible') === '1';
+                
+                if (!evaluationId || !evaluateeId) {
+                    alert('خطا: اطلاعات کاربر یافت نشد');
+                    return;
+                }
+                
+                var action = isVisible ? 'غیرفعال' : 'فعال';
+                var confirmMsg = isVisible 
+                    ? 'آیا می‌خواهید نتایج ارزیابی برای "' + evaluateeName + '" غیرفعال شود؟\n\nکاربر دیگر نمی‌تواند گواهی و نتایج خود را مشاهده کند.'
+                    : 'آیا می‌خواهید نتایج ارزیابی برای "' + evaluateeName + '" فعال شود؟\n\nکاربر می‌تواند گواهی و نتایج خود را مشاهده کند.';
+                
+                if (confirm(confirmMsg)) {
+                    // Show loading
+                    var originalHTML = this.innerHTML;
+                    var originalClass = this.className;
+                    this.disabled = true;
+                    this.innerHTML = '<ion-icon name="hourglass-outline"></ion-icon> در حال ' + action + '‌سازی...';
+                    
+                    var self = this;
+                    var newVisibleValue = isVisible ? 0 : 1;
+                    
+                    // Send AJAX request
+                    fetch(TOGGLE_VISIBILITY_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: 'evaluation_id=' + evaluationId + '&evaluatee_id=' + evaluateeId + '&visible=' + newVisibleValue
+                    })
+                    .then(function(response) {
+                        return response.json();
+                    })
+                    .then(function(data) {
+                        if (data.success) {
+                            if (isVisible) {
+                                // Changed from visible to hidden
+                                alert('نتایج با موفقیت برای کاربر غیرفعال شد.');
+                                self.innerHTML = '<ion-icon name="eye-outline"></ion-icon> نمایش برای کاربر';
+                                self.className = 'btn btn-outline-warning btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 show-to-user-btn';
+                                self.setAttribute('data-is-visible', '0');
+                                self.setAttribute('title', 'فعال‌سازی نمایش برای کاربر');
+                            } else {
+                                // Changed from hidden to visible
+                                alert('نتایج با موفقیت برای کاربر فعال شد.');
+                                self.innerHTML = '<ion-icon name="eye"></ion-icon> قابل مشاهده';
+                                self.className = 'btn btn-warning btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 show-to-user-btn';
+                                self.setAttribute('data-is-visible', '1');
+                                self.setAttribute('title', 'غیرفعال‌سازی نمایش برای کاربر');
+                            }
+                            self.disabled = false;
+                        } else {
+                            alert('خطا: ' + (data.message || 'عملیات ناموفق بود'));
+                            self.innerHTML = originalHTML;
+                            self.className = originalClass;
+                            self.disabled = false;
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('Fetch error:', error);
+                        alert('خطا در ارتباط با سرور: ' + error.message);
+                        self.innerHTML = originalHTML;
+                        self.className = originalClass;
+                        self.disabled = false;
+                    });
+                }
             });
         });
     });

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✅ مشکل صفحه درس‌ها حل شد</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap');
+        
+        * {
+            font-family: 'Vazirmatn', sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        
+        .header h1 {
+            color: #1e293b;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #64748b;
+            font-size: 18px;
+        }
+        
+        .fix-box {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+        
+        .success-box {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            border-left: 5px solid #10b981;
+        }
+        
+        .fix-box h2 {
+            color: #1e293b;
+            margin-bottom: 20px;
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .fix-box ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .fix-box li {
+            padding: 10px 0;
+            color: #475569;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .fix-box li:before {
+            content: "✓";
+            color: #10b981;
+            font-weight: bold;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        
+        .code {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin: 10px 5px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            text-decoration: none;
+            color: white;
+        }
+        
+        .screenshot {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+        
+        .screenshot h3 {
+            color: #1e293b;
+            margin-bottom: 15px;
+        }
+        
+        .screenshot img {
+            width: 100%;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✅ مشکل برطرف شد!</h1>
+            <p>صفحه مدیریت درس‌ها اکنون به درستی نمایش داده می‌شود</p>
+        </div>
+
+        <div class="fix-box success-box">
+            <h2>🔧 مشکلات اصلاح شده:</h2>
+            <ul>
+                <li>
+                    <div>
+                        <strong>Layout اصلاح شد:</strong><br>
+                        صفحه lessons.php اکنون از sidebar و navbar استفاده می‌کند
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <strong>متغیر $user اضافه شد:</strong><br>
+                        اطلاعات کاربر از کنترلر به view پاس داده می‌شود
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <strong>UtilityHelper لود می‌شود:</strong><br>
+                        autoload.php برای دسترسی به Helper ها اضافه شد
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <strong>CSS بهینه شد:</strong><br>
+                        استایل‌ها با ساختار کلی پنل هماهنگ شدند
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <strong>div های بسته شدند:</strong><br>
+                        ساختار HTML کامل و صحیح است
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="fix-box">
+            <h2>📝 تغییرات فایل‌ها:</h2>
+            
+            <h3 style="color: #667eea; margin: 20px 0 10px;">1. lessons.php</h3>
+            <p style="color: #475569; margin-bottom: 10px;">تغییرات در View:</p>
+            <div class="code">// اضافه شد
+if (!class_exists('UtilityHelper')) {
+    require_once __DIR__ . '/../../Helpers/autoload.php';
+}
+
+// Layout ها اضافه شدند
+include __DIR__ . '/../../layouts/organization-header.php';
+include __DIR__ . '/../../layouts/organization-sidebar.php';
+
+$navbarUser = $user ?? [];
+include __DIR__ . '/../../layouts/organization-navbar.php';
+
+// ساختار اصلاح شد
+&lt;div class="main-content"&gt;
+    &lt;div class="container"&gt;
+        ...
+    &lt;/div&gt;
+&lt;/div&gt;</div>
+
+            <h3 style="color: #667eea; margin: 20px 0 10px;">2. OrganizationController.php</h3>
+            <p style="color: #475569; margin-bottom: 10px;">تغییرات در کنترلر:</p>
+            <div class="code">// اضافه شد
+$user = $sessionData['user'];
+
+include __DIR__ . '/../Views/organizations/courses/lessons.php';</div>
+        </div>
+
+        <div class="fix-box">
+            <h2>🎯 حالا چه کاری می‌توانید انجام دهید:</h2>
+            <ul>
+                <li>
+                    <div>
+                        <strong>مشاهده صفحه درس‌ها:</strong><br>
+                        به صفحه دوره‌ها بروید و روی دکمه سبز "درس‌ها" کلیک کنید
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <strong>افزودن درس:</strong><br>
+                        دکمه "افزودن درس جدید" در گوشه بالا سمت چپ
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <strong>آپلود فایل:</strong><br>
+                        می‌توانید ویدیو، PDF، PPT آپلود کنید
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <strong>مرتب‌سازی:</strong><br>
+                        با Drag & Drop ترتیب درس‌ها را تغییر دهید
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <strong>ویرایش و حذف:</strong><br>
+                        دکمه‌های ویرایش و حذف در کنار هر درس
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="fix-box">
+            <h2>📊 امکانات صفحه مدیریت درس‌ها:</h2>
+            <ul style="margin: 15px 0;">
+                <li>نمایش آمار (تعداد درس‌ها، مدت زمان کل)</li>
+                <li>لیست درس‌ها با کارت‌های زیبا</li>
+                <li>5 نوع محتوا: ویدیو، PDF، PPT، لینک، متن</li>
+                <li>آپلود فایل با امنیت بالا</li>
+                <li>Drag & Drop برای تغییر ترتیب</li>
+                <li>نشانه‌گذاری درس‌های رایگان</li>
+                <li>تنظیم مدت زمان هر درس</li>
+                <li>ویرایش و حذف آسان</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="http://localhost:8888/ptp/organizations/courses" class="btn">
+                🚀 رفتن به صفحه دوره‌ها
+            </a>
+        </div>
+
+        <div style="background: white; border-radius: 16px; padding: 25px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
+            <h3 style="color: #1e293b; margin-bottom: 15px;">✨ سیستم آماده است!</h3>
+            <p style="color: #64748b; line-height: 1.8; margin: 0;">
+                تمام قسمت‌های مدیریت دوره‌ها و درس‌ها کامل و آماده استفاده است.<br>
+                اکنون می‌توانید دوره‌های آموزشی کامل با درس‌های متنوع ایجاد کنید!
+            </p>
+        </div>
+    </div>
+</body>
+</html>

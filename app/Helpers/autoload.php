@@ -18,7 +18,8 @@ $helperFiles = [
     'SecurityHelper.php',
     'ResponseHelper.php',
     'LogHelper.php',
-    'PermissionHelper.php'
+    'PermissionHelper.php',
+    'JalaliHelper.php'
 ];
 
 // Include all helper files

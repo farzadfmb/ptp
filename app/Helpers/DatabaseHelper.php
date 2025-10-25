@@ -13,7 +13,14 @@ class DatabaseHelper
             try {
                 $config = require_once __DIR__ . '/../../config/database.php';
                 
-                $dsn = "mysql:host={$config['host']};dbname={$config['database']};charset={$config['charset']}";
+                $dsn = "mysql:host={$config['host']}";
+                
+                // Add port if specified
+                if (!empty($config['port'])) {
+                    $dsn .= ";port={$config['port']}";
+                }
+                
+                $dsn .= ";dbname={$config['database']};charset={$config['charset']}";
                 
                 self::$connection = new PDO($dsn, $config['username'], $config['password'], [
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,

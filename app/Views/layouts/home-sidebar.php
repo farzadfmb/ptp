@@ -85,6 +85,11 @@ $homeSidebarMenu = [
             ],
         ],
     ],
+    [
+        'title' => 'دوره‌های توسعه فردی',
+        'icon' => 'school-sharp',
+        'route' => 'courses/personal-development',
+    ],
     
 ];
 ?>

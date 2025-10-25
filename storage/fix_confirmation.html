@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تست سیستم درس‌ها</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap');
+        
+        * {
+            font-family: 'Vazirmatn', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            margin: 0;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #64748b;
+            margin-bottom: 30px;
+        }
+        
+        .step {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .step h3 {
+            margin: 0 0 10px 0;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .step-number {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .step p {
+            margin: 5px 0;
+            color: #475569;
+            line-height: 1.6;
+        }
+        
+        .code {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        
+        .success {
+            background: #d1fae5;
+            border-left-color: #10b981;
+        }
+        
+        .warning {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+        }
+        
+        .info {
+            background: #dbeafe;
+            border-left-color: #3b82f6;
+        }
+        
+        a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            text-decoration: none;
+        }
+        
+        .fixes {
+            background: #f0fdf4;
+            border: 2px solid #10b981;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .fixes h3 {
+            color: #10b981;
+            margin-top: 0;
+        }
+        
+        .fixes ul {
+            margin: 10px 0;
+            padding-right: 20px;
+        }
+        
+        .fixes li {
+            margin: 8px 0;
+            color: #065f46;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✅ مشکل برطرف شد!</h1>
+        <p class="subtitle">خطای PermissionHelper اصلاح شد و سیستم آماده است</p>
+        
+        <div class="fixes">
+            <h3>🔧 تغییرات انجام شده:</h3>
+            <ul>
+                <li><strong>organizationCourseLessons()</strong> - از ensureOrganizationSession استفاده می‌کند</li>
+                <li><strong>storeOrganizationCourseLesson()</strong> - اصلاح شد</li>
+                <li><strong>updateOrganizationCourseLesson()</strong> - اصلاح شد</li>
+                <li><strong>deleteOrganizationCourseLesson()</strong> - اصلاح شد</li>
+                <li><strong>updateOrganizationCourseLessonsOrder()</strong> - اصلاح شد</li>
+            </ul>
+        </div>
+
+        <div class="step success">
+            <h3>
+                <div class="step-number">✓</div>
+                خطای سینتکس بررسی شد
+            </h3>
+            <p>فایل OrganizationController.php هیچ خطای سینتکسی ندارد</p>
+            <div class="code">php -l app/Controllers/OrganizationController.php
+No syntax errors detected ✓</div>
+        </div>
+
+        <div class="step info">
+            <h3>
+                <div class="step-number">1</div>
+                ورود به پنل سازمان
+            </h3>
+            <p>ابتدا وارد پنل سازمان خود شوید:</p>
+            <div class="code">http://localhost:8888/ptp/organizations/login</div>
+        </div>
+
+        <div class="step info">
+            <h3>
+                <div class="step-number">2</div>
+                مشاهده لیست دوره‌ها
+            </h3>
+            <p>به صفحه دوره‌ها بروید:</p>
+            <div class="code">http://localhost:8888/ptp/organizations/courses</div>
+        </div>
+
+        <div class="step info">
+            <h3>
+                <div class="step-number">3</div>
+                مدیریت درس‌های دوره
+            </h3>
+            <p>روی دکمه سبز "درس‌ها" کلیک کنید تا وارد صفحه مدیریت درس‌ها شوید</p>
+            <p><strong>آدرس:</strong></p>
+            <div class="code">http://localhost:8888/ptp/organizations/courses/lessons?course_id=<span style="color: #fbbf24;">YOUR_COURSE_ID</span></div>
+        </div>
+
+        <div class="step warning">
+            <h3>
+                <div class="step-number">⚠️</div>
+                نکته مهم
+            </h3>
+            <p>برای دسترسی به صفحه درس‌ها، باید:</p>
+            <ul style="margin: 10px 0 0 20px;">
+                <li>وارد سیستم شده باشید (session فعال)</li>
+                <li>دسترسی <code style="background: #fef3c7; padding: 2px 6px; border-radius: 4px;">courses_manage</code> داشته باشید</li>
+                <li>حداقل یک دوره ایجاد کرده باشید</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>
+                <div class="step-number">4</div>
+                امکانات صفحه درس‌ها
+            </h3>
+            <p>در صفحه مدیریت درس‌ها می‌توانید:</p>
+            <ul style="margin: 10px 0 0 20px;">
+                <li>➕ درس جدید اضافه کنید (ویدیو، PDF، PPT، لینک، متن)</li>
+                <li>✏️ درس‌های موجود را ویرایش کنید</li>
+                <li>🗑️ درس‌ها را حذف کنید</li>
+                <li>🔀 با Drag & Drop ترتیب را تغییر دهید</li>
+                <li>📤 فایل‌های ویدیو، PDF، PPT آپلود کنید</li>
+                <li>🆓 درس‌های رایگان تعریف کنید</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="http://localhost:8888/ptp/organizations/courses" class="btn">
+                رفتن به صفحه دوره‌ها
+            </a>
+        </div>
+
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; text-align: center; color: #64748b; font-size: 14px;">
+            <p>✨ سیستم مدیریت دوره‌ها کامل است و آماده استفاده!</p>
+        </div>
+    </div>
+</body>
+</html>

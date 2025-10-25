@@ -4,6 +4,7 @@ require_once __DIR__ . '/../Helpers/autoload.php';
 
 class HomeController {
     private static bool $examStorageTablesEnsured = false;
+    private static bool $courseTablesEnsured = false;
 
     public function index(): void
     {
@@ -846,6 +847,817 @@ class HomeController {
         }
 
         include __DIR__ . '/../Views/home/tests/training-calendar.php';
+    }
+
+    public function reports(): void
+    {
+        AuthHelper::startSession();
+
+        AuthHelper::requireAuth(UtilityHelper::baseUrl('user/login'));
+
+        $title = 'گزارشات';
+        $user = AuthHelper::getUser();
+        $additional_css = [];
+        $additional_js = [];
+        $inline_styles = '';
+        $inline_scripts = '';
+
+        $reports = [];
+        $summaryStats = [
+            'total' => 0,
+            'completed' => 0,
+            'certificates' => 0,
+        ];
+
+        $organizationId = (int)($user['organization_id'] ?? 0);
+        $organizationUserId = (int)($user['organization_user_id'] ?? 0);
+
+        self::ensureExamStorageTables();
+
+        if ($organizationId > 0 && $organizationUserId > 0) {
+            $evaluations = [];
+            try {
+                $evaluations = DatabaseHelper::fetchAll(
+                    'SELECT id, title, evaluation_date, general_model, specific_model, evaluatees_json
+                     FROM organization_evaluations
+                     WHERE organization_id = :organization_id
+                     ORDER BY (evaluation_date IS NULL) ASC, evaluation_date DESC, id DESC',
+                    ['organization_id' => $organizationId]
+                );
+            } catch (Exception $exception) {
+                $evaluations = [];
+            }
+
+            $resolveModelLabel = static function ($raw) use ($organizationId): string {
+                static $modelLabelCache = [];
+
+                $raw = trim((string)$raw);
+                if ($raw === '') {
+                    return '';
+                }
+
+                if (isset($modelLabelCache[$raw])) {
+                    return $modelLabelCache[$raw];
+                }
+
+                $label = $raw;
+                $candidate = UtilityHelper::persianToEnglish($raw);
+
+                if ($candidate !== '' && preg_match('/^\d+$/', $candidate)) {
+                    try {
+                        $modelRow = DatabaseHelper::fetchOne(
+                            'SELECT title FROM organization_competency_models WHERE organization_id = :organization_id AND id = :id LIMIT 1',
+                            [
+                                'organization_id' => $organizationId,
+                                'id' => (int)$candidate,
+                            ]
+                        );
+
+                        if ($modelRow && !empty($modelRow['title'])) {
+                            $label = trim((string)$modelRow['title']);
+                        }
+                    } catch (Exception $exception) {
+                        // ignore lookup failure
+                    }
+                }
+
+                $modelLabelCache[$raw] = $label;
+
+                return $modelLabelCache[$raw];
+            };
+
+            $formatDate = static function ($value): string {
+                $dateString = trim((string)($value ?? ''));
+                if ($dateString === '') {
+                    return '—';
+                }
+
+                try {
+                    $date = new DateTime($dateString, new DateTimeZone('Asia/Tehran'));
+                } catch (Exception $exception) {
+                    try {
+                        $date = new DateTime($dateString);
+                        $date->setTimezone(new DateTimeZone('Asia/Tehran'));
+                    } catch (Exception $innerException) {
+                        return '—';
+                    }
+                }
+
+                if (class_exists('IntlDateFormatter')) {
+                    $formatter = new IntlDateFormatter(
+                        'fa_IR@calendar=persian',
+                        IntlDateFormatter::FULL,
+                        IntlDateFormatter::NONE,
+                        'Asia/Tehran',
+                        IntlDateFormatter::TRADITIONAL,
+                        'yyyy/MM/dd'
+                    );
+
+                    if ($formatter !== false) {
+                        $formatted = $formatter->format($date);
+                        if ($formatted !== false && $formatted !== null) {
+                            return UtilityHelper::englishToPersian(UtilityHelper::persianToEnglish($formatted));
+                        }
+                    }
+                }
+
+                return UtilityHelper::englishToPersian($date->format('Y/m/d'));
+            };
+
+            $relevantEvaluations = [];
+            $evaluationIds = [];
+
+            foreach ($evaluations as $evaluationRow) {
+                $evaluateesJson = $evaluationRow['evaluatees_json'] ?? '';
+                $isAssigned = false;
+
+                if (is_string($evaluateesJson) && $evaluateesJson !== '') {
+                    $decoded = json_decode($evaluateesJson, true);
+                    if (is_array($decoded)) {
+                        foreach ($decoded as $value) {
+                            if ((int)$value === $organizationUserId) {
+                                $isAssigned = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!$isAssigned) {
+                    continue;
+                }
+
+                $relevantEvaluations[] = $evaluationRow;
+
+                $evaluationId = (int)($evaluationRow['id'] ?? 0);
+                if ($evaluationId > 0) {
+                    $evaluationIds[$evaluationId] = $evaluationId;
+                }
+            }
+
+            $evaluationIds = array_values($evaluationIds);
+
+            $participationInfo = [];
+            $evaluationToolsMap = [];
+
+            if (!empty($evaluationIds)) {
+                $placeholders = [];
+                $params = [
+                    'organization_id' => $organizationId,
+                    'evaluatee_id' => $organizationUserId,
+                ];
+
+                foreach ($evaluationIds as $index => $evaluationId) {
+                    $key = 'evaluation_' . $index;
+                    $placeholders[] = ':' . $key;
+                    $params[$key] = $evaluationId;
+                }
+
+                if (!empty($placeholders)) {
+                    $sql = sprintf(
+                        'SELECT scores.evaluation_id, scores.tool_id, COUNT(*) AS total_scores, tools.name AS tool_name, tools.code AS tool_code
+                         FROM organization_evaluation_tool_scores scores
+                         LEFT JOIN organization_evaluation_tools tools ON tools.id = scores.tool_id
+                         WHERE scores.organization_id = :organization_id
+                           AND scores.evaluatee_id = :evaluatee_id
+                           AND scores.evaluation_id IN (%s)
+                         GROUP BY scores.evaluation_id, scores.tool_id, tools.name',
+                        implode(', ', $placeholders)
+                    );
+
+                    try {
+                        $participationRows = DatabaseHelper::fetchAll($sql, $params);
+                        foreach ($participationRows as $participationRow) {
+                            $evaluationId = (int)($participationRow['evaluation_id'] ?? 0);
+                            if ($evaluationId <= 0) {
+                                continue;
+                            }
+
+                            if (!isset($participationInfo[$evaluationId])) {
+                                $participationInfo[$evaluationId] = [
+                                    'completed_tool_ids' => [],
+                                    'tool_names' => [],
+                                ];
+                            }
+
+                            $toolId = (int)($participationRow['tool_id'] ?? 0);
+                            if ($toolId > 0) {
+                                $participationInfo[$evaluationId]['completed_tool_ids'][$toolId] = true;
+                            }
+
+                            $toolName = trim((string)($participationRow['tool_name'] ?? ''));
+                            if ($toolName === '') {
+                                $toolName = trim((string)($participationRow['tool_code'] ?? ''));
+                            }
+                            if ($toolName !== '' && !in_array($toolName, $participationInfo[$evaluationId]['tool_names'], true)) {
+                                $participationInfo[$evaluationId]['tool_names'][] = $toolName;
+                            }
+                        }
+                    } catch (Exception $exception) {
+                        $participationInfo = [];
+                    }
+                }
+
+                $toolPlaceholders = [];
+                $toolParams = ['organization_id' => $organizationId];
+                foreach ($evaluationIds as $index => $evaluationId) {
+                    $paramKey = 'tool_eval_' . $index;
+                    $toolPlaceholders[] = ':' . $paramKey;
+                    $toolParams[$paramKey] = $evaluationId;
+                }
+
+                if (!empty($toolPlaceholders)) {
+                    $toolSql = sprintf(
+                        'SELECT assign.evaluation_id AS evaluation_id,
+                                assign.tool_id AS id,
+                                assign.sort_order AS display_order,
+                                tools.name AS name,
+                                tools.code AS code
+                         FROM organization_evaluation_tool_assignments assign
+                         INNER JOIN organization_evaluation_tools tools
+                           ON tools.id = assign.tool_id AND tools.organization_id = :organization_id
+                         WHERE assign.evaluation_id IN (%s)
+                           AND tools.is_exam = 1
+                         ORDER BY assign.evaluation_id ASC, assign.sort_order ASC, assign.tool_id ASC',
+                        implode(', ', $toolPlaceholders)
+                    );
+
+                    try {
+                        $toolRows = DatabaseHelper::fetchAll($toolSql, $toolParams);
+                        foreach ($toolRows as $toolRow) {
+                            $evalId = (int)($toolRow['evaluation_id'] ?? 0);
+                            $toolId = (int)($toolRow['id'] ?? 0);
+                            if ($evalId <= 0 || $toolId <= 0) {
+                                continue;
+                            }
+
+                            if (!isset($evaluationToolsMap[$evalId])) {
+                                $evaluationToolsMap[$evalId] = [];
+                            }
+
+                            $orderValue = isset($toolRow['display_order'])
+                                ? (int)$toolRow['display_order']
+                                : (count($evaluationToolsMap[$evalId]) + 1);
+                            if ($orderValue <= 0) {
+                                $orderValue = count($evaluationToolsMap[$evalId]) + 1;
+                            }
+
+                            $evaluationToolsMap[$evalId][$toolId] = [
+                                'name' => trim((string)($toolRow['name'] ?? '')),
+                                'code' => trim((string)($toolRow['code'] ?? '')),
+                                'order' => $orderValue,
+                            ];
+                        }
+                    } catch (Exception $exception) {
+                        $evaluationToolsMap = [];
+                    }
+                }
+            }
+
+            $toolIdsAll = [];
+            foreach ($evaluationToolsMap as $toolMap) {
+                foreach ($toolMap as $toolId => $meta) {
+                    $toolId = (int)$toolId;
+                    if ($toolId > 0) {
+                        $toolIdsAll[$toolId] = true;
+                    }
+                }
+            }
+            $toolIdsAll = array_keys($toolIdsAll);
+
+            $questionCountsByTool = [];
+            if (!empty($toolIdsAll)) {
+                $placeholders = implode(',', array_fill(0, count($toolIdsAll), '?'));
+                try {
+                    $qRows = DatabaseHelper::fetchAll(
+                        "SELECT evaluation_tool_id AS tool_id, COUNT(*) AS total_q
+                         FROM organization_evaluation_tool_questions
+                         WHERE evaluation_tool_id IN ({$placeholders})
+                         GROUP BY evaluation_tool_id",
+                        $toolIdsAll
+                    );
+                } catch (Exception $exception) {
+                    $qRows = [];
+                }
+
+                foreach ($qRows as $qr) {
+                    $tid = (int)($qr['tool_id'] ?? 0);
+                    if ($tid > 0) {
+                        $questionCountsByTool[$tid] = (int)($qr['total_q'] ?? 0);
+                    }
+                }
+            }
+
+            $answerCounts = [];
+            if (!empty($evaluationIds)) {
+                $placeholders = implode(',', array_fill(0, count($evaluationIds), '?'));
+                $params = array_merge([
+                    $organizationId,
+                    $organizationUserId,
+                ], $evaluationIds);
+
+                try {
+                    $aRows = DatabaseHelper::fetchAll(
+                        "SELECT evaluation_id, tool_id, COUNT(*) AS total_answers
+                         FROM organization_evaluation_exam_answers
+                         WHERE organization_id = ?
+                           AND evaluatee_id = ?
+                           AND evaluation_id IN ({$placeholders})
+                         GROUP BY evaluation_id, tool_id",
+                        $params
+                    );
+                } catch (Exception $exception) {
+                    $aRows = [];
+                }
+
+                foreach ($aRows as $ar) {
+                    $eid = (int)($ar['evaluation_id'] ?? 0);
+                    $tid = (int)($ar['tool_id'] ?? 0);
+                    if ($eid <= 0 || $tid <= 0) {
+                        continue;
+                    }
+                    if (!isset($answerCounts[$eid])) {
+                        $answerCounts[$eid] = [];
+                    }
+                    $answerCounts[$eid][$tid] = (int)($ar['total_answers'] ?? 0);
+                }
+            }
+
+            $participationCompleted = [];
+            if (!empty($evaluationIds)) {
+                $placeholders = implode(',', array_fill(0, count($evaluationIds), '?'));
+                $params = array_merge([
+                    $organizationId,
+                    $organizationUserId,
+                ], $evaluationIds);
+
+                try {
+                    $pRows = DatabaseHelper::fetchAll(
+                        "SELECT evaluation_id, tool_id, MAX(is_completed) AS is_completed
+                         FROM organization_evaluation_exam_participations
+                         WHERE organization_id = ?
+                           AND evaluatee_id = ?
+                           AND evaluation_id IN ({$placeholders})
+                         GROUP BY evaluation_id, tool_id",
+                        $params
+                    );
+                } catch (Exception $exception) {
+                    $pRows = [];
+                }
+
+                foreach ($pRows as $pr) {
+                    $eid = (int)($pr['evaluation_id'] ?? 0);
+                    $tid = (int)($pr['tool_id'] ?? 0);
+                    if ($eid <= 0 || $tid <= 0) {
+                        continue;
+                    }
+                    if (!isset($participationCompleted[$eid])) {
+                        $participationCompleted[$eid] = [];
+                    }
+                    $participationCompleted[$eid][$tid] = ((int)($pr['is_completed'] ?? 0) === 1);
+                }
+            }
+
+            $washupCompleted = [];
+            if (!empty($evaluationIds)) {
+                $placeholders = implode(',', array_fill(0, count($evaluationIds), '?'));
+                $params = array_merge([
+                    $organizationId,
+                    $organizationUserId,
+                ], $evaluationIds);
+
+                try {
+                    $washupRows = DatabaseHelper::fetchAll(
+                        "SELECT evaluation_id, COUNT(*) AS agreed_count
+                         FROM organization_evaluation_agreed_scores
+                         WHERE organization_id = ?
+                           AND evaluatee_id = ?
+                           AND evaluation_id IN ({$placeholders})
+                           AND agreed_score IS NOT NULL
+                         GROUP BY evaluation_id",
+                        $params
+                    );
+                } catch (Exception $exception) {
+                    $washupRows = [];
+                }
+
+                foreach ($washupRows as $row) {
+                    $eid = (int)($row['evaluation_id'] ?? 0);
+                    if ($eid > 0 && (int)($row['agreed_count'] ?? 0) > 0) {
+                        $washupCompleted[$eid] = true;
+                    }
+                }
+            }
+
+            $visibilityMap = [];
+            if (!empty($evaluationIds)) {
+                $placeholders = implode(',', array_fill(0, count($evaluationIds), '?'));
+                $params = array_merge([
+                    $organizationId,
+                    $organizationUserId,
+                ], $evaluationIds);
+
+                try {
+                    $visibilityRows = DatabaseHelper::fetchAll(
+                        "SELECT evaluation_id, is_visible
+                         FROM organization_evaluation_user_visibility
+                         WHERE organization_id = ?
+                           AND evaluatee_id = ?
+                           AND evaluation_id IN ({$placeholders})",
+                        $params
+                    );
+                } catch (Exception $exception) {
+                    $visibilityRows = [];
+                }
+
+                foreach ($visibilityRows as $visibilityRow) {
+                    $eid = (int)($visibilityRow['evaluation_id'] ?? 0);
+                    if ($eid > 0) {
+                        $visibilityMap[$eid] = ((int)($visibilityRow['is_visible'] ?? 0) === 1);
+                    }
+                }
+            }
+
+            foreach ($relevantEvaluations as $evaluationRow) {
+                $evaluationId = (int)($evaluationRow['id'] ?? 0);
+                if ($evaluationId <= 0) {
+                    continue;
+                }
+
+                $titleValue = trim((string)($evaluationRow['title'] ?? ''));
+                if ($titleValue === '') {
+                    $titleValue = 'برنامه ارزیابی #' . UtilityHelper::englishToPersian((string)$evaluationId);
+                }
+
+                $generalModel = $resolveModelLabel($evaluationRow['general_model'] ?? '') ?: '';
+                $specificModel = $resolveModelLabel($evaluationRow['specific_model'] ?? '') ?: '';
+                $modelParts = array_values(array_filter([$generalModel, $specificModel], static fn($value) => trim((string)$value) !== ''));
+                $modelLabel = !empty($modelParts) ? implode(' / ', $modelParts) : '—';
+
+                $evaluationDateDisplay = $formatDate($evaluationRow['evaluation_date'] ?? null);
+
+                $toolsForEvaluation = $evaluationToolsMap[$evaluationId] ?? [];
+                $completedToolNames = [];
+                $incompleteToolNames = [];
+                $completedToolsCount = 0;
+                $totalToolsCount = count($toolsForEvaluation);
+
+                foreach ($toolsForEvaluation as $toolId => $toolMeta) {
+                    $toolId = (int)$toolId;
+                    $need = (int)($questionCountsByTool[$toolId] ?? 0);
+                    $have = (int)($answerCounts[$evaluationId][$toolId] ?? 0);
+                    $participationFlag = !empty($participationCompleted[$evaluationId][$toolId]);
+
+                    $displayName = trim((string)($toolMeta['name'] ?? ''));
+                    if ($displayName === '') {
+                        $displayName = trim((string)($toolMeta['code'] ?? ''));
+                    }
+                    if ($displayName === '') {
+                        $displayName = 'آزمون ' . UtilityHelper::englishToPersian((string)($toolMeta['order'] ?? 0));
+                    }
+
+                    $isToolCompleted = false;
+                    if ($need > 0) {
+                        $isToolCompleted = $have >= $need;
+                    } else {
+                        $isToolCompleted = $participationFlag;
+                    }
+
+                    if ($isToolCompleted) {
+                        $completedToolsCount++;
+                        $completedToolNames[] = $displayName;
+                    } else {
+                        $incompleteToolNames[] = $displayName;
+                    }
+                }
+
+                if ($completedToolsCount === 0 && isset($participationInfo[$evaluationId]['tool_names'])) {
+                    $completedToolNames = $participationInfo[$evaluationId]['tool_names'];
+                }
+
+                $completedToolNames = array_values(array_unique(array_filter($completedToolNames, static fn($value) => trim((string)$value) !== '')));
+                $incompleteToolNames = array_values(array_unique(array_filter($incompleteToolNames, static fn($value) => trim((string)$value) !== '')));
+
+                $allToolsCompleted = ($totalToolsCount > 0 && $completedToolsCount >= $totalToolsCount);
+                $washupDone = !empty($washupCompleted[$evaluationId]);
+                $isVisible = !empty($visibilityMap[$evaluationId]);
+                $hasCertificateAccess = $allToolsCompleted && $washupDone && $isVisible;
+
+                $reports[] = [
+                    'evaluation_id' => $evaluationId,
+                    'title' => $titleValue,
+                    'model' => $modelLabel,
+                    'evaluation_date' => $evaluationDateDisplay,
+                    'total_tools_count' => $totalToolsCount,
+                    'completed_tools_count' => $completedToolsCount,
+                    'completed_tool_names' => $completedToolNames,
+                    'incomplete_tool_names' => $incompleteToolNames,
+                    'all_tools_completed' => $allToolsCompleted,
+                    'washup_completed' => $washupDone,
+                    'is_visible' => $isVisible,
+                    'has_certificate_access' => $hasCertificateAccess,
+                    'certificate_url' => UtilityHelper::baseUrl('tests/reports/certificate?evaluation_id=' . urlencode((string)$evaluationId) . '&evaluatee_id=' . urlencode((string)$organizationUserId)),
+                ];
+
+                $summaryStats['total']++;
+                if ($allToolsCompleted) {
+                    $summaryStats['completed']++;
+                }
+                if ($hasCertificateAccess) {
+                    $summaryStats['certificates']++;
+                }
+            }
+        }
+
+        include __DIR__ . '/../Views/home/tests/reports.php';
+    }
+
+    public function personalDevelopmentCourses(): void
+    {
+        AuthHelper::startSession();
+
+        AuthHelper::requireAuth(UtilityHelper::baseUrl('user/login'));
+
+        $title = 'دوره‌های توسعه فردی';
+        $user = AuthHelper::getUser();
+        $additional_css = [];
+        $additional_js = [];
+        $inline_styles = '';
+        $inline_scripts = '';
+
+        $courses = [];
+
+        $organizationId = (int)($user['organization_id'] ?? 0);
+        $organizationUserId = (int)($user['organization_user_id'] ?? 0);
+
+        if ($organizationId > 0 && $organizationUserId > 0) {
+            self::ensureCourseTables();
+
+            try {
+                $courses = DatabaseHelper::fetchAll(
+                    'SELECT c.*, e.id AS enrollment_id, e.progress_percentage, e.completed_at, e.enrolled_at
+                     FROM organization_course_enrollments e
+                     INNER JOIN organization_courses c ON c.id = e.course_id
+                     WHERE e.organization_id = :organization_id AND e.user_id = :user_id
+                     ORDER BY c.sort_order ASC, c.created_at DESC',
+                    [
+                        'organization_id' => $organizationId,
+                        'user_id' => $organizationUserId,
+                    ]
+                );
+            } catch (Exception $exception) {
+                $courses = [];
+                if (class_exists('LogHelper')) {
+                    LogHelper::error('personal_development_courses_fetch_failed', [
+                        'message' => $exception->getMessage(),
+                    ]);
+                }
+            }
+
+            $courseIds = [];
+            $enrollmentIds = [];
+
+            foreach ($courses as $courseRow) {
+                $courseId = (int)($courseRow['id'] ?? 0);
+                $enrollmentId = (int)($courseRow['enrollment_id'] ?? 0);
+
+                if ($courseId > 0) {
+                    $courseIds[$courseId] = $courseId;
+                }
+
+                if ($enrollmentId > 0) {
+                    $enrollmentIds[$enrollmentId] = $enrollmentId;
+                }
+            }
+
+            $courseIds = array_values($courseIds);
+            $enrollmentIds = array_values($enrollmentIds);
+
+            $lessonsByCourse = [];
+
+            if (!empty($courseIds)) {
+                $lessonParams = [];
+                $lessonPlaceholders = [];
+
+                foreach ($courseIds as $index => $courseId) {
+                    $placeholder = ':course_' . $index;
+                    $lessonPlaceholders[] = $placeholder;
+                    $lessonParams[$placeholder] = $courseId;
+                }
+
+                try {
+                    $lessonRows = DatabaseHelper::fetchAll(
+                        'SELECT id, course_id, title, description, short_description, learning_objectives, resources, text_content,
+                                content_type, content_url, content_file, thumbnail_path, duration_minutes, sort_order, is_free,
+                                is_published, available_at, created_at, updated_at
+                         FROM organization_course_lessons
+                         WHERE course_id IN (' . implode(', ', $lessonPlaceholders) . ')
+                         ORDER BY course_id ASC, sort_order ASC, id ASC',
+                        $lessonParams
+                    );
+                } catch (Exception $exception) {
+                    $lessonRows = [];
+                    if (class_exists('LogHelper')) {
+                        LogHelper::error('personal_development_lessons_fetch_failed', [
+                            'message' => $exception->getMessage(),
+                        ]);
+                    }
+                }
+
+                foreach ($lessonRows as $lessonRow) {
+                    $courseId = (int)($lessonRow['course_id'] ?? 0);
+                    if ($courseId <= 0) {
+                        continue;
+                    }
+
+                    if (!isset($lessonsByCourse[$courseId])) {
+                        $lessonsByCourse[$courseId] = [];
+                    }
+
+                    $lessonsByCourse[$courseId][] = $lessonRow;
+                }
+            }
+
+            $progressMap = [];
+
+            if (!empty($enrollmentIds)) {
+                $progressParams = [
+                    'user_id' => $organizationUserId,
+                ];
+                $progressPlaceholders = [];
+
+                foreach ($enrollmentIds as $index => $enrollmentId) {
+                    $placeholder = ':enrollment_' . $index;
+                    $progressPlaceholders[] = $placeholder;
+                    $progressParams[$placeholder] = $enrollmentId;
+                }
+
+                try {
+                    $progressRows = DatabaseHelper::fetchAll(
+                        'SELECT enrollment_id, lesson_id, is_completed, watch_duration_seconds, last_watched_at
+                         FROM organization_course_progress
+                         WHERE user_id = :user_id AND enrollment_id IN (' . implode(', ', $progressPlaceholders) . ')',
+                        $progressParams
+                    );
+                } catch (Exception $exception) {
+                    $progressRows = [];
+                    if (class_exists('LogHelper')) {
+                        LogHelper::error('personal_development_progress_fetch_failed', [
+                            'message' => $exception->getMessage(),
+                        ]);
+                    }
+                }
+
+                foreach ($progressRows as $progressRow) {
+                    $enrollmentId = (int)($progressRow['enrollment_id'] ?? 0);
+                    $lessonId = (int)($progressRow['lesson_id'] ?? 0);
+
+                    if ($enrollmentId <= 0 || $lessonId <= 0) {
+                        continue;
+                    }
+
+                    if (!isset($progressMap[$enrollmentId])) {
+                        $progressMap[$enrollmentId] = [];
+                    }
+
+                    $progressMap[$enrollmentId][$lessonId] = [
+                        'is_completed' => (int)($progressRow['is_completed'] ?? 0) === 1,
+                        'watch_duration_seconds' => (int)($progressRow['watch_duration_seconds'] ?? 0),
+                        'last_watched_at' => $progressRow['last_watched_at'] ?? null,
+                    ];
+                }
+            }
+
+            $now = new DateTime('now', new DateTimeZone('Asia/Tehran'));
+
+            foreach ($courses as &$courseRow) {
+                $courseId = (int)($courseRow['id'] ?? 0);
+                $enrollmentId = (int)($courseRow['enrollment_id'] ?? 0);
+
+                $courseLessons = $lessonsByCourse[$courseId] ?? [];
+                $totalLessons = count($courseLessons);
+                $completedLessons = 0;
+                $inProgressLessons = 0;
+
+                $coverImage = trim((string)($courseRow['cover_image'] ?? ''));
+                if ($coverImage !== '') {
+                    $courseRow['cover_image_url'] = UtilityHelper::baseUrl('public/uploads/courses/' . ltrim($coverImage, '/'));
+                } else {
+                    $courseRow['cover_image_url'] = null;
+                }
+
+                $courseRow['enrolled_at_display'] = self::formatDateTimeForDisplay($courseRow['enrolled_at'] ?? null);
+                $courseRow['completed_at_display'] = self::formatDateTimeForDisplay($courseRow['completed_at'] ?? null);
+
+                foreach ($courseLessons as &$lessonRow) {
+                    $lessonId = (int)($lessonRow['id'] ?? 0);
+                    $contentType = trim((string)($lessonRow['content_type'] ?? 'video'));
+                    if (!in_array($contentType, ['video', 'pdf', 'ppt', 'link', 'text'], true)) {
+                        $contentType = 'video';
+                    }
+
+                    $contentFile = trim((string)($lessonRow['content_file'] ?? ''));
+                    $contentUrl = trim((string)($lessonRow['content_url'] ?? ''));
+                    $mediaUrl = '';
+
+                    if ($contentFile !== '') {
+                        $mediaUrl = UtilityHelper::baseUrl('public/uploads/lessons/' . ltrim($contentFile, '/'));
+                    } elseif ($contentUrl !== '') {
+                        $mediaUrl = preg_match('/^(?:https?:)?\/\//i', $contentUrl)
+                            ? $contentUrl
+                            : UtilityHelper::baseUrl(ltrim($contentUrl, '/'));
+                    }
+
+                    $viewerUrl = $mediaUrl;
+                    if ($contentType === 'ppt' && $mediaUrl !== '') {
+                        $viewerUrl = 'https://view.officeapps.live.com/op/embed.aspx?src=' . rawurlencode($mediaUrl);
+                    }
+
+                    $lessonRow['content_type'] = $contentType;
+                    $lessonRow['media_url'] = $mediaUrl;
+                    $lessonRow['viewer_url'] = $viewerUrl;
+
+                    $thumbnailPath = trim((string)($lessonRow['thumbnail_path'] ?? ''));
+                    $lessonRow['thumbnail_url'] = $thumbnailPath !== ''
+                        ? UtilityHelper::baseUrl('public/uploads/lessons/' . ltrim($thumbnailPath, '/'))
+                        : null;
+
+                    $isPublished = (int)($lessonRow['is_published'] ?? 1) === 1;
+                    $availableAt = self::parseDateTime($lessonRow['available_at'] ?? null);
+                    $isAvailable = $isPublished;
+                    $availableAtDisplay = null;
+
+                    if ($availableAt instanceof DateTime) {
+                        if ($availableAt > $now) {
+                            $isAvailable = false;
+                        }
+                        $availableAtDisplay = UtilityHelper::englishToPersian($availableAt->format('Y/m/d H:i'));
+                    }
+
+                    $lessonProgress = ($enrollmentId > 0 && isset($progressMap[$enrollmentId][$lessonId]))
+                        ? $progressMap[$enrollmentId][$lessonId]
+                        : null;
+
+                    $watchSeconds = (int)($lessonProgress['watch_duration_seconds'] ?? 0);
+                    $isCompleted = !empty($lessonProgress['is_completed']);
+                    $progressState = 'pending';
+
+                    if (!$isAvailable) {
+                        $progressState = 'scheduled';
+                    }
+
+                    if ($watchSeconds > 0) {
+                        $progressState = 'in_progress';
+                    }
+
+                    if ($isCompleted) {
+                        $progressState = 'completed';
+                    }
+
+                    if ($isCompleted) {
+                        $completedLessons++;
+                    } elseif ($watchSeconds > 0) {
+                        $inProgressLessons++;
+                    }
+
+                    $lessonRow['is_available'] = $isAvailable ? 1 : 0;
+                    $lessonRow['available_at_display'] = $availableAtDisplay;
+                    $lessonRow['is_completed'] = $isCompleted ? 1 : 0;
+                    $lessonRow['watch_duration_seconds'] = $watchSeconds;
+                    $lessonRow['watch_duration_display'] = $watchSeconds > 0
+                        ? UtilityHelper::englishToPersian(self::formatDuration($watchSeconds))
+                        : null;
+                    $lessonRow['progress_state'] = $progressState;
+                    $lessonRow['last_watched_at'] = $lessonProgress['last_watched_at'] ?? null;
+                    $lessonRow['last_watched_display'] = self::formatDateTimeForDisplay($lessonProgress['last_watched_at'] ?? null);
+                }
+                unset($lessonRow);
+
+                $percentage = $totalLessons > 0
+                    ? (int)round(($completedLessons / $totalLessons) * 100)
+                    : (int)round((float)($courseRow['progress_percentage'] ?? 0));
+
+                if ($percentage < 0) {
+                    $percentage = 0;
+                }
+                if ($percentage > 100) {
+                    $percentage = 100;
+                }
+
+                $courseRow['progress'] = [
+                    'total_lessons' => $totalLessons,
+                    'completed_lessons' => $completedLessons,
+                    'in_progress_lessons' => $inProgressLessons,
+                    'percentage' => $percentage,
+                ];
+
+                $courseRow['lessons'] = $courseLessons;
+                $courseRow['lesson_count'] = $totalLessons;
+            }
+            unset($courseRow);
+        }
+
+        include __DIR__ . '/../Views/home/courses/personal-development.php';
     }
 
     public function exams(): void
@@ -2093,6 +2905,201 @@ class HomeController {
                 'message' => $exception->getMessage(),
             ]);
         }
+    }
+
+    private static function ensureCourseTables(): void
+    {
+        if (self::$courseTablesEnsured) {
+            return;
+        }
+
+        try {
+            DatabaseHelper::query(
+                'CREATE TABLE IF NOT EXISTS organization_courses (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    organization_id BIGINT UNSIGNED NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT NULL,
+                    category VARCHAR(100) NULL,
+                    instructor_name VARCHAR(255) NULL,
+                    price DECIMAL(10,2) DEFAULT 0.00,
+                    duration_hours INT DEFAULT 0,
+                    cover_image VARCHAR(255) NULL,
+                    status ENUM(\'draft\', \'published\', \'archived\', \'presale\') DEFAULT \'draft\',
+                    sort_order INT DEFAULT 0,
+                    published_at DATE NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_organization (organization_id),
+                    INDEX idx_status (status),
+                    INDEX idx_sort (sort_order),
+                    INDEX idx_published_at (published_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;'
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('ensure_courses_table_failed', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            DatabaseHelper::query(
+                'CREATE TABLE IF NOT EXISTS organization_course_lessons (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    course_id BIGINT UNSIGNED NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT NULL,
+                    short_description TEXT NULL,
+                    learning_objectives TEXT NULL,
+                    resources TEXT NULL,
+                    text_content LONGTEXT NULL,
+                    content_type ENUM(\'video\', \'pdf\', \'ppt\', \'link\', \'text\') DEFAULT \'video\',
+                    content_url VARCHAR(500) NULL,
+                    content_file VARCHAR(255) NULL,
+                    thumbnail_path VARCHAR(255) NULL,
+                    duration_minutes INT DEFAULT 0,
+                    sort_order INT DEFAULT 0,
+                    is_free TINYINT(1) DEFAULT 0,
+                    is_published TINYINT(1) DEFAULT 1,
+                    available_at DATETIME NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_course (course_id),
+                    INDEX idx_sort (sort_order)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;'
+            );
+
+            $columns = DatabaseHelper::fetchAll('SHOW COLUMNS FROM organization_course_lessons');
+            $columnNames = array_map(static fn($column) => $column['Field'] ?? '', $columns);
+
+            self::ensureLessonColumn($columnNames, 'short_description', "ALTER TABLE organization_course_lessons ADD COLUMN short_description TEXT NULL AFTER description");
+            self::ensureLessonColumn($columnNames, 'learning_objectives', "ALTER TABLE organization_course_lessons ADD COLUMN learning_objectives TEXT NULL AFTER short_description");
+            self::ensureLessonColumn($columnNames, 'resources', "ALTER TABLE organization_course_lessons ADD COLUMN resources TEXT NULL AFTER learning_objectives");
+            self::ensureLessonColumn($columnNames, 'text_content', "ALTER TABLE organization_course_lessons ADD COLUMN text_content LONGTEXT NULL AFTER resources");
+            self::ensureLessonColumn($columnNames, 'thumbnail_path', "ALTER TABLE organization_course_lessons ADD COLUMN thumbnail_path VARCHAR(255) NULL AFTER content_file");
+            self::ensureLessonColumn($columnNames, 'is_published', "ALTER TABLE organization_course_lessons ADD COLUMN is_published TINYINT(1) DEFAULT 1 AFTER is_free");
+            self::ensureLessonColumn($columnNames, 'available_at', "ALTER TABLE organization_course_lessons ADD COLUMN available_at DATETIME NULL AFTER is_published");
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('ensure_course_lessons_table_failed', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            DatabaseHelper::query(
+                'CREATE TABLE IF NOT EXISTS organization_course_enrollments (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    organization_id BIGINT UNSIGNED NOT NULL,
+                    course_id BIGINT UNSIGNED NOT NULL,
+                    user_id BIGINT UNSIGNED NOT NULL,
+                    enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP NULL,
+                    progress_percentage DECIMAL(5,2) DEFAULT 0.00,
+                    UNIQUE KEY unique_enrollment (organization_id, course_id, user_id),
+                    INDEX idx_organization (organization_id),
+                    INDEX idx_course (course_id),
+                    INDEX idx_user (user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;'
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('ensure_course_enrollments_table_failed', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            DatabaseHelper::query(
+                'CREATE TABLE IF NOT EXISTS organization_course_progress (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    enrollment_id BIGINT UNSIGNED NOT NULL,
+                    lesson_id BIGINT UNSIGNED NOT NULL,
+                    user_id BIGINT UNSIGNED NOT NULL,
+                    is_completed TINYINT(1) DEFAULT 0,
+                    completed_at TIMESTAMP NULL,
+                    watch_duration_seconds INT DEFAULT 0,
+                    last_watched_at TIMESTAMP NULL,
+                    UNIQUE KEY unique_progress (enrollment_id, lesson_id),
+                    INDEX idx_user (user_id),
+                    INDEX idx_lesson (lesson_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;'
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('ensure_course_progress_table_failed', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        self::$courseTablesEnsured = true;
+    }
+
+    private static function ensureLessonColumn(array $columnNames, string $column, string $alterSql): void
+    {
+        if (in_array($column, $columnNames, true)) {
+            return;
+        }
+
+        try {
+            DatabaseHelper::query($alterSql);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('ensure_lesson_column_failed', [
+                    'column' => $column,
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    private static function parseDateTime(?string $value): ?DateTime
+    {
+        $raw = trim((string)($value ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            return new DateTime($raw, new DateTimeZone('Asia/Tehran'));
+        } catch (Exception $exception) {
+            try {
+                $date = new DateTime($raw);
+                $date->setTimezone(new DateTimeZone('Asia/Tehran'));
+                return $date;
+            } catch (Exception $innerException) {
+                return null;
+            }
+        }
+    }
+
+    private static function formatDateTimeForDisplay(?string $value): ?string
+    {
+        $date = self::parseDateTime($value);
+        if (!$date instanceof DateTime) {
+            return null;
+        }
+
+        return UtilityHelper::englishToPersian($date->format('Y/m/d H:i'));
+    }
+
+    private static function formatDuration(int $seconds): string
+    {
+        $seconds = max(0, $seconds);
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+        $remaining = $seconds % 60;
+
+        if ($hours > 0) {
+            return sprintf('%02d:%02d:%02d', $hours, $minutes, $remaining);
+        }
+
+        return sprintf('%02d:%02d', $minutes, $remaining);
     }
 
     private function recordExamSubmission(

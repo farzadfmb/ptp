@@ -198,7 +198,8 @@ $organizationSidebarMenu = [
         'icon' => 'book-sharp',
         'permissions' => ['courses_manage', 'courses_view'],
         'children' => [
-            ['title' => 'برنامه های توسعه فردی', 'route' => 'organizations/development-programs', 'permissions' => ['courses_manage', 'courses_view']],
+            ['title' => 'دوره‌های توسعه فردی', 'route' => 'organizations/courses', 'permissions' => ['courses_manage', 'courses_view']],
+            ['title' => 'برنامه های شایستگی', 'route' => 'organizations/development-programs', 'permissions' => ['courses_manage', 'courses_view']],
         ],
     ],
     [
@@ -206,13 +207,13 @@ $organizationSidebarMenu = [
         'icon' => 'clipboard-sharp',
         'permissions' => ['results_exam_questionwise', 'results_exam_register', 'results_tool_score_manage', 'results_assessment_register', 'results_washup_register', 'results_excel_report', 'results_resume_selected', 'results_washup_final'],
         'children' => [
-            ['title' => 'ثبت نتایج آزمون به تفکیک سوال', 'route' => 'upload_user_tool_qu/index.php', 'permission' => 'results_exam_questionwise'],
-            ['title' => 'ثبت نتایج آزمون', 'route' => 'upload_user_tool_qu/upload_user_qu.php', 'permission' => 'results_exam_register'],
-            ['title' => 'ثبت امتیاز ابزار', 'route' => 'upload_user_tool_qu/user_tool_value.php', 'permission' => 'results_tool_score_manage'],
+            // ['title' => 'ثبت نتایج آزمون به تفکیک سوال', 'route' => 'upload_user_tool_qu/index.php', 'permission' => 'results_exam_questionwise'],
+            // ['title' => 'ثبت نتایج آزمون', 'route' => 'upload_user_tool_qu/upload_user_qu.php', 'permission' => 'results_exam_register'],
+            // ['title' => 'ثبت امتیاز ابزار', 'route' => 'upload_user_tool_qu/user_tool_value.php', 'permission' => 'results_tool_score_manage'],
             ['title' => 'ارزیابی های فعال', 'route' => 'organizations/active-evaluations', 'permission' => 'results_assessment_register'],
             ['title' => 'Wash-Up', 'route' => 'organizations/wash-up', 'permissions' => ['results_washup_register', 'results_washup_final']],
             ['title' => 'گزارش اکسل', 'route' => 'organizations/reports/excel', 'permission' => 'results_excel_report'],
-            ['title' => 'رزومه های منتخب', 'route' => 'resume/index.php', 'permission' => 'results_resume_selected'],
+            ['title' => 'رزومه های منتخب', 'route' => 'organizations/reports/selected-resumes', 'permission' => 'reports_self_view'],
         ],
     ],
     [
@@ -221,10 +222,10 @@ $organizationSidebarMenu = [
         'permissions' => ['reports_self_view', 'reports_final_view', 'reports_dev_program_view', 'reports_settings_manage', 'reports_dashboard_view'],
         'children' => [
             ['title' => 'مشاهده نتایج خود ارزیابی کاربران', 'route' => 'organizations/reports/self-assessment', 'permission' => 'reports_self_view'],
-            ['title' => 'گزارش نهایی ارزیابی', 'route' => 'report/UserFinalReport.php', 'permission' => 'reports_final_view'],
-            ['title' => 'گزارش برنامه های توسعه فردی', 'route' => 'report/EducationList.php', 'permission' => 'reports_dev_program_view'],
-            ['title' => 'تنظیمات گزارش ارزیابی', 'route' => 'report/reportsetting.php', 'permission' => 'reports_settings_manage'],
-            ['title' => 'تنظیمات گواهی دوره', 'route' => 'organizations/reports/certificate-settings', 'permission' => 'reports_settings_manage'],
+            // ['title' => 'گزارش نهایی ارزیابی', 'route' => 'report/UserFinalReport.php', 'permission' => 'reports_final_view'],
+            // ['title' => 'گزارش برنامه های توسعه فردی', 'route' => 'report/EducationList.php', 'permission' => 'reports_dev_program_view'],
+            // ['title' => 'تنظیمات گزارش ارزیابی', 'route' => 'report/reportsetting.php', 'permission' => 'reports_settings_manage'],
+            // ['title' => 'تنظیمات گواهی دوره', 'route' => 'organizations/reports/certificate-settings', 'permission' => 'reports_settings_manage'],
             ['title' => 'سازنده گواهی پیشرفته', 'route' => 'organizations/reports/certificate-builder', 'permission' => 'reports_settings_manage'],
         ],
     ],

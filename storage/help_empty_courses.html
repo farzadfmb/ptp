@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>راهنمای حل مشکل صفحه خالی دوره‌ها</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap');
+        
+        * {
+            font-family: 'Vazirmatn', sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        
+        .header h1 {
+            color: #1e293b;
+            font-size: 32px;
+            margin-bottom: 15px;
+        }
+        
+        .header p {
+            color: #64748b;
+            font-size: 18px;
+        }
+        
+        .status-box {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+        
+        .success-box {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            border-left: 5px solid #10b981;
+        }
+        
+        .warning-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-left: 5px solid #f59e0b;
+        }
+        
+        .status-box h2 {
+            color: #1e293b;
+            margin-bottom: 20px;
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-box p {
+            color: #475569;
+            margin: 10px 0;
+            line-height: 1.8;
+        }
+        
+        .status-box ul {
+            margin: 15px 0 15px 20px;
+        }
+        
+        .status-box li {
+            margin: 8px 0;
+            color: #475569;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin: 10px 5px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+            box-shadow: 0 4px 15px rgba(100, 116, 139, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+        
+        .steps {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        }
+        
+        .step {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            border-right: 4px solid #667eea;
+        }
+        
+        .step h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .step-number {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .code {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        
+        .action-buttons {
+            text-align: center;
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 راهنمای حل مشکل صفحه خالی</h1>
+            <p>صفحه دوره‌ها خالی است؟ این راهنما کمک می‌کند!</p>
+        </div>
+
+        <div class="status-box success-box">
+            <h2>✅ دوره‌های نمونه ایجاد شد</h2>
+            <p>4 دوره نمونه در دیتابیس ایجاد شده است:</p>
+            <ul>
+                <li>دوره جامع (قبلاً موجود بود)</li>
+                <li>دوره مهارت‌های ارتباطی</li>
+                <li>مدیریت زمان و بهره‌وری</li>
+                <li>رهبری و مدیریت تیم</li>
+            </ul>
+        </div>
+
+        <div class="status-box warning-box">
+            <h2>⚠️ احتمالاً مشکل از Session است</h2>
+            <p>دلایل محتمل خالی بودن صفحه:</p>
+            <ul>
+                <li><strong>وارد سیستم نشده‌اید:</strong> باید ابتدا وارد پنل سازمان شوید</li>
+                <li><strong>Organization ID متفاوت است:</strong> دوره‌ها برای organization_id = 1 ایجاد شده‌اند</li>
+                <li><strong>دسترسی ندارید:</strong> باید دسترسی courses_view یا courses_manage داشته باشید</li>
+            </ul>
+        </div>
+
+        <div class="steps">
+            <h2 style="margin-bottom: 20px;">📋 مراحل حل مشکل</h2>
+            
+            <div class="step">
+                <h3>
+                    <div class="step-number">1</div>
+                    بررسی وضعیت
+                </h3>
+                <p>ابتدا وضعیت session و دیتابیس را بررسی کنید:</p>
+                <div class="action-buttons">
+                    <a href="http://localhost:8888/ptp/storage/debug_courses.php" class="btn btn-secondary" target="_blank">
+                        🔍 صفحه Debug
+                    </a>
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>
+                    <div class="step-number">2</div>
+                    ورود به سیستم
+                </h3>
+                <p>اگر وارد نشده‌اید، ابتدا وارد پنل سازمان شوید:</p>
+                <div class="code">http://localhost:8888/ptp/organizations/login</div>
+                <p style="margin-top: 10px;"><strong>نکته:</strong> مطمئن شوید که organization_id کاربر شما 1 است.</p>
+            </div>
+
+            <div class="step">
+                <h3>
+                    <div class="step-number">3</div>
+                    مشاهده صفحه دوره‌ها
+                </h3>
+                <p>پس از ورود، به صفحه دوره‌ها بروید:</p>
+                <div class="action-buttons">
+                    <a href="http://localhost:8888/ptp/organizations/courses" class="btn btn-success" target="_blank">
+                        📚 صفحه دوره‌ها
+                    </a>
+                </div>
+            </div>
+
+            <div class="step">
+                <h3>
+                    <div class="step-number">4</div>
+                    اگر باز هم خالی است
+                </h3>
+                <p>راه‌حل‌های احتمالی:</p>
+                <ul style="margin: 10px 0 10px 20px;">
+                    <li>کنسول مرورگر (F12) را باز کنید و خطاهای JavaScript را بررسی کنید</li>
+                    <li>Cache مرورگر را پاک کنید (Ctrl+Shift+Delete)</li>
+                    <li>صفحه را Refresh کنید (Ctrl+R یا F5)</li>
+                    <li>از مرورگر دیگری امتحان کنید</li>
+                </ul>
+            </div>
+
+            <div class="step">
+                <h3>
+                    <div class="step-number">5</div>
+                    ایجاد دوره جدید
+                </h3>
+                <p>اگر می‌خواهید دوره جدید ایجاد کنید:</p>
+                <div class="action-buttons">
+                    <a href="http://localhost:8888/ptp/organizations/courses/create" class="btn" target="_blank">
+                        ➕ ایجاد دوره جدید
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="http://localhost:8888/ptp/organizations/courses" class="btn" style="font-size: 18px; padding: 16px 32px;">
+                🚀 رفتن به صفحه دوره‌ها
+            </a>
+        </div>
+
+        <div style="background: white; border-radius: 16px; padding: 20px; margin-top: 30px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
+            <p style="color: #64748b; margin: 0;">
+                💡 اگر مشکل حل نشد، پیام خطا را در کنسول مرورگر (F12 → Console) بررسی کنید
+            </p>
+        </div>
+    </div>
+</body>
+</html>

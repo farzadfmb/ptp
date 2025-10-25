@@ -102,46 +102,105 @@ $inline_styles .= <<<'CSS'
         font-size: 22px;
     }
     .active-timeline {
+        display: flex;
+        flex-direction: row;
+        gap: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 40px;
         position: relative;
-        padding-inline-end: 28px;
-        border-inline-end: 2px dashed rgba(148, 163, 184, 0.35);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(99, 102, 241, 0.3) rgba(148, 163, 184, 0.1);
+    }
+    .active-timeline::-webkit-scrollbar {
+        height: 8px;
+    }
+    .active-timeline::-webkit-scrollbar-track {
+        background: rgba(148, 163, 184, 0.1);
+        border-radius: 10px;
+    }
+    .active-timeline::-webkit-scrollbar-thumb {
+        background: rgba(99, 102, 241, 0.3);
+        border-radius: 10px;
+    }
+    .active-timeline::-webkit-scrollbar-thumb:hover {
+        background: rgba(99, 102, 241, 0.5);
     }
     .active-timeline::before {
         content: '';
         position: absolute;
-        inset-inline-end: -1px;
-        inset-block-start: 0;
-        width: 2px;
-        height: 100%;
-        background: linear-gradient(180deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0));
+        inset-inline-start: 0;
+        inset-block-start: 60px;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.3), rgba(99, 102, 241, 0.15));
+        z-index: 0;
     }
     .active-timeline-item {
         position: relative;
-        padding-block: 14px;
-        padding-inline-end: 12px;
+        min-width: 280px;
+        max-width: 320px;
+        padding: 20px 16px;
+        flex-shrink: 0;
+        z-index: 1;
     }
     .active-timeline-item::before {
         content: '';
         position: absolute;
-        inset-inline-end: -7px;
-        inset-block-start: 20px;
-        width: 16px;
-        height: 16px;
+        inset-inline-start: 50%;
+        inset-block-start: 60px;
+        transform: translateX(-50%);
+        width: 20px;
+        height: 20px;
         border-radius: 50%;
         background: #6366f1;
         border: 4px solid #ffffff;
-        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+        z-index: 2;
     }
     .active-timeline-item.upcoming::before {
         background: #22c55e;
-        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
     }
     .active-timeline-item.past::before {
         background: #94a3b8;
-        box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.2);
+        box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.2);
     }
-    .active-timeline-item:last-child {
-        padding-block-end: 0;
+    .active-timeline-content {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 16px;
+        margin-top: 50px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        transition: all 0.2s ease;
+    }
+    .active-timeline-item:hover .active-timeline-content {
+        border-color: #6366f1;
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+        transform: translateY(-2px);
+    }
+    .timeline-scroll-hint {
+        text-align: center;
+        color: #94a3b8;
+        font-size: 13px;
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+    .timeline-scroll-hint ion-icon {
+        font-size: 18px;
+        animation: scrollHint 1.5s ease-in-out infinite;
+    }
+    @keyframes scrollHint {
+        0%, 100% {
+            transform: translateX(0);
+        }
+        50% {
+            transform: translateX(8px);
+        }
     }
     .badge-soft-success {
         background: rgba(34, 197, 94, 0.14);
@@ -216,8 +275,9 @@ $inline_styles .= <<<'CSS'
         .summary-card .summary-value {
             font-size: 20px;
         }
-        .active-timeline {
-            padding-inline-end: 18px;
+        .active-timeline-item {
+            min-width: 240px;
+            max-width: 280px;
         }
         .active-evaluations-table thead {
             display: none;
@@ -240,6 +300,27 @@ $inline_styles .= <<<'CSS'
         }
     }
 CSS;
+
+$inline_scripts .= <<<'SCRIPT'
+    // Hide scroll hint after user scrolls the timeline
+    document.addEventListener('DOMContentLoaded', function() {
+        const timeline = document.querySelector('.active-timeline');
+        const scrollHint = document.querySelector('.timeline-scroll-hint');
+        
+        if (timeline && scrollHint) {
+            timeline.addEventListener('scroll', function() {
+                if (this.scrollLeft > 50) {
+                    scrollHint.style.opacity = '0';
+                    scrollHint.style.transition = 'opacity 0.3s ease';
+                    setTimeout(function() {
+                        scrollHint.style.display = 'none';
+                    }, 300);
+                }
+            }, { once: true });
+        }
+    });
+SCRIPT;
+
 
 $summaryCards = [
     [
@@ -365,32 +446,39 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                                     <?php $timelineClass = !empty($entry['is_upcoming']) ? 'upcoming' : 'past'; ?>
                                     <?php $statusClass = $variantClassMap[$entry['status_variant'] ?? 'secondary'] ?? 'badge-soft-secondary'; ?>
                                     <div class="active-timeline-item <?= htmlspecialchars($timelineClass, ENT_QUOTES, 'UTF-8'); ?>">
-                                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-12">
-                                            <div>
-                                                <div class="text-sm text-gray-500 mb-4">
+                                        <div class="active-timeline-content">
+                                            <div class="text-center">
+                                                <div class="text-sm text-gray-500 mb-8">
                                                     <?= htmlspecialchars($entry['date_display'] ?? '—', ENT_QUOTES, 'UTF-8'); ?>
                                                 </div>
-                                                <h6 class="mb-6 text-gray-900 fw-semibold">
+                                                <h6 class="mb-10 text-gray-900 fw-semibold">
                                                     <?= htmlspecialchars($entry['title'] ?? 'بدون عنوان', ENT_QUOTES, 'UTF-8'); ?>
                                                 </h6>
-                                                <div class="d-flex flex-wrap gap-10 text-xs text-gray-500">
-                                                    <span class="d-inline-flex align-items-center gap-4">
+                                                <div class="d-flex flex-column gap-8 text-xs text-gray-600 mb-12">
+                                                    <span class="d-inline-flex align-items-center justify-content-center gap-6">
                                                         <ion-icon name="people-outline"></ion-icon>
                                                         <?= htmlspecialchars(UtilityHelper::englishToPersian((string) ($entry['evaluatees_count'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?> نفر
                                                     </span>
-                                                    <span class="d-inline-flex align-items-center gap-4">
+                                                    <span class="d-inline-flex align-items-center justify-content-center gap-6">
                                                         <ion-icon name="person-outline"></ion-icon>
                                                         <?= htmlspecialchars(UtilityHelper::englishToPersian((string) ($entry['evaluators_count'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?> ارزیاب
                                                     </span>
                                                 </div>
+                                                <span class="badge <?= htmlspecialchars($statusClass, ENT_QUOTES, 'UTF-8'); ?> w-100 py-6">
+                                                    <?= htmlspecialchars($entry['status_label'] ?? 'نامشخص', ENT_QUOTES, 'UTF-8'); ?>
+                                                </span>
                                             </div>
-                                            <span class="badge <?= htmlspecialchars($statusClass, ENT_QUOTES, 'UTF-8'); ?>">
-                                                <?= htmlspecialchars($entry['status_label'] ?? 'نامشخص', ENT_QUOTES, 'UTF-8'); ?>
-                                            </span>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
+                            <?php if (count($timelineEntries) > 3): ?>
+                                <div class="timeline-scroll-hint">
+                                    <ion-icon name="chevron-forward-outline"></ion-icon>
+                                    <span>برای مشاهده بیشتر به سمت راست اسکرول کنید</span>
+                                    <ion-icon name="chevron-back-outline"></ion-icon>
+                                </div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <div class="empty-state">
                                 <ion-icon name="time-outline" class="fs-3 mb-8"></ion-icon>
