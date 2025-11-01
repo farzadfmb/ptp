@@ -43,13 +43,13 @@ $navbarUser = $user;
                     <div class="card-body p-24">
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-16 mb-24 organization-executive-units-header">
                             <div>
-                                <h2 class="mb-6 text-gray-900">دستگاه‌های اجرایی</h2>
-                                <p class="text-gray-500 mb-0">لیست دستگاه‌های اجرایی ثبت‌شده را مشاهده و مدیریت کنید.</p>
+                                <h2 class="mb-6 text-gray-900">واحد های سازمانی</h2>
+                                <p class="text-gray-500 mb-0">لیست واحد های سازمانی ثبت‌شده را مشاهده و مدیریت کنید.</p>
                             </div>
                             <div class="d-flex gap-10 flex-wrap">
-                                <a href="<?= UtilityHelper::baseUrl('organizations/executive-units/create'); ?>" class="btn btn-main" title="ایجاد دستگاه اجرایی">
-                                    ایجاد دستگاه اجرایی
-                                    <span class="visually-hidden">ایجاد دستگاه اجرایی</span>
+                                <a href="<?= UtilityHelper::baseUrl('organizations/executive-units/create'); ?>" class="btn btn-main" title="ایجاد واحد سازمانی">
+                                    ایجاد واحد سازمانی
+                                    <span class="visually-hidden">ایجاد واحد سازمانی</span>
                                 </a>
                             </div>
                         </div>

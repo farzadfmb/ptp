@@ -155,7 +155,7 @@ $organizationSidebarMenu = [
         'children' => [
             ['title' => 'مدیریت نقش‌ها', 'route' => 'organizations/roles', 'permission' => 'users_manage_roles'],
             ['title' => 'ماتریس نقش دسترسی', 'route' => 'organizations/role-access-matrix', 'permission' => 'role_access_matrix_manage'],
-            ['title' => 'دستگاه‌های اجرایی', 'route' => 'organizations/executive-units', 'permission' => 'executive_units_manage'],
+            ['title' => 'واحد های سازمانی', 'route' => 'organizations/executive-units', 'permission' => 'executive_units_manage'],
             ['title' => 'کاربران سازمان', 'route' => 'organizations/users', 'permission' => 'users_manage_users'],
             ['title' => 'ماتریس نقش کاربران', 'route' => 'organizations/users/role-matrix', 'permission' => 'users_manage_user_roles'],
         ],
