@@ -21,6 +21,35 @@ $successMessage = $successMessage ?? flash('success');
 $competencies = $competencies ?? [];
 $availableFeatureTypes = $availableFeatureTypes ?? [];
 $competencyFeature = $competencyFeature ?? [];
+$competencyFeatureScore = $competencyFeatureScore ?? [];
+
+$formatScoreInput = static function ($value) {
+    if ($value === null || $value === '') {
+        return '';
+    }
+
+    if (!is_numeric($value)) {
+        $normalized = str_replace(['٫', ',', '،'], ['.', '.', '.'], UtilityHelper::persianToEnglish((string) $value));
+        if (!is_numeric($normalized)) {
+            return trim((string) $value);
+        }
+        $value = $normalized;
+    }
+
+    $number = (float) $value;
+    if (!is_finite($number)) {
+        return '';
+    }
+
+    if (floor($number) === $number) {
+        return (string) (int) $number;
+    }
+
+    return rtrim(rtrim(number_format($number, 2, '.', ''), '0'), '.');
+};
+
+$scoreMinPrefill = $formatScoreInput($competencyFeatureScore['score_min'] ?? '');
+$scoreMaxPrefill = $formatScoreInput($competencyFeatureScore['score_max'] ?? '');
 
 $inline_styles .= <<<'CSS'
     body {
@@ -101,14 +130,14 @@ $navbarUser = $user;
                                     <?php endif; ?>
                                 </div>
                                 <div class="col-md-4">
-                                    <label class="form-label fw-semibold">نوع ویژگی <span class="text-danger">*</span></label>
-                                    <input type="text" name="type" class="form-control" list="competencyFeatureTypes" value="<?= htmlspecialchars(old('type', $competencyFeature['type'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: رفتاری" required>
+                                    <label class="form-label fw-semibold">سطح انتظار <span class="text-danger">*</span></label>
+                                    <input type="text" name="type" class="form-control" list="competencyFeatureTypes" value="<?= htmlspecialchars(old('type', $competencyFeature['type'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: سطح حرفه‌ای" required>
                                     <datalist id="competencyFeatureTypes">
                                         <?php foreach ($availableFeatureTypes as $typeOption): ?>
                                             <option value="<?= htmlspecialchars($typeOption, ENT_QUOTES, 'UTF-8'); ?>"></option>
                                         <?php endforeach; ?>
                                     </datalist>
-                                    <small class="text-gray-500 mt-6">برای استفاده مجدد، نوع‌های ثبت‌شده قبلی در فهرست پیشنهادها موجود است.</small>
+                                    <small class="text-gray-500 mt-6">برای استفاده مجدد، سطوح ثبت‌شده قبلی در فهرست پیشنهادها موجود است.</small>
                                     <?php if (!empty($validationErrors['type'])): ?>
                                         <small class="text-danger mt-6"><?= htmlspecialchars($validationErrors['type'], ENT_QUOTES, 'UTF-8'); ?></small>
                                     <?php endif; ?>
@@ -137,6 +166,22 @@ $navbarUser = $user;
                                     <?php endif; ?>
                                     <?php if (!empty($validationErrors['competency_id'])): ?>
                                         <small class="text-danger mt-6"><?= htmlspecialchars($validationErrors['competency_id'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">امتیاز شروع <span class="text-danger">*</span></label>
+                                    <input type="text" name="score_min" class="form-control ltr-input" inputmode="decimal" value="<?= htmlspecialchars(old('score_min', $scoreMinPrefill), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: 1" required>
+                                    <small class="text-gray-500 mt-6">حداقل امتیاز مورد انتظار برای این ویژگی را تعیین کنید.</small>
+                                    <?php if (!empty($validationErrors['score_min'])): ?>
+                                        <small class="text-danger mt-6"><?= htmlspecialchars($validationErrors['score_min'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">امتیاز پایان <span class="text-danger">*</span></label>
+                                    <input type="text" name="score_max" class="form-control ltr-input" inputmode="decimal" value="<?= htmlspecialchars(old('score_max', $scoreMaxPrefill), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: 10" required>
+                                    <small class="text-gray-500 mt-6">حداکثر امتیاز مورد انتظار برای این ویژگی را مشخص کنید.</small>
+                                    <?php if (!empty($validationErrors['score_max'])): ?>
+                                        <small class="text-danger mt-6"><?= htmlspecialchars($validationErrors['score_max'], ENT_QUOTES, 'UTF-8'); ?></small>
                                     <?php endif; ?>
                                 </div>
                                 <div class="col-12">

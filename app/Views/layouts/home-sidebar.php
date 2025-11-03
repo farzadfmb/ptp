@@ -76,7 +76,7 @@ $homeSidebarMenu = [
         'route' => null,
         'children' => [
             [
-                'title' => 'تقویم آموزشی',
+                'title' => 'تقویم آزمون',
                 'route' => 'tests/training-calendar',
             ],
             [

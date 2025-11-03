@@ -25,6 +25,13 @@ $toolSummaries = $toolSummaries ?? [];
 if (empty($toolHeaders) && !empty($toolSummaries) && is_array($toolSummaries)) {
     $toolHeaders = array_values($toolSummaries);
 }
+$toolHeaderMap = [];
+foreach ($toolHeaders as $toolHeader) {
+    $toolId = (int) ($toolHeader['id'] ?? 0);
+    if ($toolId > 0) {
+        $toolHeaderMap[$toolId] = $toolHeader;
+    }
+}
 $competencySummaries = $competencySummaries ?? [];
 $detailStats = $detailStats ?? [
     'total_scores' => 0,
@@ -88,6 +95,293 @@ $modeLabel = $detailMode === 'final' ? 'توصیه نهایی' : 'Wash-Up';
 $secondaryModeLabel = $detailMode === 'final' ? 'Wash-Up' : 'توصیه نهایی';
 $secondaryModeLink = $detailMode === 'final' ? $washUpLink : $finalLink;
 $secondaryModeIcon = $detailMode === 'final' ? 'document-text-outline' : 'checkmark-done-outline';
+
+$useLegacyWashUpLayout = $useLegacyWashUpLayout ?? false;
+$legacyLayoutLink = $legacyLayoutLink ?? ($washUpLink ?? UtilityHelper::currentUrl());
+$modernLayoutLink = $modernLayoutLink ?? ($washUpLink ?? UtilityHelper::currentUrl());
+
+$globalEvaluatorStats = [];
+$preparedCompetencies = [];
+$toolEvaluatorColumnsMap = [];
+
+foreach ($competencySummaries as $competency) {
+    if (!is_array($competency)) {
+        continue;
+    }
+
+    $examples = [];
+    if (!empty($competency['examples']) && is_array($competency['examples'])) {
+        $examples = array_values($competency['examples']);
+    }
+
+    $toolCells = [];
+    if (!empty($competency['tool_cells']) && is_array($competency['tool_cells'])) {
+        $toolCells = array_values($competency['tool_cells']);
+    }
+
+    $toolCellsById = [];
+    $toolTotalsSum = 0.0;
+    $toolTotalsCount = 0;
+    $toolScorerTotals = [];
+
+    foreach ($toolCells as $cell) {
+        $toolId = (int) ($cell['tool_id'] ?? 0);
+        if ($toolId > 0) {
+            $toolCellsById[$toolId] = $cell;
+        }
+        $toolCountValue = (int) ($cell['count'] ?? 0);
+        if (isset($cell['total']) && $cell['total'] !== null && $toolCountValue > 0) {
+            $toolTotalsSum += (float) $cell['total'];
+            $toolTotalsCount++;
+        }
+        if (!empty($cell['scorers']) && is_array($cell['scorers'])) {
+            foreach ($cell['scorers'] as $scorerLabel) {
+                $normalizedLabel = trim((string) $scorerLabel);
+                if ($normalizedLabel === '') {
+                    $normalizedLabel = 'ارزیاب نامشخص';
+                }
+                if ($toolId > 0) {
+                    if (!isset($toolScorerTotals[$toolId])) {
+                        $toolScorerTotals[$toolId] = [];
+                    }
+                    if (!isset($toolScorerTotals[$toolId][$normalizedLabel])) {
+                        $toolScorerTotals[$toolId][$normalizedLabel] = [
+                            'label' => $normalizedLabel,
+                            'total' => 0.0,
+                            'count' => 0,
+                        ];
+                    }
+                }
+            }
+        }
+    }
+
+    $toolsWithScores = array_values(array_filter($toolCells, static function (array $cell): bool {
+        $count = (int) ($cell['count'] ?? 0);
+        $hasTotal = array_key_exists('total', $cell) && $cell['total'] !== null;
+        $hasAverage = array_key_exists('average', $cell) && $cell['average'] !== null;
+        return $count > 0 || $hasTotal || $hasAverage;
+    }));
+    if (empty($toolsWithScores) && !empty($toolCells)) {
+        $toolsWithScores = $toolCells;
+    }
+
+    $examplesCount = (int) ($competency['examples_count'] ?? count($examples));
+    $overallCount = (int) ($competency['overall_count'] ?? 0);
+    $countBase = $examplesCount > 0 ? $examplesCount : $overallCount;
+    $sumBase = $examplesCount > 0 ? ($competency['examples_sum'] ?? 0) : ($competency['overall_sum'] ?? 0);
+    $avgBase = $examplesCount > 0 ? ($competency['examples_average'] ?? null) : ($competency['overall_average'] ?? null);
+    $hasScores = $countBase > 0;
+    $sumDisplay = $hasScores ? UtilityHelper::englishToPersian(number_format((float) $sumBase, 2)) : '۰.۰۰';
+    $avgDisplay = $hasScores && $avgBase !== null ? UtilityHelper::englishToPersian(number_format((float) $avgBase, 2)) : '—';
+    $countDisplay = UtilityHelper::englishToPersian((string) $countBase);
+
+    $evaluatorStats = [];
+    $exampleScoresTotal = 0.0;
+    $exampleScoresCount = 0;
+    if (!empty($examples)) {
+        foreach ($examples as $exampleEntry) {
+            $scores = $exampleEntry['scores'] ?? [];
+            if (!is_array($scores)) {
+                continue;
+            }
+            foreach ($scores as $scoreEntry) {
+                if (!isset($scoreEntry['score'])) {
+                    continue;
+                }
+                $label = trim((string) ($scoreEntry['scorer_label'] ?? ''));
+                if ($label === '') {
+                    $label = 'ارزیاب نامشخص';
+                }
+                $scoreValue = (float) $scoreEntry['score'];
+                $exampleScoresTotal += $scoreValue;
+                $exampleScoresCount++;
+                $toolIdForScore = (int) ($scoreEntry['tool_id'] ?? 0);
+                if ($toolIdForScore > 0) {
+                    if (!isset($toolScorerTotals[$toolIdForScore])) {
+                        $toolScorerTotals[$toolIdForScore] = [];
+                    }
+                    if (!isset($toolScorerTotals[$toolIdForScore][$label])) {
+                        $toolScorerTotals[$toolIdForScore][$label] = [
+                            'label' => $label,
+                            'total' => 0.0,
+                            'count' => 0,
+                        ];
+                    }
+                    $toolScorerTotals[$toolIdForScore][$label]['total'] += $scoreValue;
+                    $toolScorerTotals[$toolIdForScore][$label]['count']++;
+                }
+                if (!isset($evaluatorStats[$label])) {
+                    $evaluatorStats[$label] = [
+                        'total' => 0.0,
+                        'count' => 0,
+                    ];
+                }
+                $evaluatorStats[$label]['total'] += $scoreValue;
+                $evaluatorStats[$label]['count']++;
+            }
+        }
+    }
+
+    if (empty($evaluatorStats)) {
+        foreach ($toolCells as $cell) {
+            $scorerNames = $cell['scorers'] ?? [];
+            if (!is_array($scorerNames)) {
+                continue;
+            }
+            foreach ($scorerNames as $scorerName) {
+                $label = trim((string) $scorerName);
+                if ($label === '') {
+                    continue;
+                }
+                if (!isset($evaluatorStats[$label])) {
+                    $evaluatorStats[$label] = [
+                        'total' => null,
+                        'count' => 0,
+                    ];
+                }
+            }
+        }
+    }
+
+    $evaluatorTotalSum = 0.0;
+    $hasEvaluatorTotals = false;
+    foreach ($evaluatorStats as $stat) {
+        if ($stat['total'] !== null) {
+            $hasEvaluatorTotals = true;
+            $evaluatorTotalSum += $stat['total'];
+        }
+    }
+    $evaluatorTotalDisplay = $hasEvaluatorTotals
+        ? UtilityHelper::englishToPersian(number_format($evaluatorTotalSum, 2))
+        : '—';
+
+    foreach ($evaluatorStats as $label => $stat) {
+        if (!isset($globalEvaluatorStats[$label])) {
+            $globalEvaluatorStats[$label] = [
+                'total' => 0.0,
+                'count' => 0,
+                'has_value' => false,
+            ];
+        }
+        if ($stat['total'] !== null) {
+            $globalEvaluatorStats[$label]['total'] += $stat['total'];
+            $globalEvaluatorStats[$label]['count'] += $stat['count'];
+            $globalEvaluatorStats[$label]['has_value'] = true;
+        }
+    }
+
+    $exampleAverage = $exampleScoresCount > 0 ? $exampleScoresTotal / $exampleScoresCount : null;
+    $toolEvaluatorSum = 0.0;
+    $toolEvaluatorCount = 0;
+
+    $toolScorerBreakdown = [];
+    foreach ($toolScorerTotals as $toolIdKey => $scorerSet) {
+        $filteredSet = array_filter($scorerSet, static function (array $entry): bool {
+            $count = (int) ($entry['count'] ?? 0);
+            $total = $entry['total'] ?? null;
+            return $count > 0 && $total !== null;
+        });
+        if (empty($filteredSet)) {
+            continue;
+        }
+
+        uasort($filteredSet, static function (array $a, array $b): int {
+            return strcmp((string) ($a['label'] ?? ''), (string) ($b['label'] ?? ''));
+        });
+
+        $scorerEntries = [];
+        foreach ($filteredSet as $entry) {
+            $label = $entry['label'] ?? 'ارزیاب';
+            $count = (int) ($entry['count'] ?? 0);
+            $total = (float) ($entry['total'] ?? 0.0);
+            $average = $count > 0 ? $total / max($count, 1) : null;
+            $entry['count'] = $count;
+            $entry['total'] = $total;
+            $entry['average'] = $average;
+            $scorerEntries[] = $entry;
+
+            $toolEvaluatorSum += $total;
+            $toolEvaluatorCount++;
+
+            if (!isset($toolEvaluatorColumnsMap[$toolIdKey])) {
+                $toolEvaluatorColumnsMap[$toolIdKey] = [];
+            }
+            if (!isset($toolEvaluatorColumnsMap[$toolIdKey][$label])) {
+                $toolName = $toolCellsById[$toolIdKey]['tool_name'] ?? ($toolHeaderMap[$toolIdKey]['name'] ?? 'ابزار');
+                $toolEvaluatorColumnsMap[$toolIdKey][$label] = [
+                    'tool_id' => $toolIdKey,
+                    'tool_name' => $toolName,
+                    'scorer_label' => $label,
+                ];
+            }
+        }
+
+        if (!empty($scorerEntries)) {
+            $toolScorerBreakdown[$toolIdKey] = $scorerEntries;
+        }
+    }
+
+    if ($toolEvaluatorCount > 0) {
+        $toolTotalsSum = $toolEvaluatorSum;
+        $toolTotalsCount = $toolEvaluatorCount;
+    }
+
+    $toolTotalsAverage = $toolTotalsCount > 0 ? $toolTotalsSum / $toolTotalsCount : null;
+
+    $agreedScoreName = 'agreed_scores[' . (int) ($competency['id'] ?? 0) . ']';
+    $storedAgreedScore = $competency['agreed_score'] ?? null;
+    $agreedScoreValue = '';
+
+    if ($storedAgreedScore !== null) {
+        $agreedScoreValue = number_format((float) $storedAgreedScore, 2, '.', '');
+    } elseif ($toolTotalsAverage !== null) {
+        $agreedScoreValue = number_format((float) $toolTotalsAverage, 2, '.', '');
+    } elseif ($exampleAverage !== null) {
+        $agreedScoreValue = number_format((float) $exampleAverage, 2, '.', '');
+    } elseif ($avgBase !== null) {
+        $agreedScoreValue = number_format((float) $avgBase, 2, '.', '');
+    }
+
+    $preparedCompetencies[] = [
+        'competency' => $competency,
+        'examples' => $examples,
+        'tool_cells_by_id' => $toolCellsById,
+        'tools_for_display' => $toolsWithScores,
+        'sum_display' => $sumDisplay,
+        'avg_display' => $avgDisplay,
+        'count_display' => $countDisplay,
+        'agreed_name' => $agreedScoreName,
+        'agreed_value' => $agreedScoreValue,
+        'evaluator_stats' => $evaluatorStats,
+        'evaluator_total_display' => $evaluatorTotalDisplay,
+        'example_average' => $exampleAverage,
+        'example_scores_total' => $exampleScoresTotal,
+        'example_scores_count' => $exampleScoresCount,
+        'tool_totals_average' => $toolTotalsAverage,
+        'tool_totals_sum' => $toolTotalsSum,
+        'tool_totals_count' => $toolTotalsCount,
+        'tool_scorer_breakdown' => $toolScorerBreakdown,
+    ];
+}
+
+$toolEvaluatorColumns = [];
+foreach ($toolHeaders as $toolHeader) {
+    $toolId = (int) ($toolHeader['id'] ?? 0);
+    if ($toolId <= 0) {
+        continue;
+    }
+    if (empty($toolEvaluatorColumnsMap[$toolId])) {
+        continue;
+    }
+    $columns = $toolEvaluatorColumnsMap[$toolId];
+    uasort($columns, static function (array $a, array $b): int {
+        return strcmp((string) ($a['scorer_label'] ?? ''), (string) ($b['scorer_label'] ?? ''));
+    });
+    foreach ($columns as $column) {
+        $toolEvaluatorColumns[] = $column;
+    }
+}
 
 $additional_css = $additional_css ?? [];
 $additional_js = $additional_js ?? [];
@@ -195,6 +489,93 @@ $inline_styles .= <<<'CSS'
         font-size: 1.1rem;
         font-weight: 600;
         color: #0f172a;
+    }
+    .legacy-competency-table thead th {
+        background: #f1f5f9;
+        color: #0f172a;
+        font-weight: 600;
+        border: none;
+        vertical-align: middle;
+    }
+    .legacy-competency-table tbody td {
+        border-color: #e2e8f0;
+        padding: 18px 16px;
+        vertical-align: top;
+    }
+    .legacy-competency-cell .title {
+        display: block;
+        font-weight: 600;
+        color: #0f172a;
+        margin-bottom: 6px;
+    }
+    .legacy-example-list {
+        margin: 0;
+        padding-inline-start: 20px;
+        display: grid;
+        gap: 4px;
+        font-size: 0.88rem;
+        color: #475569;
+    }
+    .legacy-example-list li {
+        line-height: 1.6;
+    }
+    .legacy-example-list li + li {
+        border-top: 1px solid #e2e8f0;
+        padding-top: 6px;
+        margin-top: 6px;
+    }
+    .legacy-tool-total {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .legacy-tool-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+    .legacy-tool-header .tool {
+        font-weight: 600;
+        color: #0f172a;
+        font-size: 0.85rem;
+    }
+    .legacy-tool-header .scorer {
+        font-size: 0.82rem;
+        color: #1d4ed8;
+    }
+    .legacy-tool-scorer-list {
+        display: grid;
+        gap: 6px;
+    }
+    .legacy-tool-scorer-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 6px 10px;
+        font-size: 0.85rem;
+        color: #334155;
+    }
+    .legacy-tool-scorer-item .label {
+        font-weight: 600;
+        color: #1d4ed8;
+    }
+    .legacy-tool-scorer-item .value {
+        font-weight: 600;
+        color: #0f172a;
+    }
+    .layout-toggle .btn {
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding-inline: 18px;
+    }
+    .layout-toggle ion-icon {
+        font-size: 1rem;
     }
     .empty-state {
         background: #f8fafc;
@@ -782,297 +1163,326 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
             </div>
 
             <div class="col-12">
-                <h4 class="mb-16 text-gray-900 fw-semibold">شایستگی‌ها و جزئیات امتیازدهی</h4>
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-16 gap-12">
+                    <h4 class="mb-0 text-gray-900 fw-semibold">شایستگی‌ها و جزئیات امتیازدهی</h4>
+                    <div class="layout-toggle d-flex align-items-center gap-8">
+                        <?php if ($useLegacyWashUpLayout): ?>
+                            <a href="<?= htmlspecialchars($modernLayoutLink, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-primary btn-sm">
+                                <ion-icon name="sparkles-outline"></ion-icon>
+                                بازگشت به نمای جدید
+                            </a>
+                            <a href="<?= htmlspecialchars($listLink, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-light btn-sm">
+                                <ion-icon name="list-outline"></ion-icon>
+                                بازگشت به لیست
+                            </a>
+                        <?php else: ?>
+                            <a href="<?= htmlspecialchars($legacyLayoutLink, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-secondary btn-sm">
+                                <ion-icon name="time-outline"></ion-icon>
+                                نمایش نسخه قدیم Wash-Up
+                            </a>
+                            <a href="<?= htmlspecialchars($listLink, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-light btn-sm">
+                                <ion-icon name="list-outline"></ion-icon>
+                                بازگشت به لیست
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
 
-            <?php $globalEvaluatorStats = []; ?>
-            <?php if (!empty($competencySummaries)): ?>
+            <?php if (!empty($preparedCompetencies)): ?>
                 <div class="col-12">
                     <?php if ($canEditAgreedScores): ?>
-                        <form action="<?= htmlspecialchars($agreedScoresAction, ENT_QUOTES, 'UTF-8'); ?>" method="post" class="agreed-score-form">
+                        <form action="<?= htmlspecialchars($agreedScoresAction, ENT_QUOTES, 'UTF-8'); ?>" method="post" class="agreed-score-form<?= $useLegacyWashUpLayout ? ' mb-3' : ''; ?>">
                     <?php endif; ?>
                         <div class="card washup-card shadow-sm">
                             <div class="card-body p-24">
                                 <?php if ($canEditAgreedScores): ?>
                                     <input type="hidden" name="evaluation_id" value="<?= htmlspecialchars((string) ($evaluationSummary['id'] ?? 0), ENT_QUOTES, 'UTF-8'); ?>">
                                     <input type="hidden" name="evaluatee_id" value="<?= htmlspecialchars((string) ($evaluateeSummary['id'] ?? 0), ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" name="layout" value="<?= htmlspecialchars($useLegacyWashUpLayout ? 'legacy' : 'modern', ENT_QUOTES, 'UTF-8'); ?>">
                                 <?php endif; ?>
                                 <div class="table-responsive">
-                                <table class="table competency-table align-middle mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th>شایستگی</th>
-                                            <th>ابزارهای دارای امتیاز</th>
-                                            <th>جزئیات ارزیاب‌ها</th>
-                                            <th>جمع امتیاز مصداق‌ها</th>
-                                            <th>میانگین امتیاز</th>
-                                            <th>تعداد امتیاز</th>
-                                            <th>امتیاز کل ارزیاب‌ها</th>
-                                            <th>امتیاز توافقی</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($competencySummaries as $competency): ?>
-                                            <?php
-                                                $examplesCount = (int) ($competency['examples_count'] ?? 0);
-                                                $overallCount = (int) ($competency['overall_count'] ?? 0);
-                                                $countBase = $examplesCount > 0 ? $examplesCount : $overallCount;
-                                                $sumBase = $examplesCount > 0 ? ($competency['examples_sum'] ?? 0) : ($competency['overall_sum'] ?? 0);
-                                                $avgBase = $examplesCount > 0 ? ($competency['examples_average'] ?? null) : ($competency['overall_average'] ?? null);
-                                                $hasScores = $countBase > 0;
-                                                $sumDisplay = $hasScores ? UtilityHelper::englishToPersian(number_format((float) $sumBase, 2)) : '۰.۰۰';
-                                                $avgDisplay = $hasScores && $avgBase !== null ? UtilityHelper::englishToPersian(number_format((float) $avgBase, 2)) : '—';
-                                                $countDisplay = UtilityHelper::englishToPersian((string) $countBase);
-                                                $toolCells = $competency['tool_cells'] ?? [];
-                                                $toolsWithScores = array_values(array_filter($toolCells, static function (array $cell): bool {
-                                                    $count = (int) ($cell['count'] ?? 0);
-                                                    $hasTotal = array_key_exists('total', $cell) && $cell['total'] !== null;
-                                                    $hasAverage = array_key_exists('average', $cell) && $cell['average'] !== null;
-                                                    return $count > 0 || $hasTotal || $hasAverage;
-                                                }));
-                                                if (empty($toolsWithScores) && !empty($toolCells)) {
-                                                    $toolsWithScores = $toolCells;
-                                                }
-
-                                                $evaluatorStats = [];
-                                                if (!empty($competency['examples']) && is_array($competency['examples'])) {
-                                                    foreach ($competency['examples'] as $exampleEntry) {
-                                                        $scores = $exampleEntry['scores'] ?? [];
-                                                        if (!is_array($scores)) {
-                                                            continue;
-                                                        }
-                                                        foreach ($scores as $scoreEntry) {
-                                                            $label = trim((string) ($scoreEntry['scorer_label'] ?? ''));
-                                                            if ($label === '') {
-                                                                $label = 'ارزیاب نامشخص';
-                                                            }
-                                                            if (!isset($scoreEntry['score'])) {
-                                                                continue;
-                                                            }
-                                                            $scoreValue = (float) $scoreEntry['score'];
-                                                            if (!isset($evaluatorStats[$label])) {
-                                                                $evaluatorStats[$label] = [
-                                                                    'total' => 0.0,
-                                                                    'count' => 0,
-                                                                ];
-                                                            }
-                                                            $evaluatorStats[$label]['total'] += $scoreValue;
-                                                            $evaluatorStats[$label]['count']++;
-                                                        }
-                                                    }
-                                                }
-
-                                                if (empty($evaluatorStats)) {
-                                                    foreach ($toolCells as $cell) {
-                                                        $scorerNames = $cell['scorers'] ?? [];
-                                                        if (!is_array($scorerNames)) {
-                                                            continue;
-                                                        }
-                                                        foreach ($scorerNames as $scorerName) {
-                                                            $label = trim((string) $scorerName);
-                                                            if ($label === '') {
-                                                                continue;
-                                                            }
-                                                            if (!isset($evaluatorStats[$label])) {
-                                                                $evaluatorStats[$label] = [
-                                                                    'total' => null,
-                                                                    'count' => 0,
-                                                                ];
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                $evaluatorTotalSum = 0.0;
-                                                $hasEvaluatorTotals = false;
-                                                foreach ($evaluatorStats as $stat) {
-                                                    if ($stat['total'] !== null) {
-                                                        $hasEvaluatorTotals = true;
-                                                        $evaluatorTotalSum += $stat['total'];
-                                                    }
-                                                }
-                                                if ($hasEvaluatorTotals) {
-                                                    $evaluatorTotalDisplay = UtilityHelper::englishToPersian(number_format($evaluatorTotalSum, 2));
-                                                } else {
-                                                    $evaluatorTotalDisplay = '—';
-                                                }
-
-                                                foreach ($evaluatorStats as $label => $stat) {
-                                                    if (!isset($globalEvaluatorStats[$label])) {
-                                                        $globalEvaluatorStats[$label] = [
-                                                            'total' => 0.0,
-                                                            'count' => 0,
-                                                            'has_value' => false,
-                                                        ];
-                                                    }
-                                                    if ($stat['total'] !== null) {
-                                                        $globalEvaluatorStats[$label]['total'] += $stat['total'];
-                                                        $globalEvaluatorStats[$label]['count'] += $stat['count'];
-                                                        $globalEvaluatorStats[$label]['has_value'] = true;
-                                                    }
-                                                }
-                                            ?>
-                                            <tr>
-                                                <td class="competency-cell">
-                                                    <span class="title">
-                                                        <?= htmlspecialchars($competency['title'] ?? 'شایستگی', ENT_QUOTES, 'UTF-8'); ?>
-                                                    </span>
-                                                    <div class="meta">
-                                                        <?php if (!empty($competency['dimension'])): ?>
-                                                            <span class="badge">
-                                                                <?= htmlspecialchars($competency['dimension'], ENT_QUOTES, 'UTF-8'); ?>
-                                                            </span>
-                                                        <?php endif; ?>
-                                                        <?php if (!empty($competency['code'])): ?>
-                                                            <span class="badge">
-                                                                کد: <?= htmlspecialchars($competency['code'], ENT_QUOTES, 'UTF-8'); ?>
-                                                            </span>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <?php if (!empty($toolsWithScores)): ?>
-                                                        <div class="d-flex flex-column gap-12">
-                                                            <?php foreach ($toolsWithScores as $toolCell): ?>
-                                                                <div class="tool-chip">
-                                                                    <div class="tool-name">
-                                                                        <?= washup_escape_html($toolCell['tool_name'] ?? 'ابزار', 'ابزار'); ?>
-                                                                    </div>
-                                                                    <div class="tool-meta">
-                                                                        <?php if (array_key_exists('total', $toolCell) && $toolCell['total'] !== null): ?>
-                                                                            <span>جمع: <?= washup_escape_html(UtilityHelper::englishToPersian(number_format((float) $toolCell['total'], 2))); ?></span>
-                                                                        <?php endif; ?>
-                                                                        <?php if (array_key_exists('average', $toolCell) && $toolCell['average'] !== null): ?>
-                                                                            <span>میانگین: <?= washup_escape_html(UtilityHelper::englishToPersian(number_format((float) $toolCell['average'], 2))); ?></span>
-                                                                        <?php endif; ?>
-                                                                        <?php if (!empty($toolCell['count'])): ?>
-                                                                            <span>تعداد امتیاز: <?= washup_escape_html(UtilityHelper::englishToPersian((string) $toolCell['count']), '۰'); ?></span>
-                                                                        <?php endif; ?>
-                                                                    </div>
-                                                                    <?php if (!empty($toolCell['scorers'])): ?>
-                                                                        <div class="d-flex flex-wrap gap-6">
-                                                                            <?php foreach ($toolCell['scorers'] as $scorerName): ?>
-                                                                                <span class="mini-badge">
-                                                                                    <ion-icon name="person-outline"></ion-icon>
-                                                                                    <?= washup_escape_html($scorerName, 'ارزیاب'); ?>
-                                                                                </span>
-                                                                            <?php endforeach; ?>
-                                                                        </div>
-                                                                    <?php endif; ?>
+                                    <?php if ($useLegacyWashUpLayout): ?>
+                                        <table class="table legacy-competency-table align-middle mb-0 text-center">
+                                            <thead>
+                                                <tr>
+                                                    <th>شایستگی</th>
+                                                    <th>مصداق‌های رفتاری</th>
+                                                    <?php if (!empty($toolEvaluatorColumns)): ?>
+                                                        <?php foreach ($toolEvaluatorColumns as $column): ?>
+                                                            <th>
+                                                                <div class="legacy-tool-header">
+                                                                    <span class="tool"><?= htmlspecialchars($column['tool_name'] ?? 'ابزار', ENT_QUOTES, 'UTF-8'); ?></span>
+                                                                    <span class="scorer"><?= htmlspecialchars($column['scorer_label'] ?? 'ارزیاب', ENT_QUOTES, 'UTF-8'); ?></span>
                                                                 </div>
-                                                            <?php endforeach; ?>
-                                                        </div>
+                                                            </th>
+                                                        <?php endforeach; ?>
                                                     <?php else: ?>
-                                                        <span class="text-muted small">ابزاری برای این شایستگی امتیازدهی نشده است.</span>
+                                                        <?php foreach ($toolHeaders as $toolHeader): ?>
+                                                            <th>
+                                                                <div><?= htmlspecialchars($toolHeader['name'] ?? 'ابزار', ENT_QUOTES, 'UTF-8'); ?></div>
+                                                                <?php if (!empty($toolHeader['scorers'])): ?>
+                                                                    <small class="text-muted"><?= htmlspecialchars(implode('، ', $toolHeader['scorers']), ENT_QUOTES, 'UTF-8'); ?></small>
+                                                                <?php endif; ?>
+                                                            </th>
+                                                        <?php endforeach; ?>
                                                     <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <?php if (!empty($evaluatorStats)): ?>
-                                                        <div class="evaluator-list">
-                                                            <?php foreach ($evaluatorStats as $label => $stat): ?>
-                                                                <?php
-                                                                    $totalValue = $stat['total'];
-                                                                    $countValue = $stat['count'];
-                                                                    $averageValue = ($totalValue !== null && $countValue > 0)
-                                                                        ? round($totalValue / max($countValue, 1), 2)
-                                                                        : null;
-                                                                    $totalDisplay = $totalValue !== null
-                                                                        ? UtilityHelper::englishToPersian(number_format((float) $totalValue, 2))
-                                                                        : '—';
-                                                                    $averageDisplay = $averageValue !== null
-                                                                        ? UtilityHelper::englishToPersian(number_format((float) $averageValue, 2))
-                                                                        : '—';
-                                                                    $countDisplayEvaluator = $countValue > 0
-                                                                        ? UtilityHelper::englishToPersian((string) $countValue)
-                                                                        : '۰';
-                                                                ?>
-                                                                <div class="evaluator-chip">
-                                                                    <span class="name">
-                                                                        <ion-icon name="person-circle-outline"></ion-icon>
-                                                                        <?= washup_escape_html($label, 'ارزیاب'); ?>
-                                                                    </span>
-                                                                    <span class="score">
-                                                                        <span class="label">جمع</span>
-                                                                        <span><?= washup_escape_html($totalDisplay); ?></span>
-                                                                    </span>
-                                                                    <span class="score">
-                                                                        <span class="label">میانگین</span>
-                                                                        <span><?= washup_escape_html($averageDisplay); ?></span>
-                                                                    </span>
-                                                                    <span class="score">
-                                                                        <span class="label">تعداد</span>
-                                                                        <span><?= washup_escape_html($countDisplayEvaluator, '۰'); ?></span>
-                                                                    </span>
-                                                                </div>
-                                                            <?php endforeach; ?>
-                                                        </div>
-                                                    <?php else: ?>
-                                                        <span class="text-muted small">اطلاعاتی برای ارزیاب‌ها ثبت نشده است.</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <div class="competency-stat">
-                                                        <span class="stat-label">جمع امتیاز</span>
-                                                        <span class="stat-value">
-                                                            <?= htmlspecialchars($sumDisplay, ENT_QUOTES, 'UTF-8'); ?>
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div class="competency-stat">
-                                                        <span class="stat-label">میانگین امتیاز</span>
-                                                        <span class="stat-value">
-                                                            <?= htmlspecialchars($avgDisplay, ENT_QUOTES, 'UTF-8'); ?>
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div class="competency-stat">
-                                                        <span class="stat-label">تعداد امتیاز</span>
-                                                        <span class="stat-value">
-                                                            <?= htmlspecialchars($countDisplay, ENT_QUOTES, 'UTF-8'); ?>
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div class="competency-stat">
-                                                        <span class="stat-label">مجموع ارزیاب‌ها</span>
-                                                        <span class="stat-value">
-                                                            <?= htmlspecialchars($evaluatorTotalDisplay, ENT_QUOTES, 'UTF-8'); ?>
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td>
+                                                    <th>میانگین امتیاز ابزارها</th>
+                                                    <th>امتیاز توافقی</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ($preparedCompetencies as $item): ?>
                                                     <?php
-                                                        $agreedScoreName = 'agreed_scores[' . (int) ($competency['id'] ?? 0) . ']';
-                                                        $agreedScoreValue = '';
-                                                        $storedAgreedScore = $competency['agreed_score'] ?? null;
-                                                        if ($storedAgreedScore !== null) {
-                                                            $agreedScoreValue = number_format((float) $storedAgreedScore, 2, '.', '');
-                                                        } elseif ($avgBase !== null) {
-                                                            $agreedScoreValue = number_format((float) $avgBase, 2, '.', '');
-                                                        }
+                                                        $competency = $item['competency'];
+                                                        $examples = $item['examples'];
+                                                        $toolCellsById = $item['tool_cells_by_id'];
+                                                        $toolScorerBreakdownMap = $item['tool_scorer_breakdown'] ?? [];
                                                     ?>
-                                                    <div class="competency-stat">
-                                                        <span class="stat-label">امتیاز توافقی</span>
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            class="agreed-score-input"
-                                                            name="<?= htmlspecialchars($agreedScoreName, ENT_QUOTES, 'UTF-8'); ?>"
-                                                            value="<?= htmlspecialchars($agreedScoreValue, ENT_QUOTES, 'UTF-8'); ?>"
-                                                            placeholder="—"
-                                                            inputmode="decimal"
-                                                            dir="ltr"
-                                                            <?= $canEditAgreedScores ? '' : ' readonly'; ?>
-                                                        />
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
+                                                    <tr>
+                                                        <td class="legacy-competency-cell text-start">
+                                                            <span class="title"><?= htmlspecialchars($competency['title'] ?? 'شایستگی', ENT_QUOTES, 'UTF-8'); ?></span>
+                                                        </td>
+                                                        <td class="text-start">
+                                                            <?php if (!empty($examples)): ?>
+                                                                <ul class="legacy-example-list">
+                                                                    <?php foreach ($examples as $example): ?>
+                                                                        <li><?= htmlspecialchars($example['text'] ?? '', ENT_QUOTES, 'UTF-8'); ?></li>
+                                                                    <?php endforeach; ?>
+                                                                </ul>
+                                                            <?php else: ?>
+                                                                <span class="text-muted">مصداقی ثبت نشده است.</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <?php if (!empty($toolEvaluatorColumns)): ?>
+                                                            <?php
+                                                                $scorerLookup = [];
+                                                                foreach ($toolScorerBreakdownMap as $lookupToolId => $entries) {
+                                                                    foreach ($entries as $entry) {
+                                                                        $lookupLabel = $entry['label'] ?? 'ارزیاب';
+                                                                        $scorerLookup[$lookupToolId][$lookupLabel] = $entry;
+                                                                    }
+                                                                }
+                                                            ?>
+                                                            <?php foreach ($toolEvaluatorColumns as $column): ?>
+                                                                <?php
+                                                                    $toolId = (int) ($column['tool_id'] ?? 0);
+                                                                    $scorerLabel = $column['scorer_label'] ?? 'ارزیاب';
+                                                                    $scoreEntry = $toolId > 0 && isset($scorerLookup[$toolId][$scorerLabel])
+                                                                        ? $scorerLookup[$toolId][$scorerLabel]
+                                                                        : null;
+                                                                    $totalValue = $scoreEntry !== null && isset($scoreEntry['total']) ? (float) $scoreEntry['total'] : null;
+                                                                ?>
+                                                                <td class="legacy-tool-cell">
+                                                                    <?php if ($totalValue !== null): ?>
+                                                                        <div class="legacy-tool-total">
+                                                                            <?= UtilityHelper::englishToPersian(number_format($totalValue, 2)); ?>
+                                                                        </div>
+                                                                    <?php else: ?>
+                                                                        <span class="text-muted">—</span>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                            <?php endforeach; ?>
+                                                        <?php else: ?>
+                                                            <?php foreach ($toolHeaders as $toolHeader): ?>
+                                                                <?php
+                                                                    $toolId = (int) ($toolHeader['id'] ?? 0);
+                                                                    $cell = $toolId > 0 ? ($toolCellsById[$toolId] ?? null) : null;
+                                                                    $totalValue = $cell !== null && isset($cell['total']) ? (float) $cell['total'] : null;
+                                                                ?>
+                                                                <td class="legacy-tool-cell">
+                                                                    <?php if ($cell !== null && $totalValue !== null): ?>
+                                                                        <div class="legacy-tool-total">
+                                                                            <?= UtilityHelper::englishToPersian(number_format($totalValue, 2)); ?>
+                                                                        </div>
+                                                                    <?php else: ?>
+                                                                        <span class="text-muted">—</span>
+                                                                    <?php endif; ?>
+                                                                </td>
+                                                            <?php endforeach; ?>
+                                                        <?php endif; ?>
+                                                        <td>
+                                                            <?php if (isset($item['tool_totals_average']) && $item['tool_totals_average'] !== null): ?>
+                                                                <span class="legacy-tool-total">
+                                                                    <?= UtilityHelper::englishToPersian(number_format((float) $item['tool_totals_average'], 2)); ?>
+                                                                </span>
+                                                            <?php else: ?>
+                                                                <span class="text-muted">—</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                class="agreed-score-input"
+                                                                name="<?= htmlspecialchars($item['agreed_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                                value="<?= htmlspecialchars($item['agreed_value'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                                placeholder="—"
+                                                                inputmode="decimal"
+                                                                dir="ltr"
+                                                                <?= $canEditAgreedScores ? '' : ' readonly'; ?>
+                                                            />
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    <?php else: ?>
+                                        <table class="table competency-table align-middle mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>شایستگی</th>
+                                                    <th>ابزارهای دارای امتیاز</th>
+                                                    <th>جزئیات ارزیاب‌ها</th>
+                                                    <th>جمع امتیاز مصداق‌ها</th>
+                                                    <th>میانگین امتیاز</th>
+                                                    <th>تعداد امتیاز</th>
+                                                    <th>امتیاز کل ارزیاب‌ها</th>
+                                                    <th>امتیاز توافقی</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ($preparedCompetencies as $item): ?>
+                                                    <?php
+                                                        $competency = $item['competency'];
+                                                        $toolsWithScores = $item['tools_for_display'];
+                                                        $evaluatorStats = $item['evaluator_stats'];
+                                                    ?>
+                                                    <tr>
+                                                        <td class="competency-cell">
+                                                            <span class="title"><?= htmlspecialchars($competency['title'] ?? 'شایستگی', ENT_QUOTES, 'UTF-8'); ?></span>
+                                                            <div class="meta">
+                                                                <?php if (!empty($competency['dimension'])): ?>
+                                                                    <span class="badge"><?= htmlspecialchars($competency['dimension'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                                                <?php endif; ?>
+                                                                <?php if (!empty($competency['code'])): ?>
+                                                                    <span class="badge">کد: <?= htmlspecialchars($competency['code'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                                                <?php endif; ?>
+                                                                <?php if (!empty($item['examples'])): ?>
+                                                                    <span class="badge"><?= UtilityHelper::englishToPersian((string) count($item['examples'])); ?> نمونه رفتاری</span>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <?php if (!empty($toolsWithScores)): ?>
+                                                                <div class="d-grid gap-2">
+                                                                    <?php foreach ($toolsWithScores as $cell): ?>
+                                                                        <div class="tool-chip">
+                                                                            <span class="tool-name"><?= htmlspecialchars($cell['tool_name'] ?? 'ابزار', ENT_QUOTES, 'UTF-8'); ?></span>
+                                                                            <div class="tool-meta">
+                                                                                <?php if (!empty($cell['total'])): ?>
+                                                                                    <span class="mini-badge">
+                                                                                        <ion-icon name="calculator-outline"></ion-icon>
+                                                                                        جمع: <?= UtilityHelper::englishToPersian(number_format((float) $cell['total'], 2)); ?>
+                                                                                    </span>
+                                                                                <?php endif; ?>
+                                                                                <?php if (!empty($cell['average'])): ?>
+                                                                                    <span class="mini-badge">
+                                                                                        <ion-icon name="speedometer-outline"></ion-icon>
+                                                                                        میانگین: <?= UtilityHelper::englishToPersian(number_format((float) $cell['average'], 2)); ?>
+                                                                                    </span>
+                                                                                <?php endif; ?>
+                                                                                <?php if (!empty($cell['count'])): ?>
+                                                                                    <span class="mini-badge">
+                                                                                        <ion-icon name="git-branch-outline"></ion-icon>
+                                                                                        تعداد: <?= UtilityHelper::englishToPersian((string) $cell['count']); ?>
+                                                                                    </span>
+                                                                                <?php endif; ?>
+                                                                            </div>
+                                                                            <?php if (!empty($cell['scorers'])): ?>
+                                                                                <div class="tool-meta">
+                                                                                    <ion-icon name="people-circle-outline"></ion-icon>
+                                                                                    <?= htmlspecialchars(implode('، ', $cell['scorers']), ENT_QUOTES, 'UTF-8'); ?>
+                                                                                </div>
+                                                                            <?php endif; ?>
+                                                                        </div>
+                                                                    <?php endforeach; ?>
+                                                                </div>
+                                                            <?php else: ?>
+                                                                <span class="text-muted small">ابزاری برای این شایستگی امتیازدهی نشده است.</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td>
+                                                            <?php if (!empty($evaluatorStats)): ?>
+                                                                <div class="d-grid gap-2">
+                                                                    <?php foreach ($evaluatorStats as $label => $stat): ?>
+                                                                        <?php
+                                                                            $totalEvaluator = $stat['total'];
+                                                                            $countEvaluator = (int) ($stat['count'] ?? 0);
+                                                                            $avgEvaluator = $countEvaluator > 0 && $totalEvaluator !== null
+                                                                                ? round($totalEvaluator / max($countEvaluator, 1), 2)
+                                                                                : null;
+                                                                        ?>
+                                                                        <div class="evaluator-chip">
+                                                                            <span class="name">
+                                                                                <ion-icon name="person-circle-outline"></ion-icon>
+                                                                                <?= washup_escape_html($label, 'ارزیاب'); ?>
+                                                                            </span>
+                                                                            <span class="score">
+                                                                                <span class="label">جمع</span>
+                                                                                <span><?= $totalEvaluator !== null ? UtilityHelper::englishToPersian(number_format((float) $totalEvaluator, 2)) : '—'; ?></span>
+                                                                            </span>
+                                                                            <span class="score">
+                                                                                <span class="label">میانگین</span>
+                                                                                <span><?= $avgEvaluator !== null ? UtilityHelper::englishToPersian(number_format((float) $avgEvaluator, 2)) : '—'; ?></span>
+                                                                            </span>
+                                                                            <span class="score">
+                                                                                <span class="label">تعداد</span>
+                                                                                <span><?= UtilityHelper::englishToPersian((string) $countEvaluator); ?></span>
+                                                                            </span>
+                                                                        </div>
+                                                                    <?php endforeach; ?>
+                                                                </div>
+                                                            <?php else: ?>
+                                                                <span class="text-muted small">اطلاعاتی از ارزیاب‌ها موجود نیست.</span>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td>
+                                                            <div class="competency-stat">
+                                                                <span class="stat-label">جمع امتیاز</span>
+                                                                <span class="stat-value"><?= htmlspecialchars($item['sum_display'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="competency-stat">
+                                                                <span class="stat-label">میانگین امتیاز</span>
+                                                                <span class="stat-value"><?= htmlspecialchars($item['avg_display'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="competency-stat">
+                                                                <span class="stat-label">تعداد امتیاز</span>
+                                                                <span class="stat-value"><?= htmlspecialchars($item['count_display'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="competency-stat">
+                                                                <span class="stat-label">مجموع ارزیاب‌ها</span>
+                                                                <span class="stat-value"><?= htmlspecialchars($item['evaluator_total_display'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="competency-stat">
+                                                                <span class="stat-label">امتیاز توافقی</span>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    class="agreed-score-input"
+                                                                    name="<?= htmlspecialchars($item['agreed_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                                    value="<?= htmlspecialchars($item['agreed_value'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                                    placeholder="—"
+                                                                    inputmode="decimal"
+                                                                    dir="ltr"
+                                                                    <?= $canEditAgreedScores ? '' : ' readonly'; ?>
+                                                                />
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    <?php endif; ?>
+                                </div>
                                 <?php if ($canEditAgreedScores): ?>
                                     <div class="d-flex flex-wrap justify-content-between align-items-center mt-24 gap-12">
                                         <div class="text-muted small">
@@ -1090,6 +1500,7 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                         </form>
                     <?php endif; ?>
                 </div>
+
                 <?php
                     $summaryEvaluators = array_filter($globalEvaluatorStats, static function (array $stat): bool {
                         return !empty($stat['has_value']) && ($stat['total'] ?? 0) !== 0;
@@ -1110,22 +1521,10 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                                         $countDisplay = UtilityHelper::englishToPersian((string) $count);
                                     ?>
                                     <div class="evaluator-chip">
-                                        <span class="name">
-                                            <ion-icon name="person-circle-outline"></ion-icon>
-                                            <?= washup_escape_html($label, 'ارزیاب'); ?>
-                                        </span>
-                                        <span class="score">
-                                            <span class="label">جمع</span>
-                                            <span><?= washup_escape_html($totalDisplay); ?></span>
-                                        </span>
-                                        <span class="score">
-                                            <span class="label">میانگین</span>
-                                            <span><?= washup_escape_html($avgDisplay); ?></span>
-                                        </span>
-                                        <span class="score">
-                                            <span class="label">تعداد</span>
-                                            <span><?= washup_escape_html($countDisplay, '۰'); ?></span>
-                                        </span>
+                                        <span class="name"><ion-icon name="person-circle-outline"></ion-icon> <?= washup_escape_html($label, 'ارزیاب'); ?></span>
+                                        <span class="score"><span class="label">جمع</span><span><?= washup_escape_html($totalDisplay); ?></span></span>
+                                        <span class="score"><span class="label">میانگین</span><span><?= washup_escape_html($avgDisplay); ?></span></span>
+                                        <span class="score"><span class="label">تعداد</span><span><?= washup_escape_html($countDisplay, '۰'); ?></span></span>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
@@ -1140,6 +1539,7 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                     </div>
                 </div>
             <?php endif; ?>
+
         </div>
     </div>
 </div>

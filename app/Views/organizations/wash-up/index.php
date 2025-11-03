@@ -397,6 +397,14 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                                                 $lastUpdatedAgo = $row['last_updated_ago'] ?? null;
                                                 $washupLink = $row['washup_link'] ?? '#';
                                                 $finalLink = $row['final_link'] ?? '#';
+                                                $legacyWashupLink = $washupLink;
+                                                if ($legacyWashupLink !== '#') {
+                                                    $hasQuery = strpos($legacyWashupLink, '?') !== false;
+                                                    $separator = $hasQuery ? '&' : '?';
+                                                    if (strpos($legacyWashupLink, 'layout=') === false) {
+                                                        $legacyWashupLink .= $separator . 'layout=legacy';
+                                                    }
+                                                }
                                             ?>
                                             <tr>
                                                 <td data-label="ارزیابی">
@@ -466,7 +474,7 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                                                 </td>
                                                 <td data-label="اقدامات">
                                                     <div class="d-flex action-buttons flex-column flex-md-row gap-8 justify-content-center">
-                                                        <a href="<?= htmlspecialchars($washupLink, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-main btn-sm d-inline-flex align-items-center gap-6">
+                                                        <a href="<?= htmlspecialchars($legacyWashupLink, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-main btn-sm d-inline-flex align-items-center gap-6">
                                                             <ion-icon name="document-text-outline"></ion-icon>
                                                             Wash-Up
                                                         </a>

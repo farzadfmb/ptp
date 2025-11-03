@@ -65,6 +65,25 @@ $deviceLabels = [
     'نامشخص' => 'نامشخص',
 ];
 
+$resolvePageTitle = static function (?string $path): string {
+    $cleanPath = trim($path ?? '');
+
+    if ($cleanPath === '' || $cleanPath === '/') {
+        return 'صفحه اصلی';
+    }
+
+    $segments = array_values(array_filter(explode('/', $cleanPath)));
+    if (empty($segments)) {
+        return 'صفحه اصلی';
+    }
+
+    $lastSegment = end($segments);
+    $lastSegment = str_replace(['-', '_'], ' ', $lastSegment);
+    $lastSegment = trim($lastSegment);
+
+    return $lastSegment !== '' ? $lastSegment : $cleanPath;
+};
+
 $trafficInitialJson = json_encode(
     $trafficData,
     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP
@@ -74,7 +93,7 @@ $trafficInitialJson = json_encode(
 <div class="dashboard-main-wrapper">
     <?php include __DIR__ . '/../../layouts/admin-navbar.php'; ?>
 
-    <div class="dashboard-body">
+    <div class="dashboard-body text-end">
         <div class="row gy-4">
             <div class="col-12">
                 <div class="card border-0 shadow-sm">
@@ -340,16 +359,21 @@ $trafficInitialJson = json_encode(
                         <h5 class="mb-0">صفحات برتر امروز</h5>
                         <span class="badge bg-gray-100 text-gray-700"><?= $toPersian(count($topPages)); ?> مسیر</span>
                     </div>
-                    <div class="card-body">
+                    <div class="card-body text-end">
                         <?php if (empty($topPages)): ?>
                             <p class="text-gray-500 text-end mb-0">هنوز داده‌ای ثبت نشده است.</p>
                         <?php else: ?>
-                            <div class="list-group list-group-flush">
+                            <div class="list-group list-group-flush text-end">
                                 <?php foreach ($topPages as $page): ?>
                                     <div class="list-group-item py-12">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div class="text-end">
-                                                <strong class="d-block text-gray-900" dir="ltr"><?= htmlspecialchars($page['path'] ?? '/', ENT_QUOTES, 'UTF-8'); ?></strong>
+                                                <strong class="d-block text-gray-900">
+                                                    <?= htmlspecialchars($resolvePageTitle($page['path'] ?? '/'), ENT_QUOTES, 'UTF-8'); ?>
+                                                </strong>
+                                                <small class="text-gray-500 d-block" dir="ltr">
+                                                    <?= htmlspecialchars($page['path'] ?? '/', ENT_QUOTES, 'UTF-8'); ?>
+                                                </small>
                                                 <small class="text-gray-500">بازدید: <?= $toPersian($page['views'] ?? 0); ?></small>
                                             </div>
                                             <span class="badge bg-main-50 text-main-600"><?= $toPersian($page['percentage'] ?? 0); ?>٪</span>
@@ -490,8 +514,15 @@ $trafficInitialJson = json_encode(
                                                     <?php endif; ?>
                                                 </div>
                                             </td>
-                                            <td dir="ltr">
-                                                <span class="text-gray-900"><?= htmlspecialchars($event['path'] ?? '/', ENT_QUOTES, 'UTF-8'); ?></span>
+                                            <td class="text-end" dir="ltr">
+                                                <div class="d-flex flex-column align-items-end text-end">
+                                                    <span class="fw-semibold text-gray-900" dir="rtl">
+                                                        <?= htmlspecialchars($resolvePageTitle($event['path'] ?? '/'), ENT_QUOTES, 'UTF-8'); ?>
+                                                    </span>
+                                                    <small class="text-gray-500" dir="ltr">
+                                                        <?= htmlspecialchars($event['path'] ?? '/', ENT_QUOTES, 'UTF-8'); ?>
+                                                    </small>
+                                                </div>
                                             </td>
                                             <td>
                                                 <div class="d-flex flex-column">
@@ -531,6 +562,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const trafficDataEndpoint = '<?= UtilityHelper::baseUrl('supperadmin/traffic-report/live'); ?>';
     const deviceLabels = <?= json_encode($deviceLabels, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     const refreshInterval = 8000;
+    const hiddenRefreshInterval = 30000;
 
     const elements = {
         onlineTotal: document.getElementById('traffic-summary-online-total'),
@@ -556,6 +588,7 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     const numberMap = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    let knownSessionIds = Object.create(null);
 
     function englishToPersian(value) {
         if (value === null || value === undefined) {
@@ -732,6 +765,43 @@ document.addEventListener('DOMContentLoaded', function () {
         return sessions.length;
     }
 
+    function hasNewSessions(sessions) {
+        if (!sessions || typeof sessions.forEach !== 'function') {
+            return false;
+        }
+
+        let found = false;
+        sessions.forEach(function (session) {
+            if (found) {
+                return;
+            }
+            if (!session || !session.session_id) {
+                return;
+            }
+            const key = String(session.session_id);
+            if (!Object.prototype.hasOwnProperty.call(knownSessionIds, key)) {
+                found = true;
+            }
+        });
+
+        return found;
+    }
+
+    function rememberSessions(sessions) {
+        knownSessionIds = Object.create(null);
+        if (!sessions || typeof sessions.forEach !== 'function') {
+            return;
+        }
+
+        sessions.forEach(function (session) {
+            if (!session || !session.session_id) {
+                return;
+            }
+            const key = String(session.session_id);
+            knownSessionIds[key] = true;
+        });
+    }
+
     function renderDailyTrend(trend) {
         if (!dailyTrendCanvas || typeof Chart === 'undefined') {
             return;
@@ -828,10 +898,18 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const audioElementSupported = typeof Audio === 'function' && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
     const audioStorageKey = 'trafficAudioMuted';
     let audioContext = null;
-    let audioEnabled = !!AudioContextClass;
+    let chimeObjectUrl = null;
+    let chimeAudio = null;
+    let audioElementPrimed = false;
+    let audioEnabled = !!AudioContextClass || audioElementSupported;
     let audioMuted = false;
+    let chimeVolumeTimer = null;
+    const CHIME_ACTIVE_VOLUME = 0.85;
+    const CHIME_SILENT_VOLUME = 0.0;
+    const CHIME_DURATION_MS = 1600;
 
     if (audioEnabled) {
         try {
@@ -840,6 +918,81 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch (error) {
             audioMuted = false;
         }
+    }
+
+    function buildChimeUrl() {
+        try {
+            const sampleRate = 8000;
+            const durationSeconds = 0.25;
+            const frequency = 880;
+            const amplitude = 0.45;
+            const sampleCount = Math.floor(sampleRate * durationSeconds);
+            const headerSize = 44;
+            const buffer = new ArrayBuffer(headerSize + (sampleCount * 2));
+            const view = new DataView(buffer);
+
+            function writeString(offset, text) {
+                for (let i = 0; i < text.length; i += 1) {
+                    view.setUint8(offset + i, text.charCodeAt(i));
+                }
+            }
+
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + sampleCount * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(36, 'data');
+            view.setUint32(40, sampleCount * 2, true);
+
+            let offset = 44;
+            for (let i = 0; i < sampleCount; i += 1) {
+                const sample = Math.sin(2 * Math.PI * frequency * (i / sampleRate)) * amplitude;
+                view.setInt16(offset, sample * 32767, true);
+                offset += 2;
+            }
+
+            return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+        } catch (error) {
+            console.debug('traffic chime generation failed', error);
+            return null;
+        }
+    }
+
+    if (audioElementSupported) {
+        chimeObjectUrl = buildChimeUrl();
+        if (chimeObjectUrl) {
+            try {
+                chimeAudio = new Audio(chimeObjectUrl);
+                chimeAudio.preload = 'auto';
+                chimeAudio.loop = true;
+                chimeAudio.volume = CHIME_SILENT_VOLUME;
+                chimeAudio.muted = audioMuted;
+            } catch (error) {
+                chimeAudio = null;
+            }
+        }
+
+        if (!chimeAudio && chimeObjectUrl) {
+            URL.revokeObjectURL(chimeObjectUrl);
+            chimeObjectUrl = null;
+        }
+    }
+
+    if (!AudioContextClass && !chimeAudio) {
+        audioEnabled = false;
+    }
+
+    if (chimeObjectUrl) {
+        window.addEventListener('beforeunload', function () {
+            URL.revokeObjectURL(chimeObjectUrl);
+        });
     }
 
     function persistAudioPreference() {
@@ -885,32 +1038,44 @@ document.addEventListener('DOMContentLoaded', function () {
         document.removeEventListener('touchstart', primeAudio);
     }
 
+    function maybeDetachPrimers() {
+        const contextReady = audioContext && audioContext.state === 'running';
+        if (contextReady || audioElementPrimed) {
+            detachAudioPrimers();
+        }
+    }
+
     function primeAudio() {
         if (!audioEnabled) {
             return;
         }
 
-        try {
-            if (!audioContext) {
-                audioContext = new AudioContextClass();
-            }
+        if (chimeAudio) {
+            ensureAudioElementPlaying();
+        }
 
-            if (audioContext.state === 'suspended') {
-                audioContext.resume().then(function () {
-                    if (audioContext.state === 'running') {
-                        detachAudioPrimers();
-                    }
-                }).catch(function (error) {
-                    console.debug('traffic notification audio resume blocked', error);
-                });
-            } else if (audioContext.state === 'running') {
-                detachAudioPrimers();
+        if (AudioContextClass) {
+            try {
+                if (!audioContext) {
+                    audioContext = new AudioContextClass();
+                }
+
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume().then(function () {
+                        if (audioContext.state === 'running') {
+                            maybeDetachPrimers();
+                        }
+                    }).catch(function (error) {
+                        console.debug('traffic notification audio resume blocked', error);
+                    });
+                } else if (audioContext.state === 'running') {
+                    maybeDetachPrimers();
+                }
+            } catch (error) {
+                console.error('traffic notification audio init failed', error);
+                audioContext = null;
+                updateAudioControlsState();
             }
-        } catch (error) {
-            console.error('traffic notification audio init failed', error);
-            audioEnabled = false;
-            detachAudioPrimers();
-            updateAudioControlsState();
         }
     }
 
@@ -918,6 +1083,166 @@ document.addEventListener('DOMContentLoaded', function () {
         document.addEventListener('click', primeAudio);
         document.addEventListener('keydown', primeAudio);
         document.addEventListener('touchstart', primeAudio, { passive: true });
+    }
+
+    function ensureAudioElementPlaying() {
+        if (!chimeAudio) {
+            return false;
+        }
+
+        try {
+            if (chimeAudio.paused) {
+                const previousMuted = chimeAudio.muted;
+                if (!previousMuted && audioMuted) {
+                    chimeAudio.muted = true;
+                }
+                chimeAudio.volume = CHIME_SILENT_VOLUME;
+                const playPromise = chimeAudio.play();
+                if (playPromise && typeof playPromise.then === 'function') {
+                    playPromise.then(function () {
+                        audioElementPrimed = true;
+                        chimeAudio.muted = previousMuted;
+                        maybeDetachPrimers();
+                    }).catch(function (error) {
+                        console.debug('traffic chime playback blocked', error);
+                        chimeAudio.muted = previousMuted;
+                    });
+                } else {
+                    audioElementPrimed = true;
+                    chimeAudio.muted = previousMuted;
+                    maybeDetachPrimers();
+                }
+            }
+        } catch (error) {
+            console.debug('traffic ensure audio failed', error);
+            return false;
+        }
+
+        return chimeAudio && chimeAudio.paused === false;
+    }
+
+    function playAudioElement(force) {
+        if (!chimeAudio) {
+            return false;
+        }
+
+        if (!force && audioMuted) {
+            return false;
+        }
+
+        const playing = ensureAudioElementPlaying();
+        if (!playing) {
+            return false;
+        }
+
+        try {
+            if (chimeVolumeTimer) {
+                window.clearTimeout(chimeVolumeTimer);
+            }
+
+            if (typeof chimeAudio.muted !== 'undefined') {
+                chimeAudio.muted = false;
+            }
+
+            chimeAudio.currentTime = 0;
+            chimeAudio.volume = CHIME_ACTIVE_VOLUME;
+
+            chimeVolumeTimer = window.setTimeout(function () {
+                if (!chimeAudio) {
+                    return;
+                }
+
+                chimeAudio.volume = CHIME_SILENT_VOLUME;
+                chimeAudio.muted = audioMuted;
+            }, CHIME_DURATION_MS);
+
+            return true;
+        } catch (error) {
+            console.error('traffic chime play failed', error);
+            return false;
+        }
+    }
+
+    function tryPlayOscillator(force) {
+        if (!AudioContextClass) {
+            return false;
+        }
+
+        try {
+            if (!audioContext || audioContext.state === 'closed') {
+                audioContext = new AudioContextClass();
+            }
+        } catch (error) {
+            console.debug('traffic audio context unavailable', error);
+            audioContext = null;
+            return false;
+        }
+
+        const tones = [
+            { frequency: 880, duration: 0.28, type: 'square', offset: 0, gain: 0.55 },
+            { frequency: 1320, duration: 0.26, type: 'sawtooth', offset: 0.22, gain: 0.45 },
+            { frequency: 1760, duration: 0.22, type: 'triangle', offset: 0.44, gain: 0.38 }
+        ];
+
+        const triggerPlayback = function () {
+            try {
+                const start = audioContext.currentTime;
+                tones.forEach(function (tone) {
+                    const osc = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+
+                    osc.type = tone.type || 'sine';
+                    osc.frequency.setValueAtTime(tone.frequency, start + tone.offset);
+
+                    const peakGain = Math.min(Math.max(tone.gain || 0.45, 0.05), 0.95);
+                    gainNode.gain.setValueAtTime(0.0, start + tone.offset);
+                    gainNode.gain.linearRampToValueAtTime(peakGain, start + tone.offset + 0.03);
+                    gainNode.gain.linearRampToValueAtTime(0.0001, start + tone.offset + tone.duration);
+
+                    osc.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+
+                    osc.start(start + tone.offset);
+                    osc.stop(start + tone.offset + tone.duration + 0.04);
+                });
+            } catch (error) {
+                console.error('traffic oscillator playback failed', error);
+            }
+        };
+
+        if (audioContext.state === 'suspended') {
+            audioContext.resume().then(function () {
+                if (audioContext && audioContext.state === 'running') {
+                    triggerPlayback();
+                } else if (document.hidden) {
+                    playAudioElement(force);
+                }
+            }).catch(function (error) {
+                console.debug('traffic audio resume blocked', error);
+                playAudioElement(force);
+            });
+            return true;
+        }
+
+        if (audioContext.state !== 'running') {
+            try {
+                audioContext.resume().then(function () {
+                    if (audioContext && audioContext.state === 'running') {
+                        triggerPlayback();
+                    }
+                }).catch(function (error) {
+                    console.debug('traffic audio resume rejected', error);
+                    playAudioElement(force);
+                });
+                return true;
+            } catch (error) {
+                console.debug('traffic audio resume threw', error);
+                return false;
+            }
+        }
+
+        triggerPlayback();
+        return true;
     }
 
     function playNotification(options) {
@@ -933,41 +1258,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         primeAudio();
 
-        if (!audioContext || audioContext.state !== 'running') {
-            return;
-        }
+        const oscillatorAttempted = tryPlayOscillator(force);
 
-        try {
-            const start = audioContext.currentTime;
-            const tones = [
-                { frequency: 880, duration: 0.28, type: 'square', offset: 0, gain: 0.55 },
-                { frequency: 1320, duration: 0.26, type: 'sawtooth', offset: 0.22, gain: 0.45 },
-                { frequency: 1760, duration: 0.22, type: 'triangle', offset: 0.44, gain: 0.38 }
-            ];
-
-            tones.forEach(function (tone) {
-                const osc = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-
-                osc.type = tone.type || 'sine';
-                osc.frequency.setValueAtTime(tone.frequency, start + tone.offset);
-
-                const peakGain = Math.min(Math.max(tone.gain || 0.45, 0.05), 0.95);
-                gainNode.gain.setValueAtTime(0.0, start + tone.offset);
-                gainNode.gain.linearRampToValueAtTime(peakGain, start + tone.offset + 0.03);
-                gainNode.gain.linearRampToValueAtTime(0.0001, start + tone.offset + tone.duration);
-
-                osc.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-
-                osc.start(start + tone.offset);
-                osc.stop(start + tone.offset + tone.duration + 0.04);
-            });
-        } catch (error) {
-            console.error('traffic notification sound failed', error);
-            audioEnabled = false;
-            detachAudioPrimers();
-            updateAudioControlsState();
+        if (!oscillatorAttempted) {
+            playAudioElement(force);
         }
     }
 
@@ -982,6 +1276,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (!audioMuted) {
                 primeAudio();
+            }
+
+            if (chimeAudio) {
+                chimeAudio.muted = audioMuted;
+                if (audioMuted) {
+                    chimeAudio.volume = CHIME_SILENT_VOLUME;
+                } else {
+                    ensureAudioElementPlaying();
+                }
             }
 
             updateAudioControlsState();
@@ -1008,16 +1311,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
     lastOnlineTotal = renderSummary(trafficInitialData.summary || {});
     renderSessions(trafficInitialData.active_sessions || []);
+    rememberSessions(trafficInitialData.active_sessions || []);
     renderDailyTrend(trafficInitialData.daily_unique_trend || []);
 
     let refreshTimer = null;
     let isFetching = false;
 
+    function getRefreshDelay() {
+        return document.hidden ? hiddenRefreshInterval : refreshInterval;
+    }
+
     function scheduleNext() {
         if (refreshTimer) {
             window.clearTimeout(refreshTimer);
         }
-        refreshTimer = window.setTimeout(fetchAndUpdate, refreshInterval);
+        refreshTimer = window.setTimeout(fetchAndUpdate, getRefreshDelay());
     }
 
     function updateLastUpdatedLabel(value) {
@@ -1029,9 +1337,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     async function fetchAndUpdate() {
         if (isFetching) {
-            if (!document.hidden) {
-                scheduleNext();
-            }
+            scheduleNext();
             return;
         }
 
@@ -1058,14 +1364,16 @@ document.addEventListener('DOMContentLoaded', function () {
             const sessions = data.active_sessions || [];
 
             const currentOnline = renderSummary(summary);
+            const newSessionJoined = hasNewSessions(sessions);
             renderSessions(sessions);
+            rememberSessions(sessions);
             renderDailyTrend(data.daily_unique_trend || []);
 
             if (typeof payload.generated_at === 'string') {
                 updateLastUpdatedLabel(payload.generated_at);
             }
 
-            if (currentOnline > lastOnlineTotal) {
+            if (newSessionJoined || currentOnline > lastOnlineTotal) {
                 playNotification();
             }
 
@@ -1074,11 +1382,7 @@ document.addEventListener('DOMContentLoaded', function () {
             console.error('live traffic update failed', error);
         } finally {
             isFetching = false;
-            if (!document.hidden) {
-                scheduleNext();
-            } else {
-                refreshTimer = null;
-            }
+            scheduleNext();
         }
     }
 
@@ -1086,11 +1390,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.addEventListener('visibilitychange', function () {
         if (document.hidden) {
-            if (refreshTimer) {
-                window.clearTimeout(refreshTimer);
-                refreshTimer = null;
-            }
-        } else if (!refreshTimer) {
+            scheduleNext();
+        } else {
+            primeAudio();
             fetchAndUpdate();
         }
     });

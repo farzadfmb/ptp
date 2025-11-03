@@ -42,6 +42,10 @@ class TrafficHelper
             $currentUrl = $host !== '' ? $scheme . '://' . $host . ($path ?: '/') : ($path ?: '/');
             $currentUrl = self::sanitizeString($currentUrl, 255);
 
+            if (self::shouldSkipTracking($path ?? '')) {
+                return;
+            }
+
             $deviceType = self::detectDeviceType($userAgent);
             $os = self::detectOperatingSystem($userAgent);
             $browser = self::detectBrowser($userAgent);
@@ -131,6 +135,18 @@ class TrafficHelper
         $activeWindowMinutes = max(1, $activeWindowMinutes);
         $since = date('Y-m-d H:i:s', time() - ($activeWindowMinutes * 60));
 
+        if (class_exists('AuthHelper')) {
+            AuthHelper::startSession();
+        } elseif (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        $currentSessionId = session_id() ?: null;
+        $currentUserId = null;
+        if (class_exists('AuthHelper')) {
+            $currentUserId = AuthHelper::getUserId();
+        }
+
         $result = [
             'summary' => [
                 'online_total' => 0,
@@ -168,6 +184,13 @@ class TrafficHelper
             $totalRequests = 0;
 
             foreach ($activeSessions as $session) {
+                $sessionUserId = isset($session['user_id']) ? (int) $session['user_id'] : null;
+                if ($currentUserId !== null && $sessionUserId !== null && (int) $currentUserId === $sessionUserId) {
+                    continue;
+                }
+                if ($currentSessionId !== null && isset($session['session_id']) && $session['session_id'] === $currentSessionId) {
+                    continue;
+                }
                 $formatted = self::formatSessionRow($session);
                 $mappedSessions[] = $formatted;
                 $totalDuration += $formatted['session_duration_seconds'];
@@ -240,21 +263,43 @@ class TrafficHelper
             }, $topReferers);
 
             $topUsers = DatabaseHelper::fetchAll(
-                "SELECT user_id, user_name, role, COUNT(*) AS views FROM traffic_events WHERE user_id IS NOT NULL AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) GROUP BY user_id, user_name, role ORDER BY views DESC LIMIT 10"
+                "SELECT user_id, user_name, role, COUNT(*) AS views FROM traffic_events WHERE user_id IS NOT NULL AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) GROUP BY user_id, user_name, role ORDER BY views DESC LIMIT 50"
             );
-            $result['top_users'] = array_map(static function ($row) {
-                return [
-                    'user_id' => (int) $row['user_id'],
+            $result['top_users'] = [];
+            foreach ($topUsers as $row) {
+                $rowUserId = isset($row['user_id']) ? (int) $row['user_id'] : null;
+                if ($rowUserId !== null && $currentUserId !== null && (int) $currentUserId === $rowUserId) {
+                    continue;
+                }
+                $result['top_users'][] = [
+                    'user_id' => $rowUserId ?? 0,
                     'user_name' => $row['user_name'],
                     'role' => $row['role'] ?? null,
                     'views' => (int) $row['views'],
                 ];
-            }, $topUsers);
+                if (count($result['top_users']) >= 10) {
+                    break;
+                }
+            }
 
             $recentEvents = DatabaseHelper::fetchAll(
-                'SELECT * FROM traffic_events ORDER BY created_at DESC LIMIT 30'
+                'SELECT * FROM traffic_events ORDER BY created_at DESC LIMIT 60'
             );
-            $result['recent_events'] = array_map([self::class, 'formatEventRow'], $recentEvents);
+            $filteredEvents = [];
+            foreach ($recentEvents as $eventRow) {
+                $eventUserId = isset($eventRow['user_id']) ? (int) $eventRow['user_id'] : null;
+                if ($currentUserId !== null && $eventUserId !== null && (int) $currentUserId === $eventUserId) {
+                    continue;
+                }
+                if ($currentSessionId !== null && isset($eventRow['session_id']) && $eventRow['session_id'] === $currentSessionId) {
+                    continue;
+                }
+                $filteredEvents[] = self::formatEventRow($eventRow);
+                if (count($filteredEvents) >= 30) {
+                    break;
+                }
+            }
+            $result['recent_events'] = $filteredEvents;
 
             $trend = DatabaseHelper::fetchAll(
                 "SELECT DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS bucket, COUNT(*) AS total
@@ -640,5 +685,28 @@ class TrafficHelper
                 'percentage' => round(($count / $total) * 100, 1),
             ];
         }, $rows);
+    }
+
+    private static function shouldSkipTracking(string $path): bool
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        $normalized = strtolower($path);
+
+        if (strpos($normalized, '/supperadmin/traffic-report') === 0) {
+            return true;
+        }
+
+        if (strpos($normalized, '/admin/traffic-report') === 0) {
+            return true;
+        }
+
+        if (strpos($normalized, '/organization/traffic-report') === 0) {
+            return true;
+        }
+
+        return false;
     }
 }

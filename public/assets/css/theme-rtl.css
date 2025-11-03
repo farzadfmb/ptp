@@ -154,6 +154,7 @@ body.font-persian .table thead th {
     font-size: 0.95rem;
     border-bottom: none;
     padding: 0.9rem 1.25rem;
+    text-align: right;
 }
 
 body.font-persian .table tbody td {

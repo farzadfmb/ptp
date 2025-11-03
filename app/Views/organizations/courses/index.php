@@ -181,14 +181,13 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
         display: flex;
         gap: 8px;
         padding: 0 20px 20px;
+        flex-wrap: wrap;
     }
-    
-    .btn-edit {
-        flex: 1;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 10px 16px;
+
+    .course-action-btn {
+        flex: 1 1 calc(50% - 8px);
+        min-width: 0;
+        padding: 10px 14px;
         border-radius: 12px;
         font-size: 14px;
         font-weight: 600;
@@ -196,44 +195,59 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
         align-items: center;
         justify-content: center;
         gap: 6px;
-        cursor: pointer;
-        transition: all 0.3s ease;
         text-decoration: none;
+        transition: all 0.3s ease;
+        border: none;
+        cursor: pointer;
     }
-    
-    .btn-edit:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        color: white;
-    }
-    
-    .btn-edit ion-icon {
+
+    .course-action-btn ion-icon {
         font-size: 18px;
     }
-    
+
+    .btn-edit {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #ffffff;
+    }
+
+    .btn-edit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
+        color: #ffffff;
+    }
+
+    .btn-competency {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+        color: #ffffff;
+    }
+
+    .btn-competency:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+        color: #ffffff;
+    }
+
     .btn-delete {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        color: white;
-        border: none;
-        padding: 10px 16px;
-        border-radius: 12px;
-        font-size: 14px;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        min-width: 44px;
+        color: #ffffff;
     }
-    
+
     .btn-delete:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        color: #ffffff;
     }
-    
-    .btn-delete ion-icon {
-        font-size: 18px;
+
+    @media (max-width: 768px) {
+        .course-actions {
+            gap: 6px;
+        }
+
+        .course-action-btn {
+            flex: 1 1 100%;
+            font-size: 13px;
+            padding: 9px 12px;
+        }
     }
     
     .empty-state {
@@ -505,22 +519,26 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                             
                             <div class="course-actions">
                                 <a href="<?= UtilityHelper::baseUrl('organizations/courses/lessons?course_id=' . $courseId); ?>" 
-                                   class="btn-edit" 
+                                   class="course-action-btn btn-edit" 
                                    style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);"
                                    title="مدیریت درس‌ها">
                                     <ion-icon name="list-outline"></ion-icon>
                                     درس‌ها
                                 </a>
-                                <button type="button" class="btn-edit btn-manage-evaluatees" data-course-id="<?= $courseId; ?>" data-course-title="<?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?>">
+                                <button type="button" class="course-action-btn btn-edit btn-manage-evaluatees" data-course-id="<?= $courseId; ?>" data-course-title="<?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?>">
                                     <ion-icon name="people-outline"></ion-icon>
                                     مدیریت کاربران
                                 </button>
+                                <button type="button" class="course-action-btn btn-competency btn-manage-competencies" data-course-id="<?= $courseId; ?>" data-course-title="<?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <ion-icon name="ribbon-outline"></ion-icon>
+                                    شایستگی
+                                </button>
                                 <a href="<?= UtilityHelper::baseUrl('organizations/courses/edit?id=' . $courseId); ?>" 
-                                   class="btn-edit">
+                                   class="course-action-btn btn-edit">
                                     <ion-icon name="create-outline"></ion-icon>
                                     ویرایش
                                 </a>
-                                <button type="button" class="btn-delete" onclick="deleteCourse(<?= $courseId; ?>, '<?= addslashes($title); ?>')">
+                                <button type="button" class="course-action-btn btn-delete" onclick="deleteCourse(<?= $courseId; ?>, '<?= addslashes($title); ?>')">
                                     <ion-icon name="trash-outline"></ion-icon>
                                 </button>
                             </div>
@@ -642,6 +660,31 @@ function deleteCourse(courseId, courseTitle) {
 }
 </script>
 
+<!-- Course competencies modal -->
+<div id="courseCompetenciesModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1200; align-items:center; justify-content:center;">
+    <div style="width:720px; max-width:96%; background:#ffffff; border-radius:12px; overflow:hidden;">
+        <div style="padding:16px 20px; border-bottom:1px solid #eef2f6; display:flex; justify-content:space-between; align-items:center;">
+            <h4 id="courseCompetenciesModalTitle" style="margin:0; font-size:16px;">انتخاب شایستگی‌های دوره</h4>
+            <button type="button" class="course-competency-modal-close" style="background:transparent;border:none;font-size:20px;cursor:pointer;">&times;</button>
+        </div>
+        <div style="padding:18px; display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; gap:12px; align-items:center;">
+                <input id="courseCompetencySearch" type="text" class="form-control" placeholder="جستجو در شایستگی‌ها..." style="flex:1;">
+                <span id="courseCompetencySelectionStatus" style="font-size:13px; color:#64748b;">شایستگی‌های انتخاب شده: ۰</span>
+            </div>
+            <div id="courseCompetencyList" style="max-height:420px; overflow:auto; border:1px solid #eef2f6; border-radius:12px; padding:12px; background:#f8fafc;"></div>
+            <div id="courseCompetencyEmpty" style="display:none; text-align:center; padding:24px; color:#94a3b8; font-size:14px; border:1px dashed #cbd5f5; border-radius:12px;">
+                شایستگی‌ای برای نمایش وجود ندارد.
+            </div>
+            <div id="courseCompetencyError" style="display:none; text-align:center; padding:12px; color:#dc2626; font-size:14px; border-radius:12px; background:rgba(220,38,38,0.08);"></div>
+        </div>
+        <div style="padding:12px 18px; border-top:1px solid #eef2f6; display:flex; justify-content:flex-end; gap:8px;">
+            <button type="button" class="btn btn-outline-secondary course-competency-modal-close">بستن</button>
+            <button type="button" id="courseCompetencySave" class="btn btn-primary">ذخیره</button>
+        </div>
+    </div>
+</div>
+
 <!-- Evaluatees modal -->
 <div id="evaluateesModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1200; align-items:center; justify-content:center;">
     <div style="width:940px; max-width:95%; background:#fff; border-radius:12px; overflow:hidden;">
@@ -674,12 +717,72 @@ const ENDPOINTS = {
     unenroll: '<?= UtilityHelper::baseUrl('organizations/courses/unenroll'); ?>'
 };
 
+const COURSE_COMPETENCY_ENDPOINTS = {
+    list: '<?= UtilityHelper::baseUrl('organizations/courses/competencies'); ?>',
+    save: '<?= UtilityHelper::baseUrl('organizations/courses/competencies'); ?>'
+};
+
 document.addEventListener('click', function(e) {
-    const btn = e.target.closest('.btn-manage-evaluatees');
-    if (!btn) return;
-    const courseId = btn.getAttribute('data-course-id');
-    const courseTitle = btn.getAttribute('data-course-title');
-    openEvaluateesModal(courseId, courseTitle);
+    const evaluateesBtn = e.target.closest('.btn-manage-evaluatees');
+    if (evaluateesBtn) {
+        const courseId = evaluateesBtn.getAttribute('data-course-id');
+        const courseTitle = evaluateesBtn.getAttribute('data-course-title');
+        openEvaluateesModal(courseId, courseTitle);
+        return;
+    }
+
+    const competencyBtn = e.target.closest('.btn-manage-competencies');
+    if (competencyBtn) {
+        const courseId = competencyBtn.getAttribute('data-course-id');
+        const courseTitle = competencyBtn.getAttribute('data-course-title');
+        openCourseCompetenciesModal(courseId, courseTitle);
+    }
+});
+
+const competencyModal = document.getElementById('courseCompetenciesModal');
+const competencyModalTitle = document.getElementById('courseCompetenciesModalTitle');
+const competencyListContainer = document.getElementById('courseCompetencyList');
+const competencySearchInput = document.getElementById('courseCompetencySearch');
+const competencyEmptyState = document.getElementById('courseCompetencyEmpty');
+const competencyErrorBox = document.getElementById('courseCompetencyError');
+const competencyStatusLabel = document.getElementById('courseCompetencySelectionStatus');
+const competencySaveButton = document.getElementById('courseCompetencySave');
+const competencyCloseButtons = document.querySelectorAll('.course-competency-modal-close');
+
+let competencyActiveCourseId = null;
+let competencyActiveCourseTitle = '';
+let competencyItems = [];
+let selectedCompetencyIds = new Set();
+
+competencyCloseButtons.forEach(function(btn) {
+    btn.addEventListener('click', closeCourseCompetenciesModal);
+});
+
+if (competencySaveButton) {
+    competencySaveButton.addEventListener('click', handleCourseCompetencySave);
+}
+
+if (competencyModal) {
+    competencyModal.addEventListener('click', function(event) {
+        if (event.target === competencyModal) {
+            closeCourseCompetenciesModal();
+        }
+    });
+}
+
+if (competencySearchInput) {
+    competencySearchInput.addEventListener('input', renderCourseCompetencyList);
+}
+
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        if (competencyModal && competencyModal.style.display === 'flex') {
+            closeCourseCompetenciesModal();
+        }
+        if (modal && modal.style.display === 'flex') {
+            closeEvaluateesModal();
+        }
+    }
 });
 
 const modal = document.getElementById('evaluateesModal');
@@ -700,6 +803,256 @@ modalCloseBottom.addEventListener('click', closeEvaluateesModal);
 
 if (availableSearch) {
     availableSearch.addEventListener('input', renderAvailableList);
+}
+
+function openCourseCompetenciesModal(courseId, courseTitle) {
+    if (!competencyModal) {
+        return;
+    }
+
+    competencyActiveCourseId = Number(courseId);
+    competencyActiveCourseTitle = courseTitle || '';
+    competencyItems = [];
+    selectedCompetencyIds = new Set();
+
+    if (competencySearchInput) {
+        competencySearchInput.value = '';
+    }
+
+    if (competencyStatusLabel) {
+        competencyStatusLabel.textContent = 'شایستگی‌های انتخاب شده: ' + toPersianDigits(0);
+    }
+
+    if (competencyErrorBox) {
+        competencyErrorBox.style.display = 'none';
+        competencyErrorBox.textContent = '';
+    }
+
+    if (competencyEmptyState) {
+        competencyEmptyState.style.display = 'none';
+        competencyEmptyState.textContent = 'شایستگی‌ای برای نمایش وجود ندارد.';
+    }
+
+    if (competencyListContainer) {
+        competencyListContainer.innerHTML = '<div style="text-align:center; padding:24px; color:#64748b;">در حال بارگذاری...</div>';
+    }
+
+    if (competencyModalTitle) {
+        competencyModalTitle.textContent = 'انتخاب شایستگی‌های دوره: ' + (courseTitle || '');
+    }
+
+    competencyModal.style.display = 'flex';
+
+    fetch(COURSE_COMPETENCY_ENDPOINTS.list + '?course_id=' + encodeURIComponent(courseId), {
+        credentials: 'same-origin'
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (!data || !data.success) {
+            if (competencyListContainer) {
+                competencyListContainer.innerHTML = '';
+            }
+            if (competencyErrorBox) {
+                competencyErrorBox.textContent = (data && data.message) || 'خطا در دریافت شایستگی‌ها.';
+                competencyErrorBox.style.display = 'block';
+            }
+            return;
+        }
+
+        const collection = (data.data && Array.isArray(data.data.competencies)) ? data.data.competencies : [];
+        competencyItems = collection.map(function(item) {
+            return {
+                id: Number(item.id || 0),
+                title: String(item.title || '').trim(),
+                code: String(item.code || '').trim(),
+                dimension: String(item.dimension_name || '').trim()
+            };
+        }).filter(function(item) {
+            return item.id > 0;
+        }).sort(function(a, b) {
+            const dimCompare = a.dimension.localeCompare(b.dimension);
+            if (dimCompare !== 0) {
+                return dimCompare;
+            }
+            return a.title.localeCompare(b.title);
+        });
+
+        const selected = (data.data && Array.isArray(data.data.selected_competency_ids)) ? data.data.selected_competency_ids : [];
+        selectedCompetencyIds = new Set(selected.map(function(value) {
+            return Number(value);
+        }));
+
+        renderCourseCompetencyList();
+    }).catch(function(error) {
+        if (competencyListContainer) {
+            competencyListContainer.innerHTML = '';
+        }
+        if (competencyErrorBox) {
+            competencyErrorBox.textContent = 'خطا در ارتباط با سرور.';
+            competencyErrorBox.style.display = 'block';
+        }
+        console.error(error);
+    });
+}
+
+function closeCourseCompetenciesModal() {
+    if (!competencyModal) {
+        return;
+    }
+
+    competencyModal.style.display = 'none';
+    competencyActiveCourseId = null;
+    competencyActiveCourseTitle = '';
+    competencyItems = [];
+    selectedCompetencyIds = new Set();
+
+    if (competencyListContainer) {
+        competencyListContainer.innerHTML = '';
+    }
+
+    if (competencyErrorBox) {
+        competencyErrorBox.style.display = 'none';
+        competencyErrorBox.textContent = '';
+    }
+
+    if (competencyEmptyState) {
+        competencyEmptyState.style.display = 'none';
+        competencyEmptyState.textContent = 'شایستگی‌ای برای نمایش وجود ندارد.';
+    }
+
+    if (competencySearchInput) {
+        competencySearchInput.value = '';
+    }
+}
+
+function renderCourseCompetencyList() {
+    if (!competencyListContainer) {
+        return;
+    }
+
+    competencyErrorBox && (competencyErrorBox.style.display = 'none');
+
+    const query = competencySearchInput ? competencySearchInput.value.trim().toLowerCase() : '';
+    const filtered = competencyItems.filter(function(item) {
+        if (!query) {
+            return true;
+        }
+        const haystack = [item.title, item.code, item.dimension].join(' ').toLowerCase();
+        return haystack.includes(query);
+    });
+
+    competencyListContainer.innerHTML = '';
+
+    if (!competencyItems.length) {
+        if (competencyEmptyState) {
+            competencyEmptyState.textContent = 'شایستگی‌ای برای نمایش وجود ندارد.';
+            competencyEmptyState.style.display = 'block';
+        }
+        updateCourseCompetencyStatus();
+        return;
+    }
+
+    if (!filtered.length) {
+        if (competencyEmptyState) {
+            competencyEmptyState.textContent = 'نتیجه‌ای مطابق جستجو یافت نشد.';
+            competencyEmptyState.style.display = 'block';
+        }
+        updateCourseCompetencyStatus();
+        return;
+    }
+
+    if (competencyEmptyState) {
+        competencyEmptyState.style.display = 'none';
+    }
+
+    filtered.forEach(function(item) {
+        const row = document.createElement('label');
+        row.style.display = 'flex';
+        row.style.alignItems = 'flex-start';
+        row.style.gap = '8px';
+        row.style.padding = '8px 6px';
+        row.style.borderBottom = '1px solid #e2e8f0';
+        row.style.cursor = 'pointer';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'form-check-input';
+        checkbox.value = String(item.id);
+        checkbox.checked = selectedCompetencyIds.has(item.id);
+        checkbox.style.marginTop = '6px';
+        checkbox.addEventListener('change', function() {
+            if (checkbox.checked) {
+                selectedCompetencyIds.add(item.id);
+            } else {
+                selectedCompetencyIds.delete(item.id);
+            }
+            updateCourseCompetencyStatus();
+        });
+
+        const content = document.createElement('div');
+        const titleLine = (item.code ? escapeHtml(item.code) + ' - ' : '') + escapeHtml(item.title || '');
+        const dimensionLine = item.dimension ? '<div style="font-size:12px; color:#64748b;">' + escapeHtml(item.dimension) + '</div>' : '';
+        content.innerHTML = '<div style="font-weight:600; color:#1f2937;">' + titleLine + '</div>' + dimensionLine;
+
+        row.appendChild(checkbox);
+        row.appendChild(content);
+        competencyListContainer.appendChild(row);
+    });
+
+    updateCourseCompetencyStatus();
+}
+
+function updateCourseCompetencyStatus() {
+    if (competencyStatusLabel) {
+        competencyStatusLabel.textContent = 'شایستگی‌های انتخاب شده: ' + toPersianDigits(selectedCompetencyIds.size);
+    }
+}
+
+function handleCourseCompetencySave() {
+    if (!competencyActiveCourseId) {
+        return;
+    }
+
+    if (!competencySaveButton) {
+        return;
+    }
+
+    competencySaveButton.disabled = true;
+    competencyErrorBox && (competencyErrorBox.style.display = 'none');
+
+    const params = new URLSearchParams();
+    params.append('course_id', competencyActiveCourseId);
+    selectedCompetencyIds.forEach(function(id) {
+        params.append('competency_ids[]', id);
+    });
+
+    fetch(COURSE_COMPETENCY_ENDPOINTS.save, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        competencySaveButton.disabled = false;
+
+        if (!data || !data.success) {
+            if (competencyErrorBox) {
+                competencyErrorBox.textContent = (data && data.message) || 'خطا در ذخیره شایستگی‌ها.';
+                competencyErrorBox.style.display = 'block';
+            }
+            return;
+        }
+
+        alert(data.message || 'شایستگی‌های دوره با موفقیت ذخیره شد.');
+        closeCourseCompetenciesModal();
+    }).catch(function(error) {
+        competencySaveButton.disabled = false;
+        if (competencyErrorBox) {
+            competencyErrorBox.textContent = 'خطا در ارتباط با سرور.';
+            competencyErrorBox.style.display = 'block';
+        }
+        console.error(error);
+    });
 }
 
 function openEvaluateesModal(courseId, courseTitle) {

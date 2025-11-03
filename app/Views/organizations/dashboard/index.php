@@ -51,6 +51,8 @@ $organization = $organization ?? ['name' => 'سازمان نمونه'];
 $organizationSubtitle = $organizationSubtitle ?? 'Organization Dashboard';
 $organizationCode = $organizationCode ?? 'ORG-000';
 $organizationSubdomain = $organizationSubdomain ?? '---';
+$weakCompetencyChart = $weakCompetencyChart ?? ['labels' => [], 'series' => []];
+$strongCompetencyChart = $strongCompetencyChart ?? ['labels' => [], 'series' => []];
 
 $creditUsedDisplay = $creditUsageChart['used_display'] ?? $creditUsageChart['used'] ?? null;
 $creditRemainingDisplay = $creditUsageChart['remaining_display'] ?? $creditUsageChart['remaining'] ?? null;
@@ -69,6 +71,10 @@ $periodicExamsLabelsJson = json_encode($periodicExamsLabels ?? [], JSON_UNESCAPE
 $periodicExamsSeriesJson = json_encode($periodicExamsSeries ?? [], JSON_UNESCAPED_UNICODE);
 $monthlyExamsLabelsJson = json_encode($monthlyExamsLabels ?? [], JSON_UNESCAPED_UNICODE);
 $monthlyExamsSeriesJson = json_encode($monthlyExamsSeries ?? [], JSON_UNESCAPED_UNICODE);
+$weakCompetencyLabelsJson = json_encode($weakCompetencyChart['labels'], JSON_UNESCAPED_UNICODE);
+$weakCompetencySeriesJson = json_encode($weakCompetencyChart['series'], JSON_UNESCAPED_UNICODE);
+$strongCompetencyLabelsJson = json_encode($strongCompetencyChart['labels'], JSON_UNESCAPED_UNICODE);
+$strongCompetencySeriesJson = json_encode($strongCompetencyChart['series'], JSON_UNESCAPED_UNICODE);
 
 if ($isOwnerAccount) {
 $inline_scripts .= <<<JS
@@ -213,6 +219,71 @@ $inline_scripts .= <<<JS
                 monthlyChartContainer.innerHTML = '<span>برای این ماه داده‌ای جهت نمایش نمودار ثبت نشده است.</span>';
             }
         }
+
+        // Competency performance charts
+        const weakLabelsRaw = $weakCompetencyLabelsJson;
+        const weakSeriesRaw = $weakCompetencySeriesJson;
+        const strongLabelsRaw = $strongCompetencyLabelsJson;
+        const strongSeriesRaw = $strongCompetencySeriesJson;
+
+        const weakLabels = Array.isArray(weakLabelsRaw) ? weakLabelsRaw : [];
+        const weakSeries = Array.isArray(weakSeriesRaw) ? weakSeriesRaw.map((value) => Number(value)) : [];
+        const strongLabels = Array.isArray(strongLabelsRaw) ? strongLabelsRaw : [];
+        const strongSeries = Array.isArray(strongSeriesRaw) ? strongSeriesRaw.map((value) => Number(value)) : [];
+
+        const weakChartContainer = document.querySelector('#weak-competency-chart');
+        if (weakChartContainer) {
+            if (weakLabels.length > 0 && weakSeries.some((value) => !Number.isNaN(value))) {
+                const options = {
+                    chart: { type: 'bar', height: 280, fontFamily: 'IRANSans, Tahoma, sans-serif', toolbar: { show: false } },
+                    series: [{ name: 'میانگین امتیاز', data: weakSeries }],
+                    colors: ['#ef4444'],
+                    xaxis: { categories: weakLabels, labels: { rotate: -45 } },
+                    dataLabels: { enabled: false },
+                    plotOptions: { bar: { borderRadius: 6, columnWidth: '45%' } },
+                    tooltip: {
+                        y: {
+                            formatter: (value) => {
+                                const num = typeof value === 'number' ? value : Number(value || 0);
+                                return num.toFixed(1) + ' امتیاز';
+                            }
+                        }
+                    }
+                };
+                const chart = new ApexCharts(weakChartContainer, options);
+                chart.render();
+            } else {
+                weakChartContainer.classList.add('d-flex', 'align-items-center', 'justify-content-center', 'text-gray-400');
+                weakChartContainer.innerHTML = '<span>شایستگی با میانگین کمتر از ۶۰ برای نمایش موجود نیست.</span>';
+            }
+        }
+
+        const strongChartContainer = document.querySelector('#strong-competency-chart');
+        if (strongChartContainer) {
+            if (strongLabels.length > 0 && strongSeries.some((value) => !Number.isNaN(value))) {
+                const options = {
+                    chart: { type: 'bar', height: 280, fontFamily: 'IRANSans, Tahoma, sans-serif', toolbar: { show: false } },
+                    series: [{ name: 'میانگین امتیاز', data: strongSeries }],
+                    colors: ['#22c55e'],
+                    xaxis: { categories: strongLabels, labels: { rotate: -45 } },
+                    dataLabels: { enabled: false },
+                    plotOptions: { bar: { borderRadius: 6, columnWidth: '45%' } },
+                    tooltip: {
+                        y: {
+                            formatter: (value) => {
+                                const num = typeof value === 'number' ? value : Number(value || 0);
+                                return num.toFixed(1) + ' امتیاز';
+                            }
+                        }
+                    }
+                };
+                const chart = new ApexCharts(strongChartContainer, options);
+                chart.render();
+            } else {
+                strongChartContainer.classList.add('d-flex', 'align-items-center', 'justify-content-center', 'text-gray-400');
+                strongChartContainer.innerHTML = '<span>شایستگی با میانگین بالای ۶۰ برای نمایش موجود نیست.</span>';
+            }
+        }
     });
 JS;
 }
@@ -270,6 +341,36 @@ JS;
                             <span class="text-gray-400 text-sm">روزهای ماه جاری</span>
                         </div>
                         <div id="monthly-exams-chart" style="max-width: 100%; height: 280px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-6">
+                <div class="card border-0 shadow-sm rounded-24 h-100">
+                    <div class="card-body p-24">
+                        <div class="d-flex justify-content-between align-items-center mb-16">
+                            <h4 class="mb-0 text-gray-900">
+                                <i class="fas fa-thermometer-quarter ms-10 text-danger"></i>
+                                شایستگی‌های نیازمند تقویت 
+                            </h4>
+                            <span class="text-gray-400 text-sm">بر اساس امتیاز توافقی</span>
+                        </div>
+                        <div id="weak-competency-chart" style="max-width: 100%; height: 280px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-6">
+                <div class="card border-0 shadow-sm rounded-24 h-100">
+                    <div class="card-body p-24">
+                        <div class="d-flex justify-content-between align-items-center mb-16">
+                            <h4 class="mb-0 text-gray-900">
+                                <i class="fas fa-trophy ms-10 text-success"></i>
+                                شایستگی‌های برتر
+                            </h4>
+                            <span class="text-gray-400 text-sm">بر اساس امتیاز توافقی</span>
+                        </div>
+                        <div id="strong-competency-chart" style="max-width: 100%; height: 280px;"></div>
                     </div>
                 </div>
             </div>

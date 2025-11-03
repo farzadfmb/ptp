@@ -194,12 +194,12 @@ $organizationSidebarMenu = [
         ],
     ],
     [
-        'title' => 'مدیریت دوره های آموزشی',
+        'title' => 'مدیریت برنامه توسعه فردی',
         'icon' => 'book-sharp',
         'permissions' => ['courses_manage', 'courses_view'],
         'children' => [
             ['title' => 'دوره‌های توسعه فردی', 'route' => 'organizations/courses', 'permissions' => ['courses_manage', 'courses_view']],
-            ['title' => 'برنامه های شایستگی', 'route' => 'organizations/development-programs', 'permissions' => ['courses_manage', 'courses_view']],
+            ['title' => 'برنامه توسعه فردی', 'route' => 'organizations/development-programs', 'permissions' => ['courses_manage', 'courses_view']],
         ],
     ],
     [

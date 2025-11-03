@@ -193,15 +193,20 @@ class OrganizationController
         $this->ensureOrganizationUsersTableExists();
         $this->ensureOrganizationEvaluationsTableExists();
         $this->ensureOrganizationEvaluationToolsTableExists();
-        $this->ensureOrganizationEvaluationExamAnswersTableExists();
-        $this->ensureOrganizationEvaluationAgreedScoresTableExists();
-        $this->ensureOrganizationCompetencyModelsTableExists();
+    $this->ensureOrganizationEvaluationExamAnswersTableExists();
+    $this->ensureOrganizationEvaluationAgreedScoresTableExists();
+    $this->ensureOrganizationCompetencyModelsTableExists();
+    $this->ensureOrganizationCompetenciesTableExists();
 
         // Get statistics
         $summaryCards = $this->getDashboardSummaryCards($organizationId);
         $periodicExamsData = $this->getPeriodicExamsChart($organizationId);
         $monthlyExamsData = $this->getMonthlyExamsChart($organizationId);
         $competencyModelShowcase = $this->getCompetencyModelShowcase($organizationId);
+    $competencyScoreCharts = $this->getDashboardCompetencyScoreCharts($organizationId);
+
+    $weakCompetencyChart = $competencyScoreCharts['weak'] ?? ['labels' => [], 'series' => []];
+    $strongCompetencyChart = $competencyScoreCharts['strong'] ?? ['labels' => [], 'series' => []];
 
         $periodicExamsLabels = $periodicExamsData['labels'] ?? [];
         $periodicExamsSeries = $periodicExamsData['series'] ?? [];
@@ -259,7 +264,6 @@ class OrganizationController
 
         $cards = [];
 
-        // Total users count
         try {
             $usersCount = DatabaseHelper::fetchOne(
                 'SELECT COUNT(*) as cnt FROM organization_users WHERE organization_id = :organization_id',
@@ -513,6 +517,54 @@ class OrganizationController
         }
     }
 
+    private function getDashboardCompetencyScoreCharts(int $organizationId): array
+    {
+        $result = [
+            'weak' => ['labels' => [], 'series' => []],
+            'strong' => ['labels' => [], 'series' => []],
+        ];
+
+        if ($organizationId <= 0) {
+            return $result;
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT oc.id, oc.title, AVG(oeas.agreed_score) AS avg_score
+                 FROM organization_evaluation_agreed_scores oeas
+                 INNER JOIN organization_competencies oc
+                   ON oc.id = oeas.competency_id AND oc.organization_id = oeas.organization_id
+                 WHERE oeas.organization_id = :organization_id
+                   AND oeas.agreed_score IS NOT NULL
+                 GROUP BY oc.id, oc.title
+                 ORDER BY oc.title ASC',
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $rows = [];
+        }
+
+        if (empty($rows)) {
+            return $result;
+        }
+
+        foreach ($rows as $row) {
+            $competencyId = (int) ($row['id'] ?? 0);
+            $title = trim((string) ($row['title'] ?? ''));
+            $avgScore = isset($row['avg_score']) ? (float) $row['avg_score'] : 0.0;
+
+            if ($title === '') {
+                $title = 'شایستگی #' . UtilityHelper::englishToPersian((string) max($competencyId, 1));
+            }
+
+            $bucket = $avgScore < 60 ? 'weak' : 'strong';
+            $result[$bucket]['labels'][] = $title;
+            $result[$bucket]['series'][] = round($avgScore, 2);
+        }
+
+        return $result;
+    }
+
     private function gregorianToJalali(int $gy, int $gm, int $gd): array
     {
         $g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
@@ -742,8 +794,7 @@ class OrganizationController
             );
 
             if ($exists) {
-                $_SESSION['validation_errors'] = ['code' => 'این کد قبلاً ثبت شده است.'];
-                ResponseHelper::flashError('کد تکراری است. لطفاً مقدار دیگری وارد کنید.');
+                ResponseHelper::flashError('کد پست از قبل وجود دارد.');
                 UtilityHelper::redirect($redirectCreate);
             }
 
@@ -1947,6 +1998,7 @@ class OrganizationController
         $this->ensureOrganizationCompetencyDimensionsTableExists();
         $this->ensureOrganizationCompetenciesTableExists();
         $this->ensureOrganizationCompetencyFeaturesTableExists();
+        $this->ensureOrganizationCompetencyFeatureScoresTableExists();
 
         $title = 'ویژگی‌های شایستگی';
         $user = $sessionData['user'];
@@ -1957,10 +2009,12 @@ class OrganizationController
         $competencyFeatures = [];
         try {
             $competencyFeatures = DatabaseHelper::fetchAll(
-                'SELECT f.*, oc.code AS competency_code, oc.title AS competency_title
+                'SELECT f.*, oc.code AS competency_code, oc.title AS competency_title, s.score_min, s.score_max
                  FROM organization_competency_features f
                  LEFT JOIN organization_competencies oc
                     ON oc.id = f.competency_id AND oc.organization_id = f.organization_id
+                 LEFT JOIN organization_competency_feature_scores s
+                    ON s.competency_feature_id = f.id AND s.organization_id = f.organization_id
                  WHERE f.organization_id = :organization_id
                  ORDER BY f.created_at DESC',
                 ['organization_id' => $organizationId]
@@ -1980,10 +2034,10 @@ class OrganizationController
         $sessionData = $this->ensureOrganizationSession();
 
         AuthHelper::startSession();
-
         $this->ensureOrganizationCompetencyDimensionsTableExists();
         $this->ensureOrganizationCompetenciesTableExists();
         $this->ensureOrganizationCompetencyFeaturesTableExists();
+        $this->ensureOrganizationCompetencyFeatureScoresTableExists();
 
         $title = 'ایجاد ویژگی شایستگی';
         $user = $sessionData['user'];
@@ -2011,6 +2065,7 @@ class OrganizationController
         $this->ensureOrganizationCompetencyDimensionsTableExists();
         $this->ensureOrganizationCompetenciesTableExists();
         $this->ensureOrganizationCompetencyFeaturesTableExists();
+        $this->ensureOrganizationCompetencyFeatureScoresTableExists();
 
         $redirectCreate = UtilityHelper::baseUrl('organizations/competency-features/create');
         $redirectIndex = UtilityHelper::baseUrl('organizations/competency-features');
@@ -2026,6 +2081,13 @@ class OrganizationController
             ? (int) UtilityHelper::persianToEnglish($competencyIdInput)
             : 0;
 
+        $scoreMinField = trim((string) ($_POST['score_min'] ?? ''));
+        $scoreMaxField = trim((string) ($_POST['score_max'] ?? ''));
+        $scoreMinNormalized = str_replace(['٫', ',', '،'], ['.', '.', '.'], UtilityHelper::persianToEnglish($scoreMinField));
+        $scoreMaxNormalized = str_replace(['٫', ',', '،'], ['.', '.', '.'], UtilityHelper::persianToEnglish($scoreMaxField));
+        $scoreMinValue = null;
+        $scoreMaxValue = null;
+
         $input = [
             'code' => trim((string) ($_POST['code'] ?? '')),
             'type' => preg_replace('/\s+/u', ' ', trim((string) ($_POST['type'] ?? ''))),
@@ -2038,6 +2100,8 @@ class OrganizationController
             'type' => $input['type'],
             'competency_id' => $competencyId > 0 ? (string) $competencyId : $competencyIdInput,
             'description' => $input['description'],
+            'score_min' => $scoreMinField,
+            'score_max' => $scoreMaxField,
         ];
 
         $validationErrors = [];
@@ -2049,9 +2113,9 @@ class OrganizationController
         }
 
         if ($input['type'] === '') {
-            $validationErrors['type'] = 'نوع ویژگی الزامی است.';
+            $validationErrors['type'] = 'سطح انتظار الزامی است.';
         } elseif (mb_strlen($input['type']) > 100) {
-            $validationErrors['type'] = 'طول نوع ویژگی نباید بیش از ۱۰۰ کاراکتر باشد.';
+            $validationErrors['type'] = 'طول سطح انتظار نباید بیش از ۱۰۰ کاراکتر باشد.';
         }
 
         if ($input['competency_id'] <= 0) {
@@ -2060,6 +2124,26 @@ class OrganizationController
 
         if ($input['description'] !== '' && mb_strlen($input['description']) > 1000) {
             $validationErrors['description'] = 'طول توضیحات نباید بیش از ۱۰۰۰ کاراکتر باشد.';
+        }
+
+        if ($scoreMinField === '') {
+            $validationErrors['score_min'] = 'امتیاز شروع الزامی است.';
+        } elseif (!is_numeric($scoreMinNormalized)) {
+            $validationErrors['score_min'] = 'فرمت امتیاز شروع معتبر نیست.';
+        } else {
+            $scoreMinValue = (float) $scoreMinNormalized;
+        }
+
+        if ($scoreMaxField === '') {
+            $validationErrors['score_max'] = 'امتیاز پایان الزامی است.';
+        } elseif (!is_numeric($scoreMaxNormalized)) {
+            $validationErrors['score_max'] = 'فرمت امتیاز پایان معتبر نیست.';
+        } else {
+            $scoreMaxValue = (float) $scoreMaxNormalized;
+        }
+
+        if ($scoreMinValue !== null && $scoreMaxValue !== null && $scoreMinValue > $scoreMaxValue) {
+            $validationErrors['score_max'] = 'امتیاز پایان باید بزرگ‌تر یا مساوی امتیاز شروع باشد.';
         }
 
         if (!empty($validationErrors)) {
@@ -2078,6 +2162,8 @@ class OrganizationController
             ResponseHelper::flashError('امکان ثبت ویژگی شایستگی در حال حاضر وجود ندارد.');
             UtilityHelper::redirect($redirectCreate);
         }
+
+        $transactionStarted = false;
 
         try {
             $competency = DatabaseHelper::fetchOne(
@@ -2124,7 +2210,10 @@ class OrganizationController
                 // Silent fail; continue with provided type.
             }
 
-            DatabaseHelper::insert('organization_competency_features', [
+            DatabaseHelper::beginTransaction();
+            $transactionStarted = true;
+
+            $featureId = (int) DatabaseHelper::insert('organization_competency_features', [
                 'organization_id' => $organizationId,
                 'competency_id' => $input['competency_id'],
                 'code' => $input['code'],
@@ -2133,11 +2222,26 @@ class OrganizationController
                 'user_id' => $userIdentifier,
             ]);
 
+            DatabaseHelper::insert('organization_competency_feature_scores', [
+                'organization_id' => $organizationId,
+                'competency_feature_id' => $featureId,
+                'score_min' => $scoreMinValue,
+                'score_max' => $scoreMaxValue,
+                'user_id' => $userIdentifier,
+            ]);
+
+            DatabaseHelper::commit();
+            $transactionStarted = false;
+
             unset($_SESSION['old_input'], $_SESSION['validation_errors']);
 
             ResponseHelper::flashSuccess('ویژگی شایستگی با موفقیت ایجاد شد.');
             UtilityHelper::redirect($redirectIndex);
         } catch (Exception $exception) {
+            if ($transactionStarted) {
+                DatabaseHelper::rollback();
+            }
+
             ResponseHelper::flashError('در هنگام ذخیره ویژگی شایستگی خطایی رخ داد.');
             UtilityHelper::redirect($redirectCreate);
         }
@@ -2152,6 +2256,7 @@ class OrganizationController
         $this->ensureOrganizationCompetencyDimensionsTableExists();
         $this->ensureOrganizationCompetenciesTableExists();
         $this->ensureOrganizationCompetencyFeaturesTableExists();
+        $this->ensureOrganizationCompetencyFeatureScoresTableExists();
 
         $title = 'ویرایش ویژگی شایستگی';
         $user = $sessionData['user'];
@@ -2186,8 +2291,22 @@ class OrganizationController
         $validationErrors = $_SESSION['validation_errors'] ?? [];
         unset($_SESSION['validation_errors']);
 
-    $competencies = $this->fetchOrganizationCompetenciesForModels($organizationId);
-    $availableFeatureTypes = $this->getExistingCompetencyFeatureTypes($organizationId);
+        try {
+            $competencyFeatureScore = DatabaseHelper::fetchOne(
+                'SELECT score_min, score_max FROM organization_competency_feature_scores WHERE competency_feature_id = :id AND organization_id = :organization_id LIMIT 1',
+                [
+                    'id' => $featureId,
+                    'organization_id' => $organizationId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $competencyFeatureScore = null;
+        }
+
+        $competencyFeatureScore = $competencyFeatureScore ?: [];
+
+        $competencies = $this->fetchOrganizationCompetenciesForModels($organizationId);
+        $availableFeatureTypes = $this->getExistingCompetencyFeatureTypes($organizationId);
 
         $errorMessage = flash('error');
         $successMessage = flash('success');
@@ -2204,6 +2323,7 @@ class OrganizationController
         $this->ensureOrganizationCompetencyDimensionsTableExists();
         $this->ensureOrganizationCompetenciesTableExists();
         $this->ensureOrganizationCompetencyFeaturesTableExists();
+        $this->ensureOrganizationCompetencyFeatureScoresTableExists();
 
         $organization = $sessionData['organization'];
         $user = $sessionData['user'];
@@ -2231,6 +2351,13 @@ class OrganizationController
             ? (int) UtilityHelper::persianToEnglish($competencyIdInput)
             : 0;
 
+        $scoreMinField = trim((string) ($_POST['score_min'] ?? ''));
+        $scoreMaxField = trim((string) ($_POST['score_max'] ?? ''));
+        $scoreMinNormalized = str_replace(['٫', ',', '،'], ['.', '.', '.'], UtilityHelper::persianToEnglish($scoreMinField));
+        $scoreMaxNormalized = str_replace(['٫', ',', '،'], ['.', '.', '.'], UtilityHelper::persianToEnglish($scoreMaxField));
+        $scoreMinValue = null;
+        $scoreMaxValue = null;
+
         $input = [
             'competency_id' => $competencyId,
             'code' => trim((string) ($_POST['code'] ?? '')),
@@ -2243,6 +2370,8 @@ class OrganizationController
             'code' => $input['code'],
             'type' => $input['type'],
             'description' => $input['description'],
+            'score_min' => $scoreMinField,
+            'score_max' => $scoreMaxField,
         ];
 
         $validationErrors = [];
@@ -2258,13 +2387,33 @@ class OrganizationController
         }
 
         if ($input['type'] === '') {
-            $validationErrors['type'] = 'نوع ویژگی الزامی است.';
+            $validationErrors['type'] = 'سطح انتظار الزامی است.';
         } elseif (mb_strlen($input['type']) > 100) {
-            $validationErrors['type'] = 'طول نوع ویژگی نباید بیش از ۱۰۰ کاراکتر باشد.';
+            $validationErrors['type'] = 'طول سطح انتظار نباید بیش از ۱۰۰ کاراکتر باشد.';
         }
 
         if ($input['description'] !== '' && mb_strlen($input['description']) > 1000) {
             $validationErrors['description'] = 'طول توضیحات نباید بیش از ۱۰۰۰ کاراکتر باشد.';
+        }
+
+        if ($scoreMinField === '') {
+            $validationErrors['score_min'] = 'امتیاز شروع الزامی است.';
+        } elseif (!is_numeric($scoreMinNormalized)) {
+            $validationErrors['score_min'] = 'فرمت امتیاز شروع معتبر نیست.';
+        } else {
+            $scoreMinValue = (float) $scoreMinNormalized;
+        }
+
+        if ($scoreMaxField === '') {
+            $validationErrors['score_max'] = 'امتیاز پایان الزامی است.';
+        } elseif (!is_numeric($scoreMaxNormalized)) {
+            $validationErrors['score_max'] = 'فرمت امتیاز پایان معتبر نیست.';
+        } else {
+            $scoreMaxValue = (float) $scoreMaxNormalized;
+        }
+
+        if ($scoreMinValue !== null && $scoreMaxValue !== null && $scoreMinValue > $scoreMaxValue) {
+            $validationErrors['score_max'] = 'امتیاز پایان باید بزرگ‌تر یا مساوی امتیاز شروع باشد.';
         }
 
         if (!empty($validationErrors)) {
@@ -2277,6 +2426,8 @@ class OrganizationController
             ResponseHelper::flashError('امکان به‌روزرسانی ویژگی شایستگی در حال حاضر وجود ندارد.');
             UtilityHelper::redirect($redirectIndex);
         }
+
+        $transactionStarted = false;
 
         try {
             $competencyFeature = DatabaseHelper::fetchOne(
@@ -2336,6 +2487,8 @@ class OrganizationController
             } catch (Exception $exception) {
                 // Silent fail; continue with provided type.
             }
+            DatabaseHelper::beginTransaction();
+            $transactionStarted = true;
 
             DatabaseHelper::update(
                 'organization_competency_features',
@@ -2353,11 +2506,53 @@ class OrganizationController
                 ]
             );
 
+            $existingScore = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_competency_feature_scores WHERE competency_feature_id = :id AND organization_id = :organization_id LIMIT 1',
+                [
+                    'id' => $featureId,
+                    'organization_id' => $organizationId,
+                ]
+            );
+
+            if ($existingScore) {
+                DatabaseHelper::update(
+                    'organization_competency_feature_scores',
+                    [
+                        'score_min' => $scoreMinValue,
+                        'score_max' => $scoreMaxValue,
+                        'user_id' => $userIdentifier,
+                    ],
+                    'competency_feature_id = :id AND organization_id = :organization_id',
+                    [
+                        'id' => $featureId,
+                        'organization_id' => $organizationId,
+                    ]
+                );
+            } else {
+                DatabaseHelper::insert(
+                    'organization_competency_feature_scores',
+                    [
+                        'organization_id' => $organizationId,
+                        'competency_feature_id' => $featureId,
+                        'score_min' => $scoreMinValue,
+                        'score_max' => $scoreMaxValue,
+                        'user_id' => $userIdentifier,
+                    ]
+                );
+            }
+
+            DatabaseHelper::commit();
+            $transactionStarted = false;
+
             unset($_SESSION['old_input'], $_SESSION['validation_errors']);
 
             ResponseHelper::flashSuccess('ویژگی شایستگی با موفقیت به‌روزرسانی شد.');
             UtilityHelper::redirect($redirectIndex);
         } catch (Exception $exception) {
+            if ($transactionStarted) {
+                DatabaseHelper::rollback();
+            }
+
             ResponseHelper::flashError('در به‌روزرسانی ویژگی شایستگی خطایی رخ داد.');
             UtilityHelper::redirect($redirectEdit);
         }
@@ -2372,6 +2567,7 @@ class OrganizationController
         $this->ensureOrganizationCompetencyDimensionsTableExists();
         $this->ensureOrganizationCompetenciesTableExists();
         $this->ensureOrganizationCompetencyFeaturesTableExists();
+        $this->ensureOrganizationCompetencyFeatureScoresTableExists();
 
         $organization = $sessionData['organization'];
 
@@ -2391,6 +2587,15 @@ class OrganizationController
         }
 
         try {
+            DatabaseHelper::delete(
+                'organization_competency_feature_scores',
+                'competency_feature_id = :id AND organization_id = :organization_id',
+                [
+                    'id' => $featureId,
+                    'organization_id' => $organizationId,
+                ]
+            );
+
             $deleted = DatabaseHelper::delete(
                 'organization_competency_features',
                 'id = :id AND organization_id = :organization_id',
@@ -18421,16 +18626,28 @@ class OrganizationController
         }
 
         $existingUsers = DatabaseHelper::fetchAll(
-            'SELECT username FROM organization_users WHERE organization_id = :organization_id',
+            'SELECT username, first_name, last_name, personnel_code FROM organization_users WHERE organization_id = :organization_id',
             ['organization_id' => $organizationId]
         );
 
         $existingUsernames = [];
+        $existingPersonnelKeys = [];
         foreach ($existingUsers as $existingUser) {
             $existingUsernames[mb_strtolower((string) ($existingUser['username'] ?? ''))] = true;
+
+            $personnelKey = $this->buildPersonnelDuplicateKey(
+                (string) ($existingUser['first_name'] ?? ''),
+                (string) ($existingUser['last_name'] ?? ''),
+                (string) ($existingUser['personnel_code'] ?? '')
+            );
+
+            if ($personnelKey !== '') {
+                $existingPersonnelKeys[$personnelKey] = true;
+            }
         }
 
         $processedUsernames = [];
+        $processedPersonnelKeys = [];
 
         foreach ($rows as $index => $row) {
             $rowNumber = $index + 2; // considering header row
@@ -18469,6 +18686,13 @@ class OrganizationController
             }
 
             $normalizedUsername = mb_strtolower($username);
+            $personnelKey = $this->buildPersonnelDuplicateKey($firstName, $lastName, $personnelCode);
+
+            if ($personnelKey === '') {
+                $importErrors[] = sprintf('سطر %s: مقدار نام، نام خانوادگی یا کد پرسنلی نامعتبر است.', $rowNumber);
+                $skippedCount++;
+                continue;
+            }
 
             if (isset($existingUsernames[$normalizedUsername]) || isset($processedUsernames[$normalizedUsername])) {
                 $importErrors[] = sprintf('سطر %s: نام کاربری "%s" تکراری است.', $rowNumber, htmlspecialchars($username, ENT_QUOTES, 'UTF-8'));
@@ -18476,7 +18700,14 @@ class OrganizationController
                 continue;
             }
 
+            if (isset($existingPersonnelKeys[$personnelKey]) || isset($processedPersonnelKeys[$personnelKey])) {
+                $importErrors[] = sprintf('سطر %s: کاربری با همین نام، نام خانوادگی و کد پرسنلی قبلاً ثبت شده است.', $rowNumber);
+                $skippedCount++;
+                continue;
+            }
+
             $processedUsernames[$normalizedUsername] = true;
+            $processedPersonnelKeys[$personnelKey] = true;
 
             try {
                 DatabaseHelper::insert('organization_users', [
@@ -18502,12 +18733,13 @@ class OrganizationController
                     'show_report_date_instead_of_calendar' => 0,
                     'is_system_admin' => 0,
                     'is_manager' => 0,
-                    'is_evaluee' => 0,
+                    'is_evaluee' => 1,
                     'is_evaluator' => 0,
                     'is_active' => 1,
                 ]);
 
                 $existingUsernames[$normalizedUsername] = true;
+                $existingPersonnelKeys[$personnelKey] = true;
                 $importedCount++;
             } catch (Exception $exception) {
                 $importErrors[] = sprintf('سطر %s: ثبت کاربر با خطا روبه‌رو شد.', $rowNumber);
@@ -18854,7 +19086,7 @@ class OrganizationController
 
                 if (!empty($rowData)) {
                     ksort($rowData);
-                    $rows[] = array_values($rowData);
+                    $rows[] = $rowData;
                 }
             }
         }
@@ -18865,25 +19097,64 @@ class OrganizationController
             return [];
         }
 
-        $headerRow = array_map(static function ($value) {
-            return trim((string) $value);
-        }, $rows[0]);
+        $headerIndex = null;
+        $headerRow = [];
+        $columnMap = [];
 
-        $columnMap = $this->mapOrganizationUsersColumns($headerRow);
+        foreach ($rows as $index => $rowValues) {
+            $trimmedRow = [];
+            foreach ($rowValues as $colIndex => $value) {
+                $trimmedRow[$colIndex] = trim((string) $value);
+            }
 
-        $requiredFields = ['username', 'password', 'first_name', 'last_name', 'evaluation_code', 'national_code', 'personnel_code'];
-        foreach ($requiredFields as $requiredField) {
-            if (!array_key_exists($requiredField, $columnMap)) {
-                throw new Exception('ستون‌های مورد نیاز در فایل نمونه موجود نیستند. لطفاً از فایل نمونه ارائه شده استفاده کنید.');
+            $nonEmptyValues = array_values(array_filter($trimmedRow, static function ($value) {
+                return $value !== '';
+            }));
+
+            if (empty($nonEmptyValues)) {
+                continue;
+            }
+
+            if ($index === 0 && count($nonEmptyValues) === 1 && preg_match('/نمونه|تاریخ|فایل/u', $nonEmptyValues[0])) {
+                continue;
+            }
+
+            $candidateMap = $this->mapOrganizationUsersColumns($trimmedRow);
+
+            if (!empty($candidateMap)) {
+                $headerIndex = $index;
+                $headerRow = $trimmedRow;
+                $columnMap = $candidateMap;
+                break;
             }
         }
 
+        if ($headerIndex === null) {
+            throw new Exception('ستون‌های شناخته‌شده در فایل یافت نشد. لطفاً از فایل نمونه ارائه‌شده استفاده کنید.');
+        }
+
+        if (class_exists('LogHelper')) {
+            try {
+                LogHelper::info('organization.users.import.headers', [
+                    'raw_header_row' => $headerRow,
+                    'normalized_headers' => array_map(function ($value) {
+                        return $this->normalizeHeader($value);
+                    }, $headerRow),
+                    'column_map_keys' => array_keys($columnMap),
+                ], 'organization_users_import');
+            } catch (Exception $loggingException) {
+                // ignore logging failures
+            }
+        }
+
+        // We will ensure required output fields exist by generating missing ones (username/password/evaluation_code)
         $records = [];
-        for ($i = 1, $count = count($rows); $i < $count; $i++) {
+        for ($i = $headerIndex + 1, $count = count($rows); $i < $count; $i++) {
             $rowValues = $rows[$i];
             $record = [];
             $hasValue = false;
 
+            // Map known columns
             foreach ($columnMap as $field => $index) {
                 $value = $rowValues[$index] ?? '';
                 $value = is_string($value) ? trim($value) : trim((string) $value);
@@ -18893,9 +19164,65 @@ class OrganizationController
                 $record[$field] = $value;
             }
 
-            if ($hasValue) {
-                $records[] = $record;
+            if (!$hasValue) {
+                continue;
             }
+
+            // Fill required import fields if missing
+            // username: enforce personnel_code when available
+            $national = trim((string) ($record['national_code'] ?? ''));
+            $personnel = trim((string) ($record['personnel_code'] ?? ''));
+            $username = trim((string) ($record['username'] ?? ''));
+
+            if ($personnel !== '') {
+                $username = $personnel;
+            } elseif ($username !== '') {
+                // keep provided username when personnel code is missing
+            } elseif ($national !== '') {
+                $username = $national;
+            } else {
+                $username = 'user_' . strtolower(UtilityHelper::generateRandomString(6));
+            }
+
+            // Prefer personnel code as password; fall back to national code or random string
+            if ($personnel !== '') {
+                $password = $personnel;
+            } elseif ($national !== '') {
+                $password = $national;
+            } else {
+                $password = UtilityHelper::generateRandomString(8);
+            }
+
+            // evaluation_code: use existing if present or generate
+            $evaluationCode = trim((string) ($record['evaluation_code'] ?? ''));
+            if ($evaluationCode === '') {
+                $evaluationCode = 'EVA-' . strtoupper(UtilityHelper::generateRandomString(6));
+            }
+
+            // Ensure first_name/last_name exist
+            $firstName = trim((string) ($record['first_name'] ?? ''));
+            $lastName = trim((string) ($record['last_name'] ?? ''));
+
+            // Prepare final record fields expected by importOrganizationUsers
+            $final = [
+                'username' => $username,
+                'password' => $password,
+                'first_name' => $firstName !== '' ? $firstName : '-',
+                'last_name' => $lastName !== '' ? $lastName : '-',
+                'evaluation_code' => $evaluationCode,
+                'national_code' => $national !== '' ? $national : '',
+                'personnel_code' => $personnel !== '' ? $personnel : '',
+                'province' => $record['province'] ?? '',
+                'city' => $record['city'] ?? '',
+                // preserve additional fields if needed
+                'raw' => $record,
+            ];
+
+            $records[] = $final;
+        }
+
+        if (empty($records)) {
+            throw new Exception('هیچ ردیفی با داده معتبر در فایل یافت نشد. لطفاً مقادیر ستون‌ها را بررسی کنید.');
         }
 
         return $records;
@@ -18948,10 +19275,19 @@ class OrganizationController
             'first_name' => ['نام', 'firstname'],
             'last_name' => ['نامخانوادگی', 'lastname'],
             'evaluation_code' => ['کدارزیابی', 'evaluationcode'],
-            'national_code' => ['کدملی', 'کدملی', 'nationalcode'],
+            'national_code' => ['کدملی', 'کدملی', 'nationalcode', 'شمارهملی'],
             'province' => ['استان', 'province'],
             'city' => ['شهر', 'city'],
-            'personnel_code' => ['کدپرسنلی', 'personnelcode'],
+            'personnel_code' => ['کدپرسنلی', 'personnelcode', 'شمارهپرسنلی'],
+            'row_number' => ['ردیف'],
+            'father_name' => ['نامپدر'],
+            'birth_date' => ['تاریختولد'],
+            'executive_device' => ['دستگاهاجراییمحلخدمت'],
+            'service_unit' => ['واحدمحلخدمت'],
+            'current_position' => ['ردهپستفعلی', 'پستفعلی'],
+            'proposed_position' => ['پستپیشنهادی'],
+            'proposed_management_level' => ['سطحمدیریتپیشنهادی'],
+            'phone_number' => ['شمارهتلفن'],
         ];
 
         $columnMap = [];
@@ -18965,22 +19301,124 @@ class OrganizationController
             }
         }
 
+        // Fallback mapping for the known 13-column sample format (A..M)
+        $expectedSequence = [
+            0 => 'ردیف',
+            1 => 'نام',
+            2 => 'نامخانوادگی',
+            3 => 'شمارهملی',
+            4 => 'نامپدر',
+            5 => 'تاریختولد',
+            6 => 'شمارهپرسنلی',
+            7 => 'دستگاهاجراییمحلخدمت',
+            8 => 'واحدمحلخدمت',
+            9 => 'ردهپستفعلی',
+            10 => 'پستپیشنهادی',
+            11 => 'سطحمدیریتپیشنهادی',
+            12 => 'شمارهتلفن',
+        ];
+
+        $matchesExpected = true;
+        foreach ($expectedSequence as $position => $expectedValue) {
+            if (($normalizedHeaders[$position] ?? '') !== $expectedValue) {
+                $matchesExpected = false;
+                break;
+            }
+        }
+
+        if ($matchesExpected) {
+            $columnMap += [
+                'row_number' => 0,
+                'first_name' => 1,
+                'last_name' => 2,
+                'national_code' => 3,
+                'father_name' => 4,
+                'birth_date' => 5,
+                'personnel_code' => 6,
+                'executive_device' => 7,
+                'service_unit' => 8,
+                'current_position' => 9,
+                'proposed_position' => 10,
+                'proposed_management_level' => 11,
+                'phone_number' => 12,
+            ];
+        }
+
         return $columnMap;
     }
 
     private function normalizeHeader(string $header): string
     {
         $header = trim($header);
+
+        // Normalize Arabic variants to their Persian equivalents
+        $header = strtr($header, [
+            'ي' => 'ی',
+            'ى' => 'ی',
+            'ئ' => 'ی',
+            'ك' => 'ک',
+            'ة' => 'ه',
+            'ۀ' => 'ه',
+            'ؤ' => 'و',
+            'أ' => 'ا',
+            'إ' => 'ا',
+            'ٱ' => 'ا',
+        ]);
+
         $header = str_replace([
             ' ',
+            "\t",
+            "\r",
+            "\n",
             "\u{200C}", // zero width non-joiner
             "\u{200F}", // right-to-left mark
+            "\u{200E}", // left-to-right mark
             "\u{202A}", "\u{202B}", "\u{202C}", "\u{202D}", "\u{202E}", // embedding marks
             "\u{FEFF}", // BOM
             '‌', // Persian ZWNJ
             '﻿' // BOM
         ], '', $header);
+
         return mb_strtolower($header);
+    }
+
+    private function normalizeDuplicateValue(string $value): string
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return '';
+        }
+
+        $value = strtr($value, [
+            'ي' => 'ی',
+            'ى' => 'ی',
+            'ئ' => 'ی',
+            'ك' => 'ک',
+            'ة' => 'ه',
+            'ۀ' => 'ه',
+            'ؤ' => 'و',
+            'أ' => 'ا',
+            'إ' => 'ا',
+            'ٱ' => 'ا',
+        ]);
+
+        $value = preg_replace('/\s+/u', '', $value);
+
+        return mb_strtolower($value);
+    }
+
+    private function buildPersonnelDuplicateKey(string $firstName, string $lastName, string $personnelCode): string
+    {
+        $first = $this->normalizeDuplicateValue($firstName);
+        $last = $this->normalizeDuplicateValue($lastName);
+        $code = $this->normalizeDuplicateValue($personnelCode);
+
+        if ($first === '' || $last === '' || $code === '') {
+            return '';
+        }
+
+        return $first . '|' . $last . '|' . $code;
     }
 
     private function generateOrganizationUsersSampleXlsx(): string
@@ -19037,10 +19475,20 @@ XML
 XML
         );
 
-        $sharedStrings = [
-            'نام کاربری', 'رمز', 'نام', 'نام خانوادگی', 'کد ارزیابی', 'کدملی', 'استان', 'شهر', 'کد پرسنلی',
-            'user.sample', 'Password123', 'علی', 'رضایی', 'EVA-123', '0012345678', 'تهران', 'تهران', 'PRS-789'
+        // Build shared strings for title, headers and one example row (columns A..M)
+        $today = UtilityHelper::getTodayDate();
+        $title = 'نمونه فایل کاربران - تاریخ: ' . $today;
+
+        $headers = [
+            'ردیف', 'نام', 'نام خانوادگی', 'شماره ملی', 'نام پدر', 'تاریخ تولد', 'شماره پرسنلی',
+            'دستگاه اجرایی محل خدمت', 'واحد محل خدمت', 'رده پست فعلی', 'پست پیشنهادی', 'سطح مدیریت پیشنهادی', 'شماره تلفن'
         ];
+
+        $example = [
+            '1', 'علی', 'رضایی', '0012345678', 'حسین', '1370/01/15', 'PRS-001', 'وزارت نمونه', 'واحد نمونه', 'کارشناس', 'کارشناس ارشد', 'سطح میانی', '09121234567'
+        ];
+
+        $sharedStrings = array_merge([$title], $headers, $example);
 
         $sharedStringsXml = '<?xml version="1.0" encoding="UTF-8"?>'
             . '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
@@ -19053,36 +19501,36 @@ XML
 
         $this->addZipFile($zip, 'xl/sharedStrings.xml', $sharedStringsXml);
 
-        $sheetXml = <<<XML
-<?xml version="1.0" encoding="UTF-8"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
- xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-    <sheetData>
-        <row r="1">
-            <c r="A1" t="s"><v>0</v></c>
-            <c r="B1" t="s"><v>1</v></c>
-            <c r="C1" t="s"><v>2</v></c>
-            <c r="D1" t="s"><v>3</v></c>
-            <c r="E1" t="s"><v>4</v></c>
-            <c r="F1" t="s"><v>5</v></c>
-            <c r="G1" t="s"><v>6</v></c>
-            <c r="H1" t="s"><v>7</v></c>
-            <c r="I1" t="s"><v>8</v></c>
-        </row>
-        <row r="2">
-            <c r="A2" t="s"><v>9</v></c>
-            <c r="B2" t="s"><v>10</v></c>
-            <c r="C2" t="s"><v>11</v></c>
-            <c r="D2" t="s"><v>12</v></c>
-            <c r="E2" t="s"><v>13</v></c>
-            <c r="F2" t="s"><v>14</v></c>
-            <c r="G2" t="s"><v>15</v></c>
-            <c r="H2" t="s"><v>16</v></c>
-            <c r="I2" t="s"><v>17</v></c>
-        </row>
-    </sheetData>
-</worksheet>
-XML;
+        // Build sheet XML: row1 title (merged A1:M1), row2 headers (A..M), row3 example values
+        $sheetXml = '<?xml version="1.0" encoding="UTF-8"?>'
+            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . '<sheetData>'
+            . '<row r="1">'
+            . '<c r="A1" t="s"><v>0</v></c>'
+            . '</row>'
+            . '<row r="2">';
+
+        // headers are indices 1..13 in sharedStrings
+        for ($i = 0; $i < count($headers); $i++) {
+            $col = chr(ord('A') + $i);
+            $sharedIndex = 1 + $i;
+            $sheetXml .= '<c r="' . $col . '2" t="s"><v>' . $sharedIndex . '</v></c>';
+        }
+
+        $sheetXml .= '</row>'
+            . '<row r="3">';
+
+        // example values are indices 14..26 (1 + count(headers) ..)
+        $exampleStart = 1 + count($headers);
+        for ($i = 0; $i < count($example); $i++) {
+            $col = chr(ord('A') + $i);
+            $sheetXml .= '<c r="' . $col . '3" t="s"><v>' . ($exampleStart + $i) . '</v></c>';
+        }
+
+        $sheetXml .= '</row>'
+            . '</sheetData>'
+            . '<mergeCells count="1"><mergeCell ref="A1:M1"/></mergeCells>'
+            . '</worksheet>';
 
         $this->addZipFile($zip, 'xl/worksheets/sheet1.xml', $sheetXml);
 
@@ -20125,6 +20573,41 @@ SQL;
             DatabaseHelper::query($createTableSql);
         } catch (Exception $exception) {
             // Fail silently; subsequent operations will surface errors.
+        }
+
+        $ensured = true;
+    }
+
+    private function ensureOrganizationCompetencyFeatureScoresTableExists(): void
+    {
+        static $ensured = false;
+
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_competency_feature_scores (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    organization_id BIGINT UNSIGNED NOT NULL,
+    competency_feature_id BIGINT UNSIGNED NOT NULL,
+    score_min DECIMAL(10,2) NOT NULL,
+    score_max DECIMAL(10,2) NOT NULL,
+    user_id VARCHAR(191) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_org_competency_feature_scores_feature (competency_feature_id),
+    INDEX idx_org_competency_feature_scores_org (organization_id),
+    CONSTRAINT fk_org_competency_feature_scores_feature FOREIGN KEY (competency_feature_id)
+        REFERENCES organization_competency_features (id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            // Silent fail; subsequent operations will surface errors.
         }
 
         $ensured = true;
@@ -21521,6 +22004,15 @@ SQL;
         $evaluationIdInput = UtilityHelper::persianToEnglish(trim((string) ($_GET['evaluation_id'] ?? ($_GET['evaluation'] ?? ($_GET['id'] ?? '')))));
         $evaluateeIdInput = UtilityHelper::persianToEnglish(trim((string) ($_GET['evaluatee_id'] ?? ($_GET['evaluatee'] ?? ''))));
         $viewMode = trim((string) ($_GET['view'] ?? 'washup'));
+        $layoutParam = trim((string) ($_GET['layout'] ?? 'modern'));
+
+        if (function_exists('mb_strtolower')) {
+            $layoutParam = mb_strtolower($layoutParam, 'UTF-8');
+        } else {
+            $layoutParam = strtolower($layoutParam);
+        }
+
+        $useLegacyWashUpLayout = in_array($layoutParam, ['legacy', 'old'], true);
 
         $evaluationId = (int) $evaluationIdInput;
         $evaluateeId = $evaluateeIdInput !== '' ? (int) $evaluateeIdInput : 0;
@@ -22483,10 +22975,14 @@ SQL;
 
         $backLink = UtilityHelper::baseUrl('organizations/wash-up');
         $listLink = $backLink;
-        $washUpLink = UtilityHelper::baseUrl('organizations/wash-up/detail?evaluation_id=' . urlencode((string) $evaluationId) . '&evaluatee_id=' . urlencode((string) $evaluateeId));
+    $washUpBaseLink = UtilityHelper::baseUrl('organizations/wash-up/detail?evaluation_id=' . urlencode((string) $evaluationId) . '&evaluatee_id=' . urlencode((string) $evaluateeId));
+    $washUpLink = $washUpBaseLink . ($useLegacyWashUpLayout ? '&layout=legacy' : '');
         $finalLink = UtilityHelper::baseUrl('organizations/wash-up/final-recommendation?evaluation_id=' . urlencode((string) $evaluationId) . '&evaluatee_id=' . urlencode((string) $evaluateeId));
         $agreedScoresAction = UtilityHelper::baseUrl('organizations/wash-up/agreed-scores');
         $canEditAgreedScores = $canFinalize;
+
+    $legacyLayoutLink = $washUpBaseLink . '&layout=legacy';
+    $modernLayoutLink = $washUpBaseLink;
 
         $successMessage = ResponseHelper::getFlash('success');
         $errorMessage = ResponseHelper::getFlash('error');
@@ -22713,7 +23209,8 @@ SQL;
         $evaluationId = (int) $evaluationIdInput;
         $evaluateeId = (int) $evaluateeIdInput;
 
-        $redirectUrl = UtilityHelper::baseUrl('organizations/wash-up/final-recommendation?evaluation_id=' . urlencode((string) $evaluationId) . '&evaluatee_id=' . urlencode((string) $evaluateeId));
+    $redirectUrl = UtilityHelper::baseUrl('organizations/wash-up/final-recommendation?evaluation_id=' . urlencode((string) $evaluationId) . '&evaluatee_id=' . urlencode((string) $evaluateeId));
+    $listRedirectUrl = UtilityHelper::baseUrl('organizations/wash-up');
 
         if ($evaluationId <= 0 || $evaluateeId <= 0) {
             ResponseHelper::flashError('اطلاعات لازم برای ثبت توصیه نهایی ناقص است.');
@@ -22853,6 +23350,8 @@ SQL;
             DatabaseHelper::commit();
 
             ResponseHelper::flashSuccess('توصیه نهایی با موفقیت ذخیره شد.');
+            UtilityHelper::redirect($listRedirectUrl);
+            return;
         } catch (Exception $exception) {
             DatabaseHelper::rollback();
             ResponseHelper::flashError('در ذخیره‌سازی توصیه نهایی خطایی رخ داد. لطفاً دوباره تلاش کنید.');
@@ -22884,11 +23383,22 @@ SQL;
 
         $evaluationIdInput = UtilityHelper::persianToEnglish(trim((string) ($_POST['evaluation_id'] ?? '')));
         $evaluateeIdInput = UtilityHelper::persianToEnglish(trim((string) ($_POST['evaluatee_id'] ?? '')));
+        $layoutInput = trim((string) ($_POST['layout'] ?? ''));
+
+        if (function_exists('mb_strtolower')) {
+            $layoutInput = mb_strtolower($layoutInput, 'UTF-8');
+        } else {
+            $layoutInput = strtolower($layoutInput);
+        }
 
         $evaluationId = (int) $evaluationIdInput;
         $evaluateeId = (int) $evaluateeIdInput;
 
         $redirectUrl = UtilityHelper::baseUrl('organizations/wash-up/detail?evaluation_id=' . urlencode((string) $evaluationId) . '&evaluatee_id=' . urlencode((string) $evaluateeId));
+        $useLegacyLayout = in_array($layoutInput, ['legacy', 'old'], true);
+        if ($useLegacyLayout) {
+            $redirectUrl .= '&layout=legacy';
+        }
 
         if ($evaluationId <= 0 || $evaluateeId <= 0) {
             ResponseHelper::flashError('اطلاعات لازم برای ثبت امتیاز توافقی ناقص است.');
@@ -32068,6 +32578,45 @@ SQL;
         }
     }
 
+    private function ensureOrganizationCourseCompetenciesTableExists(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_course_competencies (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    organization_id BIGINT UNSIGNED NOT NULL,
+    course_id BIGINT UNSIGNED NOT NULL,
+    competency_id BIGINT UNSIGNED NOT NULL,
+    user_id VARCHAR(191) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_org_course_competency (organization_id, course_id, competency_id),
+    INDEX idx_course (course_id),
+    INDEX idx_competency (competency_id),
+    CONSTRAINT fk_org_course_competencies_course FOREIGN KEY (course_id)
+        REFERENCES organization_courses (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_org_course_competencies_competency FOREIGN KEY (competency_id)
+        REFERENCES organization_competencies (id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to create organization_course_competencies table: ' . $exception->getMessage());
+            }
+        }
+
+        $ensured = true;
+    }
+
     private function resolveUploadErrorMessage(int $errorCode): string
     {
         switch ($errorCode) {
@@ -32199,9 +32748,12 @@ SQL;
         $sessionData = $this->ensureOrganizationSession(['courses_view', 'courses_manage']);
         AuthHelper::startSession();
 
-        $this->ensureOrganizationCoursesTableExists();
-        $this->ensureOrganizationCourseLessonsTableExists();
-        $this->ensureOrganizationCourseEnrollmentsTableExists();
+    $this->ensureOrganizationCoursesTableExists();
+    $this->ensureOrganizationCourseLessonsTableExists();
+    $this->ensureOrganizationCourseEnrollmentsTableExists();
+    $this->ensureOrganizationCompetencyDimensionsTableExists();
+    $this->ensureOrganizationCompetenciesTableExists();
+    $this->ensureOrganizationCourseCompetenciesTableExists();
 
         $title = 'دوره‌های توسعه فردی';
         $user = $sessionData['user'];
@@ -32570,6 +33122,169 @@ SQL;
         $infoMessage = ResponseHelper::getFlash('info');
 
         include __DIR__ . '/../Views/organizations/courses/lessons.php';
+    }
+
+    public function getOrganizationCourseCompetencies(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationCompetencyDimensionsTableExists();
+        $this->ensureOrganizationCompetenciesTableExists();
+        $this->ensureOrganizationCourseCompetenciesTableExists();
+
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $rawCourseId = $_GET['course_id'] ?? null;
+        $courseId = $rawCourseId !== null
+            ? (int) UtilityHelper::persianToEnglish((string) $rawCourseId)
+            : 0;
+
+        if ($organizationId <= 0 || $courseId <= 0) {
+            ResponseHelper::error('شناسه دوره نامعتبر است.', null, 422);
+        }
+
+        try {
+            $course = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_courses WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $courseId, 'organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('Failed to fetch course for competencies: ' . $exception->getMessage());
+            }
+
+            $course = null;
+        }
+
+        if (!$course) {
+            ResponseHelper::error('دوره یافت نشد.', null, 404);
+        }
+
+        $competencies = $this->fetchOrganizationCompetenciesForModels($organizationId);
+
+        try {
+            $selectedRows = DatabaseHelper::fetchAll(
+                'SELECT competency_id FROM organization_course_competencies WHERE organization_id = :organization_id AND course_id = :course_id',
+                ['organization_id' => $organizationId, 'course_id' => $courseId]
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('Failed to fetch selected course competencies: ' . $exception->getMessage());
+            }
+
+            $selectedRows = [];
+        }
+
+        $selectedIds = [];
+        foreach ($selectedRows as $row) {
+            $id = (int) ($row['competency_id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $selectedIds[$id] = $id;
+        }
+
+        if (!empty($selectedIds)) {
+            ksort($selectedIds);
+        }
+
+        ResponseHelper::success('شایستگی‌های دوره با موفقیت بازیابی شد.', [
+            'course_id' => $courseId,
+            'competencies' => $competencies,
+            'selected_competency_ids' => array_values($selectedIds),
+        ]);
+    }
+
+    public function saveOrganizationCourseCompetencies(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['courses_manage']);
+        AuthHelper::startSession();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            ResponseHelper::error('درخواست نامعتبر است.', null, 405);
+        }
+
+        $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationCompetencyDimensionsTableExists();
+        $this->ensureOrganizationCompetenciesTableExists();
+        $this->ensureOrganizationCourseCompetenciesTableExists();
+
+        $organization = $sessionData['organization'];
+        $user = $sessionData['user'];
+
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $userIdentifier = (string) ($user['id'] ?? '');
+
+        $rawCourseId = $_POST['course_id'] ?? null;
+        $courseId = $rawCourseId !== null
+            ? (int) UtilityHelper::persianToEnglish((string) $rawCourseId)
+            : 0;
+
+        if ($organizationId <= 0 || $courseId <= 0) {
+            ResponseHelper::error('شناسه دوره نامعتبر است.', null, 422);
+        }
+
+        try {
+            $course = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_courses WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                ['id' => $courseId, 'organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('Failed to fetch course before saving competencies: ' . $exception->getMessage());
+            }
+
+            $course = null;
+        }
+
+        if (!$course) {
+            ResponseHelper::error('دوره یافت نشد.', null, 404);
+        }
+
+        $rawCompetencyIds = $_POST['competency_ids'] ?? [];
+        $normalizedCompetencyIds = $this->normalizeCompetencyIdArray($rawCompetencyIds);
+        $validCompetencyIds = $this->filterValidCompetencyIds($normalizedCompetencyIds, $organizationId);
+
+        if (!empty($validCompetencyIds)) {
+            sort($validCompetencyIds);
+        }
+
+        try {
+            DatabaseHelper::beginTransaction();
+
+            DatabaseHelper::delete(
+                'organization_course_competencies',
+                'organization_id = :organization_id AND course_id = :course_id',
+                ['organization_id' => $organizationId, 'course_id' => $courseId]
+            );
+
+            foreach ($validCompetencyIds as $competencyId) {
+                DatabaseHelper::insert('organization_course_competencies', [
+                    'organization_id' => $organizationId,
+                    'course_id' => $courseId,
+                    'competency_id' => $competencyId,
+                    'user_id' => $userIdentifier,
+                ]);
+            }
+
+            DatabaseHelper::commit();
+        } catch (Exception $exception) {
+            DatabaseHelper::rollback();
+
+            if (class_exists('LogHelper')) {
+                LogHelper::error('Failed to save course competencies: ' . $exception->getMessage());
+            }
+
+            ResponseHelper::error('در ذخیره شایستگی‌های دوره خطایی رخ داد.', null, 500);
+        }
+
+        ResponseHelper::success('شایستگی‌های دوره با موفقیت ذخیره شد.', [
+            'course_id' => $courseId,
+            'selected_competency_ids' => $validCompetencyIds,
+        ]);
     }
 
     public function getOrganizationCourseEvaluatees(): void

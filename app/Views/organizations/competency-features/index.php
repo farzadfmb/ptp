@@ -95,24 +95,47 @@ $navbarUser = $user;
                         <?php endif; ?>
 
                         <div class="table-responsive rounded-16 border border-gray-100" style="direction: rtl;">
-                            <table class="table align-middle mb-0 competency-features-table js-data-table mt-5">
+                            <table class="table align-middle mb-0 competency-features-table js-data-table mt-5" data-datatable-options='{"responsive":false,"scrollX":true,"autoWidth":false}'>
                                 <thead class="bg-gray-100 text-gray-700">
                                     <tr>
                                         <th scope="col" class="no-sort no-search nowrap">عملیات</th>
-                                        <th scope="col">کد ویژگی</th>
-                                        <th scope="col">نوع</th>
                                         <th scope="col">شایستگی</th>
+                                        <th scope="col" class="text-nowrap">امتیاز</th>
+                                        <th scope="col">سطح انتظار</th>
                                         <th scope="col">توضیحات</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php if (!empty($competencyFeatures)): ?>
+                                        <?php
+                                            $formatScoreValue = static function ($value) {
+                                                if ($value === null || $value === '') {
+                                                    return null;
+                                                }
+
+                                                if (!is_numeric($value)) {
+                                                    $normalized = str_replace(['٫', ',', '،'], ['.', '.', '.'], UtilityHelper::persianToEnglish((string) $value));
+                                                    if (!is_numeric($normalized)) {
+                                                        return null;
+                                                    }
+                                                    $value = $normalized;
+                                                }
+
+                                                $number = (float) $value;
+                                                if (!is_finite($number)) {
+                                                    return null;
+                                                }
+
+                                                if (floor($number) === $number) {
+                                                    return (string) (int) $number;
+                                                }
+
+                                                return rtrim(rtrim(number_format($number, 2, '.', ''), '0'), '.');
+                                            };
+                                        ?>
                                         <?php foreach ($competencyFeatures as $feature): ?>
                                             <?php
                                                 $featureId = (string) ($feature['id'] ?? '');
-                                                $code = trim((string) ($feature['code'] ?? '-'));
-                                                $typeKey = trim((string) ($feature['type'] ?? ''));
-                                                $typeLabel = $typeKey !== '' ? $typeKey : '—';
                                                 $competencyTitle = trim((string) ($feature['competency_title'] ?? ''));
                                                 $competencyCode = trim((string) ($feature['competency_code'] ?? ''));
                                                 $competencyDisplay = '';
@@ -128,6 +151,22 @@ $navbarUser = $user;
                                                 $descriptionText = trim((string) ($feature['description'] ?? ''));
                                                 $descriptionDisplay = $descriptionText !== ''
                                                     ? htmlspecialchars(mb_strimwidth($descriptionText, 0, 120, '…'), ENT_QUOTES, 'UTF-8')
+                                                    : '<span class="text-gray-400">—</span>';
+
+                                                $scoreMinFormatted = $formatScoreValue($feature['score_min'] ?? null);
+                                                $scoreMaxFormatted = $formatScoreValue($feature['score_max'] ?? null);
+                                                $scoreDisplay = '<span class="text-gray-400">—</span>';
+                                                if ($scoreMinFormatted !== null && $scoreMaxFormatted !== null) {
+                                                    $scoreDisplay = htmlspecialchars(UtilityHelper::englishToPersian($scoreMinFormatted . ' تا ' . $scoreMaxFormatted), ENT_QUOTES, 'UTF-8');
+                                                } elseif ($scoreMinFormatted !== null) {
+                                                    $scoreDisplay = htmlspecialchars(UtilityHelper::englishToPersian($scoreMinFormatted), ENT_QUOTES, 'UTF-8');
+                                                } elseif ($scoreMaxFormatted !== null) {
+                                                    $scoreDisplay = htmlspecialchars(UtilityHelper::englishToPersian($scoreMaxFormatted), ENT_QUOTES, 'UTF-8');
+                                                }
+
+                                                $expectedLevel = trim((string) ($feature['type'] ?? ''));
+                                                $expectedLevelDisplay = $expectedLevel !== ''
+                                                    ? htmlspecialchars($expectedLevel, ENT_QUOTES, 'UTF-8')
                                                     : '<span class="text-gray-400">—</span>';
                                             ?>
                                             <tr>
@@ -147,9 +186,9 @@ $navbarUser = $user;
                                                         </form>
                                                     </div>
                                                 </td>
-                                                <td><?= htmlspecialchars($code, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                <td><?= htmlspecialchars($typeLabel, ENT_QUOTES, 'UTF-8'); ?></td>
                                                 <td><?= htmlspecialchars($competencyDisplay, ENT_QUOTES, 'UTF-8'); ?></td>
+                                                <td><?= $scoreDisplay; ?></td>
+                                                <td><?= $expectedLevelDisplay; ?></td>
                                                 <td><?= $descriptionDisplay; ?></td>
                                             </tr>
                                         <?php endforeach; ?>
