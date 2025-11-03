@@ -146,6 +146,7 @@ $navbarUser = $user;
                                     <label class="form-label fw-semibold">شایستگی مرتبط <span class="text-danger">*</span></label>
                                     <select name="competency_id" class="form-select" required>
                                         <option value="">انتخاب شایستگی</option>
+                                        <?php $selectedCompetencyId = (string) old('competency_id', (string) ($competencyFeature['competency_id'] ?? '')); ?>
                                         <?php foreach ($competencies as $competency): ?>
                                             <?php
                                                 $competencyId = (int) ($competency['id'] ?? 0);
@@ -154,7 +155,7 @@ $navbarUser = $user;
                                                 $optionLabel = $competencyCode !== ''
                                                     ? ($competencyTitle !== '' ? $competencyCode . ' - ' . $competencyTitle : $competencyCode)
                                                     : ($competencyTitle !== '' ? $competencyTitle : 'شناسه ' . $competencyId);
-                                                $selected = old('competency_id', $competencyFeature['competency_id'] ?? '') === (string) $competencyId ? 'selected' : '';
+                                                $selected = $selectedCompetencyId === (string) $competencyId ? 'selected' : '';
                                             ?>
                                             <option value="<?= htmlspecialchars((string) $competencyId, ENT_QUOTES, 'UTF-8'); ?>" <?= $selected; ?>>
                                                 <?= htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8'); ?>
