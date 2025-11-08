@@ -20,10 +20,14 @@ $errorMessage = flash('error');
 
 $additional_css[] = 'public/themes/dashkote/plugins/select2/css/select2.min.css';
 $additional_css[] = 'public/themes/dashkote/plugins/select2/css/select2-bootstrap4.css';
+$additional_css[] = 'https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css';
 $additional_js[] = 'public/themes/dashkote/plugins/select2/js/select2.min.js';
 $additional_js[] = 'public/themes/dashkote/js/form-select2.js';
+$additional_js[] = 'https://cdn.jsdelivr.net/npm/persian-date@1.1.0/dist/persian-date.min.js';
+$additional_js[] = 'https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js';
 
 $inline_styles .= "\n    body {\n        background: #f5f7fb;\n    }\n    .organization-user-form .form-check {\n        padding-right: 2.5rem;\n        padding-left: 0;\n    }\n    .organization-user-form .form-check .form-check-input {\n        margin-right: -2.5rem;\n        margin-left: 0;\n        float: right;\n    }\n    .organization-user-form .form-check-label {\n        margin-right: 0.5rem;\n    }\n    .organization-user-form .form-check.form-switch {\n        padding-right: 3.75rem;\n    }\n    .organization-user-form .form-check.form-switch .form-check-input {\n        margin-right: -3.75rem;\n    }\n    .organization-user-form .form-label,\n    .organization-user-form .form-check-label,\n    .organization-user-form small {\n        text-align: right;\n    }\n    .organization-user-form .form-control,\n    .organization-user-form .form-select {\n        text-align: right;\n        direction: rtl;\n    }\n    .organization-user-form input[type=\"email\"],\n    .organization-user-form input[type=\"password\"],\n    .organization-user-form input[name=\"username\"],\n    .organization-user-form input[name=\"evaluation_code\"],\n    .organization-user-form input[name=\"personnel_code\"] {\n        direction: ltr;\n        text-align: left;\n    }\n    .organization-user-form .ltr-input {\n        direction: ltr;\n        text-align: left;\n    }\n    .organization-user-form .btn ion-icon {\n        font-size: 18px;\n    }\n    .organization-user-form .form-section {\n        border: 1px solid #e5e7eb;\n        border-radius: 20px;\n        background: #ffffff;\n        padding: 20px 24px;\n    }\n    .organization-user-form .form-section + .form-section {\n        margin-top: 16px;\n    }\n    .organization-user-form .form-section-header {\n        display: flex;\n        justify-content: space-between;\n        align-items: flex-start;\n        gap: 12px;\n        margin-bottom: 16px;\n    }\n    .organization-user-form .form-section-title {\n        font-weight: 600;\n        color: #111827;\n        margin: 0;\n    }\n    .organization-user-form .form-section-description {\n        color: #6b7280;\n        margin: 0;\n        font-size: 0.9rem;\n    }\n    .organization-user-form #citySelect:disabled {\n        background-color: #f9fafb;\n        color: #9ca3af;\n        cursor: not-allowed;\n    }\n";
+$inline_styles .= "\n    .organization-user-form .date-picker-input {\n        cursor: pointer;\n        background-color: #ffffff;\n    }\n";
 
 
 include __DIR__ . '/../../layouts/organization-header.php';
@@ -238,6 +242,81 @@ SCRIPT
 );
 $inline_scripts .= "\n";
 
+$inline_scripts .= <<<'SCRIPT'
+    document.addEventListener('DOMContentLoaded', function () {
+        var dateSelectors = ['#expirationDate', '#reportDate'];
+
+        dateSelectors.forEach(function (selector) {
+            var inputElement = document.querySelector(selector);
+            if (!inputElement) {
+                return;
+            }
+
+            inputElement.setAttribute('autocomplete', 'off');
+            if (!inputElement.classList.contains('date-picker-input')) {
+                inputElement.classList.add('date-picker-input');
+            }
+        });
+
+        var $ = window.jQuery;
+        if (typeof $ === 'undefined' || typeof $.fn.persianDatepicker !== 'function') {
+            dateSelectors.forEach(function (selector) {
+                var fallbackInput = document.querySelector(selector);
+                if (fallbackInput) {
+                    fallbackInput.removeAttribute('readonly');
+                }
+            });
+            return;
+        }
+
+        dateSelectors.forEach(function (selector) {
+            var $input = $(selector);
+            if (!$input.length) {
+                return;
+            }
+
+            var currentValue = $input.val();
+            $input.prop('readOnly', true);
+
+            $input.persianDatepicker({
+                format: 'YYYY/MM/DD',
+                initialValue: currentValue !== '',
+                initialValueType: 'persian',
+                autoClose: true,
+                persianDigit: false,
+                calendar: {
+                    persian: {
+                        locale: 'fa',
+                        leapYearMode: 'astronomical'
+                    }
+                },
+                toolbox: {
+                    calendarSwitch: {
+                        enabled: false
+                    },
+                    todayButton: {
+                        enabled: true,
+                        text: 'امروز'
+                    },
+                    submitButton: {
+                        enabled: true,
+                        text: 'تأیید'
+                    }
+                },
+                navigator: {
+                    enabled: true,
+                    nextText: 'بعدی',
+                    prevText: 'قبلی'
+                },
+                timePicker: {
+                    enabled: false
+                }
+            });
+        });
+    });
+SCRIPT;
+$inline_scripts .= "\n";
+
 $oldCheckbox = static function (string $key, string $default = '0'): bool {
     return old($key, $default) === '1';
 };
@@ -289,7 +368,7 @@ $oldCheckbox = static function (string $key, string $default = '0'): bool {
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label fw-semibold">رمز عبور <span class="text-danger">*</span></label>
-                                        <input type="password" name="password" class="form-control" placeholder="حداقل ۶ کاراکتر" required>
+                                        <input type="password" name="password" class="form-control" placeholder="رمز عبور" required>
                                         <?php if (!empty($validationErrors['password'])): ?>
                                             <small class="text-danger d-block mt-6"><?= htmlspecialchars($validationErrors['password'], ENT_QUOTES, 'UTF-8'); ?></small>
                                         <?php endif; ?>
@@ -369,9 +448,9 @@ $oldCheckbox = static function (string $key, string $default = '0'): bool {
                                 </div>
                                 <div class="row g-16">
                                     <div class="col-md-4">
-                                        <label class="form-label fw-semibold">دستگاه اجرایی</label>
+                                        <label class="form-label fw-semibold">واحد سازمانی</label>
                                         <select name="executive_devices" class="form-select" data-role="executive-unit-select">
-                                            <option value="">انتخاب دستگاه اجرایی</option>
+                                            <option value="">انتخاب واحد سازمانی</option>
                                             <?php foreach ($executiveUnits as $unit): ?>
                                                 <?php
                                                     $unitName = trim((string) ($unit['name'] ?? ''));
@@ -387,10 +466,10 @@ $oldCheckbox = static function (string $key, string $default = '0'): bool {
                                                 <option value="<?= htmlspecialchars($currentExecutiveUnit, ENT_QUOTES, 'UTF-8'); ?>" selected><?= htmlspecialchars($currentExecutiveUnit, ENT_QUOTES, 'UTF-8'); ?> (قدیمی)</option>
                                             <?php endif; ?>
                                             <?php if (empty($executiveUnits)): ?>
-                                                <option value="" disabled>دستگاه اجرایی ثبت نشده است.</option>
+                                                <option value="" disabled>واحد سازمانی ثبت نشده است.</option>
                                             <?php endif; ?>
                                         </select>
-                                        <small class="text-muted d-block mt-6">برای افزودن دستگاه جدید به بخش «دستگاه‌های اجرایی» مراجعه کنید.</small>
+                                        <small class="text-muted d-block mt-6">برای افزودن واحد جدید به بخش «واحدهای سازمانی» مراجعه کنید.</small>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label fw-semibold">محل خدمت</label>
@@ -463,11 +542,11 @@ $oldCheckbox = static function (string $key, string $default = '0'): bool {
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label fw-semibold">تاریخ انقضا</label>
-                                        <input type="text" name="expiration_date" class="form-control" value="<?= htmlspecialchars(old('expiration_date', ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۶/۳۱">
+                                        <input type="text" name="expiration_date" id="expirationDate" class="form-control date-picker-input" value="<?= htmlspecialchars(old('expiration_date', ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۶/۳۱" autocomplete="off" readonly>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label fw-semibold">تاریخ گزارش</label>
-                                        <input type="text" name="report_date" class="form-control" value="<?= htmlspecialchars(old('report_date', ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۱/۱۵">
+                                        <input type="text" name="report_date" id="reportDate" class="form-control date-picker-input" value="<?= htmlspecialchars(old('report_date', ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۱/۱۵" autocomplete="off" readonly>
                                     </div>
                                     <div class="col-md-4 d-flex align-items-end">
                                         <div class="form-check form-switch ms-auto">

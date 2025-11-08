@@ -21,8 +21,11 @@ $organizationUser = $organizationUser ?? [];
 
 $additional_css[] = 'public/themes/dashkote/plugins/select2/css/select2.min.css';
 $additional_css[] = 'public/themes/dashkote/plugins/select2/css/select2-bootstrap4.css';
+$additional_css[] = 'https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css';
 $additional_js[] = 'public/themes/dashkote/plugins/select2/js/select2.min.js';
 $additional_js[] = 'public/themes/dashkote/js/form-select2.js';
+$additional_js[] = 'https://cdn.jsdelivr.net/npm/persian-date@1.1.0/dist/persian-date.min.js';
+$additional_js[] = 'https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js';
 
 $inline_styles .= "
     body {
@@ -70,6 +73,10 @@ $inline_styles .= "
     }
     .organization-user-form .btn ion-icon {
         font-size: 18px;
+    }
+    .organization-user-form .date-picker-input {
+        cursor: pointer;
+        background-color: #ffffff;
     }
     .organization-user-form .form-section {
         border: 1px solid #e5e7eb;
@@ -316,6 +323,81 @@ SCRIPT
 );
 $inline_scripts .= "\n";
 
+$inline_scripts .= <<<'SCRIPT'
+    document.addEventListener('DOMContentLoaded', function () {
+        var dateSelectors = ['#expirationDate', '#reportDate'];
+
+        dateSelectors.forEach(function (selector) {
+            var inputElement = document.querySelector(selector);
+            if (!inputElement) {
+                return;
+            }
+
+            inputElement.setAttribute('autocomplete', 'off');
+            if (!inputElement.classList.contains('date-picker-input')) {
+                inputElement.classList.add('date-picker-input');
+            }
+        });
+
+        var $ = window.jQuery;
+        if (typeof $ === 'undefined' || typeof $.fn.persianDatepicker !== 'function') {
+            dateSelectors.forEach(function (selector) {
+                var fallbackInput = document.querySelector(selector);
+                if (fallbackInput) {
+                    fallbackInput.removeAttribute('readonly');
+                }
+            });
+            return;
+        }
+
+        dateSelectors.forEach(function (selector) {
+            var $input = $(selector);
+            if (!$input.length) {
+                return;
+            }
+
+            var currentValue = $input.val();
+            $input.prop('readOnly', true);
+
+            $input.persianDatepicker({
+                format: 'YYYY/MM/DD',
+                initialValue: currentValue !== '',
+                initialValueType: 'persian',
+                autoClose: true,
+                persianDigit: false,
+                calendar: {
+                    persian: {
+                        locale: 'fa',
+                        leapYearMode: 'astronomical'
+                    }
+                },
+                toolbox: {
+                    calendarSwitch: {
+                        enabled: false
+                    },
+                    todayButton: {
+                        enabled: true,
+                        text: 'امروز'
+                    },
+                    submitButton: {
+                        enabled: true,
+                        text: 'تأیید'
+                    }
+                },
+                navigator: {
+                    enabled: true,
+                    nextText: 'بعدی',
+                    prevText: 'قبلی'
+                },
+                timePicker: {
+                    enabled: false
+                }
+            });
+        });
+    });
+SCRIPT;
+$inline_scripts .= "\n";
+
 $checkboxState = static function (string $key, string $fallback = '0') use ($organizationUser): bool {
     $default = $fallback;
     if (isset($organizationUser[$key])) {
@@ -456,9 +538,9 @@ $checkboxState = static function (string $key, string $fallback = '0') use ($org
                                 </div>
                                 <div class="row g-16">
                                     <div class="col-md-4">
-                                        <label class="form-label fw-semibold">دستگاه اجرایی</label>
+                                        <label class="form-label fw-semibold">واحد سازمانی</label>
                                         <select name="executive_devices" class="form-select">
-                                            <option value="">انتخاب دستگاه اجرایی</option>
+                                            <option value="">انتخاب واحد سازمانی</option>
                                             <?php foreach ($executiveUnits as $unit): ?>
                                                 <?php
                                                     $unitName = trim((string) ($unit['name'] ?? ''));
@@ -474,10 +556,10 @@ $checkboxState = static function (string $key, string $fallback = '0') use ($org
                                                 <option value="<?= htmlspecialchars($currentExecutiveUnit, ENT_QUOTES, 'UTF-8'); ?>" selected><?= htmlspecialchars($currentExecutiveUnit, ENT_QUOTES, 'UTF-8'); ?> (قدیمی)</option>
                                             <?php endif; ?>
                                             <?php if (empty($executiveUnits)): ?>
-                                                <option value="" disabled>دستگاه اجرایی ثبت نشده است.</option>
+                                                <option value="" disabled>واحد سازمانی ثبت نشده است.</option>
                                             <?php endif; ?>
                                         </select>
-                                        <small class="text-muted d-block mt-6">برای افزودن دستگاه جدید به بخش «دستگاه‌های اجرایی» مراجعه کنید.</small>
+                                        <small class="text-muted d-block mt-6">برای افزودن واحد جدید به بخش «واحدهای سازمانی» مراجعه کنید.</small>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label fw-semibold">محل خدمت</label>
@@ -550,11 +632,11 @@ $checkboxState = static function (string $key, string $fallback = '0') use ($org
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label fw-semibold">تاریخ انقضا</label>
-                                        <input type="text" name="expiration_date" class="form-control" value="<?= htmlspecialchars(old('expiration_date', $organizationUser['expiration_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۶/۳۱">
+                                        <input type="text" name="expiration_date" id="expirationDate" class="form-control date-picker-input" value="<?= htmlspecialchars(old('expiration_date', $organizationUser['expiration_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۶/۳۱" autocomplete="off" readonly>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label fw-semibold">تاریخ گزارش</label>
-                                        <input type="text" name="report_date" class="form-control" value="<?= htmlspecialchars(old('report_date', $organizationUser['report_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۱/۱۵">
+                                        <input type="text" name="report_date" id="reportDate" class="form-control date-picker-input" value="<?= htmlspecialchars(old('report_date', $organizationUser['report_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۱/۱۵" autocomplete="off" readonly>
                                     </div>
                                     <div class="col-md-4 d-flex align-items-end">
                                         <div class="form-check form-switch ms-auto">

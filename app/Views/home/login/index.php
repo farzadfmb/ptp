@@ -63,7 +63,7 @@ include __DIR__ . '/../../layouts/home-login-header.php';
             <div class="text-center mb-24">
                 <img src="<?= htmlspecialchars($systemLogoUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="لوگوی سامانه" style="max-height: 96px; object-fit: contain;">
             </div>
-            <h2 class="mb-8">به سامانه مدیریت عملکرد خوش آمدید</h2>
+            <h2 class="mb-8">به سامانه مدیریت شایستگی خوش آمدید</h2>
             <p class="text-gray-600 text-15 mb-32">برای ورود به ناحیه کاربری، اطلاعات حساب خود را وارد کنید.</p>
 
             <?php if (!empty($authSuccess)): ?>

@@ -18448,8 +18448,6 @@ class OrganizationController
 
         if ($input['password'] === '') {
             $validationErrors['password'] = 'رمز عبور الزامی است.';
-        } elseif (mb_strlen($input['password']) < 6) {
-            $validationErrors['password'] = 'رمز عبور باید حداقل ۶ کاراکتر باشد.';
         }
 
         if ($input['first_name'] === '') {
@@ -18851,8 +18849,8 @@ class OrganizationController
             $validationErrors['username'] = 'نام کاربری الزامی است.';
         }
 
-        if ($input['password'] !== '' && mb_strlen($input['password']) < 6) {
-            $validationErrors['password'] = 'رمز عبور باید حداقل ۶ کاراکتر باشد.';
+        if ($input['password'] !== '') {
+            $input['password'] = (string) $input['password'];
         }
 
         if ($input['first_name'] === '') {
