@@ -200,6 +200,7 @@ $organizationSidebarMenu = [
         'children' => [
             ['title' => 'دوره‌های توسعه فردی', 'route' => 'organizations/courses', 'permissions' => ['courses_manage', 'courses_view']],
             ['title' => 'برنامه توسعه فردی', 'route' => 'organizations/development-programs', 'permissions' => ['courses_manage', 'courses_view']],
+            ['title' => 'نتیجه آزمون‌های دوره', 'route' => 'organizations/courses/exam-results', 'permissions' => ['courses_manage', 'courses_view']],
         ],
     ],
     [

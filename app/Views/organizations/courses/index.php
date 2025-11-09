@@ -227,6 +227,17 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
         color: #ffffff;
     }
 
+    .btn-exam {
+        background: linear-gradient(135deg, #f97316 0%, #f59e0b 100%);
+        color: #ffffff;
+    }
+
+    .btn-exam:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(249, 115, 22, 0.35);
+        color: #ffffff;
+    }
+
     .btn-delete {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         color: #ffffff;
@@ -533,6 +544,10 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                                     <ion-icon name="ribbon-outline"></ion-icon>
                                     شایستگی
                                 </button>
+                                <button type="button" class="course-action-btn btn-exam btn-manage-exams" data-course-id="<?= $courseId; ?>" data-course-title="<?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <ion-icon name="school-outline"></ion-icon>
+                                    آزمون
+                                </button>
                                 <a href="<?= UtilityHelper::baseUrl('organizations/courses/edit?id=' . $courseId); ?>" 
                                    class="course-action-btn btn-edit">
                                     <ion-icon name="create-outline"></ion-icon>
@@ -660,6 +675,31 @@ function deleteCourse(courseId, courseTitle) {
 }
 </script>
 
+<!-- Course exam modal -->
+<div id="courseExamModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1200; align-items:center; justify-content:center;">
+    <div style="width:640px; max-width:96%; background:#ffffff; border-radius:12px; overflow:hidden;">
+        <div style="padding:16px 20px; border-bottom:1px solid #eef2f6; display:flex; justify-content:space-between; align-items:center;">
+            <h4 id="courseExamModalTitle" style="margin:0; font-size:16px;">انتخاب آزمون دوره</h4>
+            <button type="button" class="course-exam-modal-close" style="background:transparent;border:none;font-size:20px;cursor:pointer;">&times;</button>
+        </div>
+        <div style="padding:18px; display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                <input id="courseExamSearch" type="text" class="form-control" placeholder="جستجو در آزمون‌ها..." style="flex:1 1 240px;">
+                <span id="courseExamStatus" style="font-size:13px; color:#64748b;">آزمون انتخاب شده: هیچ‌کدام</span>
+            </div>
+            <div id="courseExamList" style="max-height:420px; overflow:auto; border:1px solid #eef2f6; border-radius:12px; padding:12px; background:#f8fafc;"></div>
+            <div id="courseExamEmpty" style="display:none; text-align:center; padding:24px; color:#94a3b8; font-size:14px; border:1px dashed #cbd5f5; border-radius:12px;">
+                آزمونی برای نمایش وجود ندارد.
+            </div>
+            <div id="courseExamError" style="display:none; text-align:center; padding:12px; color:#dc2626; font-size:14px; border-radius:12px; background:rgba(220,38,38,0.08);"></div>
+        </div>
+        <div style="padding:12px 18px; border-top:1px solid #eef2f6; display:flex; justify-content:flex-end; gap:8px;">
+            <button type="button" class="btn btn-outline-secondary course-exam-modal-close">بستن</button>
+            <button type="button" id="courseExamSave" class="btn btn-primary">ذخیره</button>
+        </div>
+    </div>
+</div>
+
 <!-- Course competencies modal -->
 <div id="courseCompetenciesModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1200; align-items:center; justify-content:center;">
     <div style="width:720px; max-width:96%; background:#ffffff; border-radius:12px; overflow:hidden;">
@@ -722,6 +762,11 @@ const COURSE_COMPETENCY_ENDPOINTS = {
     save: '<?= UtilityHelper::baseUrl('organizations/courses/competencies'); ?>'
 };
 
+const COURSE_EXAM_ENDPOINTS = {
+    list: '<?= UtilityHelper::baseUrl('organizations/courses/exams'); ?>',
+    save: '<?= UtilityHelper::baseUrl('organizations/courses/exams'); ?>'
+};
+
 document.addEventListener('click', function(e) {
     const evaluateesBtn = e.target.closest('.btn-manage-evaluatees');
     if (evaluateesBtn) {
@@ -736,6 +781,15 @@ document.addEventListener('click', function(e) {
         const courseId = competencyBtn.getAttribute('data-course-id');
         const courseTitle = competencyBtn.getAttribute('data-course-title');
         openCourseCompetenciesModal(courseId, courseTitle);
+        return;
+    }
+
+    const examBtn = e.target.closest('.btn-manage-exams');
+    if (examBtn) {
+        const courseId = examBtn.getAttribute('data-course-id');
+        const courseTitle = examBtn.getAttribute('data-course-title');
+        openCourseExamModal(courseId, courseTitle);
+        return;
     }
 });
 
@@ -774,10 +828,47 @@ if (competencySearchInput) {
     competencySearchInput.addEventListener('input', renderCourseCompetencyList);
 }
 
+const examModal = document.getElementById('courseExamModal');
+const examModalTitle = document.getElementById('courseExamModalTitle');
+const examListContainer = document.getElementById('courseExamList');
+const examSearchInput = document.getElementById('courseExamSearch');
+const examEmptyState = document.getElementById('courseExamEmpty');
+const examErrorBox = document.getElementById('courseExamError');
+const examStatusLabel = document.getElementById('courseExamStatus');
+const examSaveButton = document.getElementById('courseExamSave');
+const examCloseButtons = document.querySelectorAll('.course-exam-modal-close');
+
+let examActiveCourseId = null;
+let examItems = [];
+let examSelectedToolId = null;
+
+examCloseButtons.forEach(function(btn) {
+    btn.addEventListener('click', closeCourseExamModal);
+});
+
+if (examSaveButton) {
+    examSaveButton.addEventListener('click', handleCourseExamSave);
+}
+
+if (examModal) {
+    examModal.addEventListener('click', function(event) {
+        if (event.target === examModal) {
+            closeCourseExamModal();
+        }
+    });
+}
+
+if (examSearchInput) {
+    examSearchInput.addEventListener('input', renderCourseExamList);
+}
+
 document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
         if (competencyModal && competencyModal.style.display === 'flex') {
             closeCourseCompetenciesModal();
+        }
+        if (examModal && examModal.style.display === 'flex') {
+            closeCourseExamModal();
         }
         if (modal && modal.style.display === 'flex') {
             closeEvaluateesModal();
@@ -1050,6 +1141,330 @@ function handleCourseCompetencySave() {
         if (competencyErrorBox) {
             competencyErrorBox.textContent = 'خطا در ارتباط با سرور.';
             competencyErrorBox.style.display = 'block';
+        }
+        console.error(error);
+    });
+}
+
+function openCourseExamModal(courseId, courseTitle) {
+    if (!examModal) {
+        return;
+    }
+
+    examActiveCourseId = Number(courseId);
+    examItems = [];
+    examSelectedToolId = null;
+
+    if (examSearchInput) {
+        examSearchInput.value = '';
+    }
+
+    if (examStatusLabel) {
+        examStatusLabel.textContent = 'آزمون انتخاب شده: هیچ‌کدام';
+    }
+
+    if (examErrorBox) {
+        examErrorBox.style.display = 'none';
+        examErrorBox.textContent = '';
+    }
+
+    if (examEmptyState) {
+        examEmptyState.style.display = 'none';
+        examEmptyState.textContent = 'آزمونی برای نمایش وجود ندارد.';
+    }
+
+    if (examListContainer) {
+        examListContainer.innerHTML = '<div style="text-align:center; padding:24px; color:#64748b;">در حال بارگذاری...</div>';
+    }
+
+    if (examModalTitle) {
+        examModalTitle.textContent = 'انتخاب آزمون دوره: ' + (courseTitle || '');
+    }
+
+    if (examSaveButton) {
+        examSaveButton.disabled = true;
+    }
+
+    examModal.style.display = 'flex';
+
+    fetch(COURSE_EXAM_ENDPOINTS.list + '?course_id=' + encodeURIComponent(courseId), {
+        credentials: 'same-origin'
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (examSaveButton) {
+            examSaveButton.disabled = false;
+        }
+
+        if (!data || !data.success) {
+            if (examListContainer) {
+                examListContainer.innerHTML = '';
+            }
+            if (examErrorBox) {
+                examErrorBox.textContent = (data && data.message) || 'خطا در دریافت آزمون‌ها.';
+                examErrorBox.style.display = 'block';
+            }
+            examItems = [];
+            renderCourseExamList();
+            return;
+        }
+
+        const collection = (data.data && Array.isArray(data.data.tools)) ? data.data.tools : [];
+        examItems = collection.map(function(item) {
+            return {
+                id: Number(item.id || 0),
+                code: String(item.code || '').trim(),
+                name: String(item.name || '').trim(),
+                duration_minutes: item.duration_minutes !== null && item.duration_minutes !== undefined ? Number(item.duration_minutes) : null,
+                questions_count: item.questions_count !== null && item.questions_count !== undefined ? Number(item.questions_count) : null,
+                description: String(item.description || '').trim()
+            };
+        }).filter(function(item) {
+            return item.id > 0;
+        }).sort(function(a, b) {
+            return a.name.localeCompare(b.name);
+        });
+
+        const selectedRaw = data.data ? data.data.selected_tool_id : null;
+        const selectedNumeric = typeof selectedRaw === 'number' ? selectedRaw : Number(selectedRaw || 0);
+        examSelectedToolId = selectedNumeric > 0 ? selectedNumeric : null;
+
+        renderCourseExamList();
+    }).catch(function(error) {
+        if (examSaveButton) {
+            examSaveButton.disabled = false;
+        }
+        if (examListContainer) {
+            examListContainer.innerHTML = '';
+        }
+        if (examErrorBox) {
+            examErrorBox.textContent = 'خطا در ارتباط با سرور.';
+            examErrorBox.style.display = 'block';
+        }
+        console.error(error);
+        examItems = [];
+        renderCourseExamList();
+    });
+}
+
+function closeCourseExamModal() {
+    if (!examModal) {
+        return;
+    }
+
+    examModal.style.display = 'none';
+    examActiveCourseId = null;
+    examItems = [];
+    examSelectedToolId = null;
+
+    if (examListContainer) {
+        examListContainer.innerHTML = '';
+    }
+
+    if (examErrorBox) {
+        examErrorBox.style.display = 'none';
+        examErrorBox.textContent = '';
+    }
+
+    if (examEmptyState) {
+        examEmptyState.style.display = 'none';
+        examEmptyState.textContent = 'آزمونی برای نمایش وجود ندارد.';
+    }
+
+    if (examSearchInput) {
+        examSearchInput.value = '';
+    }
+}
+
+function renderCourseExamList() {
+    if (!examListContainer) {
+        return;
+    }
+
+    if (examErrorBox) {
+        examErrorBox.style.display = 'none';
+    }
+
+    const query = examSearchInput ? examSearchInput.value.trim().toLowerCase() : '';
+    const filtered = examItems.filter(function(item) {
+        if (!query) {
+            return true;
+        }
+
+        const haystack = [item.name, item.code, item.description || ''].join(' ').toLowerCase();
+        return haystack.indexOf(query) !== -1;
+    });
+
+    examListContainer.innerHTML = '';
+
+    const fragment = document.createDocumentFragment();
+
+    fragment.appendChild(createExamOptionRow(null, {
+        id: null,
+        code: '',
+        name: 'بدون آزمون',
+        duration_minutes: null,
+        questions_count: null,
+        description: ''
+    }));
+
+    filtered.forEach(function(item) {
+        fragment.appendChild(createExamOptionRow(item.id, item));
+    });
+
+    examListContainer.appendChild(fragment);
+
+    if (!examItems.length) {
+        if (examEmptyState) {
+            examEmptyState.textContent = 'آزمونی برای نمایش وجود ندارد.';
+            examEmptyState.style.display = 'block';
+        }
+    } else if (!filtered.length && query) {
+        if (examEmptyState) {
+            examEmptyState.textContent = 'نتیجه‌ای مطابق جستجو یافت نشد.';
+            examEmptyState.style.display = 'block';
+        }
+    } else if (examEmptyState) {
+        examEmptyState.style.display = 'none';
+    }
+
+    updateCourseExamStatus();
+}
+
+function createExamOptionRow(optionId, meta) {
+    const row = document.createElement('label');
+    row.style.display = 'flex';
+    row.style.alignItems = 'flex-start';
+    row.style.gap = '10px';
+    row.style.padding = '10px 8px';
+    row.style.borderBottom = '1px solid #e2e8f0';
+    row.style.cursor = 'pointer';
+
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.className = 'form-check-input';
+    radio.name = 'course-exam-selection';
+    radio.value = optionId !== null ? String(optionId) : '';
+    radio.checked = optionId === null ? examSelectedToolId === null : examSelectedToolId === optionId;
+
+    radio.addEventListener('change', function() {
+        if (radio.checked) {
+            examSelectedToolId = optionId === null ? null : optionId;
+            updateCourseExamStatus();
+        }
+    });
+
+    const content = document.createElement('div');
+    content.style.flex = '1';
+
+    if (optionId === null) {
+        content.innerHTML = '<div style="font-weight:600; color:#1f2937;">بدون آزمون</div><div style="font-size:12px; color:#64748b;">بدون اتصال آزمون به دوره</div>';
+    } else {
+        const titleParts = [];
+        if (meta.code) {
+            titleParts.push(escapeHtml(meta.code));
+        }
+        if (meta.name) {
+            titleParts.push(escapeHtml(meta.name));
+        }
+
+        let caption = titleParts.length ? titleParts.join(' - ') : 'آزمون بدون عنوان';
+        let metaLines = [];
+
+        if (typeof meta.questions_count === 'number' && !Number.isNaN(meta.questions_count)) {
+            metaLines.push('تعداد سوالات: ' + toPersianDigits(meta.questions_count));
+        }
+
+        if (typeof meta.duration_minutes === 'number' && !Number.isNaN(meta.duration_minutes)) {
+            metaLines.push('مدت آزمون: ' + toPersianDigits(meta.duration_minutes) + ' دقیقه');
+        }
+
+        if (meta.description) {
+            metaLines.push(escapeHtml(meta.description));
+        }
+
+        const secondary = metaLines.length ? '<div style="font-size:12px; color:#64748b; margin-top:4px;">' + metaLines.join(' | ') + '</div>' : '';
+        content.innerHTML = '<div style="font-weight:600; color:#1f2937;">' + caption + '</div>' + secondary;
+    }
+
+    row.appendChild(radio);
+    row.appendChild(content);
+    return row;
+}
+
+function updateCourseExamStatus() {
+    if (!examStatusLabel) {
+        return;
+    }
+
+    if (examSelectedToolId === null) {
+        examStatusLabel.textContent = 'آزمون انتخاب شده: هیچ‌کدام';
+        return;
+    }
+
+    const selected = examItems.find(function(item) {
+        return item.id === examSelectedToolId;
+    });
+
+    if (!selected) {
+        examStatusLabel.textContent = 'آزمون انتخاب شده: هیچ‌کدام';
+        return;
+    }
+
+    const parts = [];
+    if (selected.code) {
+        parts.push(selected.code);
+    }
+    if (selected.name) {
+        parts.push(selected.name);
+    }
+
+    examStatusLabel.textContent = 'آزمون انتخاب شده: ' + parts.join(' - ');
+}
+
+function handleCourseExamSave() {
+    if (!examActiveCourseId) {
+        return;
+    }
+
+    if (!examSaveButton) {
+        return;
+    }
+
+    examSaveButton.disabled = true;
+    if (examErrorBox) {
+        examErrorBox.style.display = 'none';
+        examErrorBox.textContent = '';
+    }
+
+    const params = new URLSearchParams();
+    params.append('course_id', examActiveCourseId);
+    params.append('tool_id', examSelectedToolId !== null ? String(examSelectedToolId) : '');
+
+    fetch(COURSE_EXAM_ENDPOINTS.save, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        examSaveButton.disabled = false;
+
+        if (!data || !data.success) {
+            if (examErrorBox) {
+                examErrorBox.textContent = (data && data.message) || 'خطا در ذخیره آزمون دوره.';
+                examErrorBox.style.display = 'block';
+            }
+            return;
+        }
+
+        alert(data.message || 'آزمون دوره با موفقیت ذخیره شد.');
+        closeCourseExamModal();
+    }).catch(function(error) {
+        examSaveButton.disabled = false;
+        if (examErrorBox) {
+            examErrorBox.textContent = 'خطا در ارتباط با سرور.';
+            examErrorBox.style.display = 'block';
         }
         console.error(error);
     });

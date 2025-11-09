@@ -4,6 +4,7 @@ require_once __DIR__ . '/../Helpers/autoload.php';
 
 class HomeController {
     private static bool $examStorageTablesEnsured = false;
+    private static bool $courseExamStorageTablesEnsured = false;
     private static bool $courseTablesEnsured = false;
 
     public function index(): void
@@ -1528,6 +1529,8 @@ class HomeController {
                 }
             }
 
+            $courseExamMetaMap = self::loadCourseExamMeta($organizationId, $courseIds, $organizationUserId);
+
             $now = new DateTime('now', new DateTimeZone('Asia/Tehran'));
 
             foreach ($courses as &$courseRow) {
@@ -1651,6 +1654,8 @@ class HomeController {
                     'percentage' => $percentage,
                 ];
 
+                $courseExamMeta = $courseExamMetaMap[$courseId] ?? null;
+                $courseRow['exam'] = self::finalizeCourseExamMeta($courseExamMeta, $courseRow['progress']);
                 $courseRow['lessons'] = $courseLessons;
                 $courseRow['lesson_count'] = $totalLessons;
             }
@@ -1658,6 +1663,219 @@ class HomeController {
         }
 
         include __DIR__ . '/../Views/home/courses/personal-development.php';
+    }
+
+    public function updateCourseLessonProgress(): void
+    {
+        AuthHelper::startSession();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            ResponseHelper::error('درخواست نامعتبر است.', null, 405);
+        }
+
+        AuthHelper::requireAuth(UtilityHelper::baseUrl('user/login'));
+
+        $token = (string)($_POST['_token'] ?? '');
+        if (!AuthHelper::verifyCsrfToken($token)) {
+            ResponseHelper::error('توکن امنیتی نامعتبر است.', null, 419);
+        }
+
+        $user = AuthHelper::getUser();
+        $organizationId = (int)($user['organization_id'] ?? 0);
+        $organizationUserId = (int)($user['organization_user_id'] ?? 0);
+
+        $enrollmentId = (int)UtilityHelper::persianToEnglish((string)($_POST['enrollment_id'] ?? 0));
+        $lessonId = (int)UtilityHelper::persianToEnglish((string)($_POST['lesson_id'] ?? 0));
+        $event = strtolower(trim((string)($_POST['event'] ?? '')));
+        $watchSecondsInput = isset($_POST['watch_seconds'])
+            ? (int)UtilityHelper::persianToEnglish((string)$_POST['watch_seconds'])
+            : 0;
+
+        if ($organizationId <= 0 || $organizationUserId <= 0) {
+            ResponseHelper::error('کاربر احراز نشده است.', null, 403);
+        }
+
+        if ($enrollmentId <= 0 || $lessonId <= 0) {
+            ResponseHelper::error('اطلاعات درس نامعتبر است.', null, 422);
+        }
+
+        $allowedEvents = ['viewed', 'complete', 'incomplete'];
+        if (!in_array($event, $allowedEvents, true)) {
+            ResponseHelper::error('نوع رویداد نامعتبر است.', null, 422);
+        }
+
+        self::ensureCourseTables();
+
+        try {
+            $enrollmentRow = DatabaseHelper::fetchOne(
+                'SELECT id, course_id, completed_at
+                 FROM organization_course_enrollments
+                 WHERE id = :id AND organization_id = :organization_id AND user_id = :user_id
+                 LIMIT 1',
+                [
+                    'id' => $enrollmentId,
+                    'organization_id' => $organizationId,
+                    'user_id' => $organizationUserId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $enrollmentRow = null;
+        }
+
+        if (!$enrollmentRow) {
+            ResponseHelper::error('ثبت‌نام معتبر یافت نشد.', null, 404);
+        }
+
+        $courseId = (int)($enrollmentRow['course_id'] ?? 0);
+        if ($courseId <= 0) {
+            ResponseHelper::error('دوره مرتبط یافت نشد.', null, 404);
+        }
+
+        try {
+            $lessonRow = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_course_lessons WHERE id = :id AND course_id = :course_id LIMIT 1',
+                [
+                    'id' => $lessonId,
+                    'course_id' => $courseId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $lessonRow = null;
+        }
+
+        if (!$lessonRow) {
+            ResponseHelper::error('درس انتخاب‌شده یافت نشد.', null, 404);
+        }
+
+        try {
+            $progressRow = DatabaseHelper::fetchOne(
+                'SELECT id, is_completed, completed_at, watch_duration_seconds, last_watched_at
+                 FROM organization_course_progress
+                 WHERE enrollment_id = :enrollment_id AND lesson_id = :lesson_id
+                 LIMIT 1',
+                [
+                    'enrollment_id' => $enrollmentId,
+                    'lesson_id' => $lessonId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $progressRow = null;
+        }
+
+        $existingWatchSeconds = (int)($progressRow['watch_duration_seconds'] ?? 0);
+        $existingCompletedAt = $progressRow['completed_at'] ?? null;
+        $existingIsCompleted = (int)($progressRow['is_completed'] ?? 0) === 1;
+        $existingLastWatchedAt = $progressRow['last_watched_at'] ?? null;
+
+        $now = (new DateTime('now', new DateTimeZone('Asia/Tehran')))->format('Y-m-d H:i:s');
+
+        $finalWatchSeconds = $existingWatchSeconds;
+        $finalIsCompleted = $existingIsCompleted;
+        $finalCompletedAt = $existingCompletedAt;
+        $finalLastWatchedAt = $existingLastWatchedAt;
+
+        if ($event === 'viewed') {
+            $candidateSeconds = $watchSecondsInput > 0
+                ? $watchSecondsInput
+                : ($existingWatchSeconds > 0 ? $existingWatchSeconds : 60);
+            $finalWatchSeconds = max($finalWatchSeconds, $candidateSeconds);
+            $finalLastWatchedAt = $now;
+        } elseif ($event === 'complete') {
+            $finalIsCompleted = true;
+            if ($watchSecondsInput > 0) {
+                $finalWatchSeconds = max($finalWatchSeconds, $watchSecondsInput);
+            }
+            if ($finalWatchSeconds <= 0) {
+                $finalWatchSeconds = max($finalWatchSeconds, 60);
+            }
+            if ($existingCompletedAt === null) {
+                $finalCompletedAt = $now;
+            }
+            $finalLastWatchedAt = $now;
+        } elseif ($event === 'incomplete') {
+            $finalIsCompleted = false;
+            $finalCompletedAt = null;
+            if ($watchSecondsInput > 0) {
+                $finalWatchSeconds = max($finalWatchSeconds, $watchSecondsInput);
+            }
+        }
+
+        $insertParams = [
+            'enrollment_id' => $enrollmentId,
+            'lesson_id' => $lessonId,
+            'user_id' => $organizationUserId,
+            'is_completed' => $finalIsCompleted ? 1 : 0,
+            'completed_at' => $finalCompletedAt,
+            'watch_duration_seconds' => $finalWatchSeconds,
+            'last_watched_at' => $finalLastWatchedAt,
+        ];
+
+        try {
+            DatabaseHelper::query(
+                'INSERT INTO organization_course_progress (enrollment_id, lesson_id, user_id, is_completed, completed_at, watch_duration_seconds, last_watched_at)
+                 VALUES (:enrollment_id, :lesson_id, :user_id, :is_completed, :completed_at, :watch_duration_seconds, :last_watched_at)
+                 ON DUPLICATE KEY UPDATE
+                    user_id = VALUES(user_id),
+                    is_completed = VALUES(is_completed),
+                    completed_at = VALUES(completed_at),
+                    watch_duration_seconds = VALUES(watch_duration_seconds),
+                    last_watched_at = VALUES(last_watched_at)',
+                $insertParams
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('update_course_lesson_progress_failed', [
+                    'message' => $exception->getMessage(),
+                    'enrollment_id' => $enrollmentId,
+                    'lesson_id' => $lessonId,
+                ]);
+            }
+
+            ResponseHelper::error('به‌روزرسانی پیشرفت درس با خطا مواجه شد.', null, 500);
+        }
+
+        $progressData = self::recalculateEnrollmentProgress(
+            $organizationId,
+            $courseId,
+            $enrollmentId,
+            $organizationUserId,
+            $enrollmentRow['completed_at'] ?? null
+        );
+
+        $courseExamMeta = self::loadCourseExamMeta($organizationId, [$courseId], $organizationUserId);
+        $examMeta = self::finalizeCourseExamMeta($courseExamMeta[$courseId] ?? null, $progressData);
+
+        $lessonProgressState = 'pending';
+        if ($finalWatchSeconds > 0 && !$finalIsCompleted) {
+            $lessonProgressState = 'in_progress';
+        }
+        if ($finalIsCompleted) {
+            $lessonProgressState = 'completed';
+        }
+
+        ResponseHelper::success('پیشرفت درس ذخیره شد.', [
+            'course_id' => $courseId,
+            'enrollment_id' => $enrollmentId,
+            'lesson' => [
+                'lesson_id' => $lessonId,
+                'is_completed' => $finalIsCompleted,
+                'progress_state' => $lessonProgressState,
+                'watch_duration_seconds' => $finalWatchSeconds,
+                'watch_duration_display' => $finalWatchSeconds > 0
+                    ? UtilityHelper::englishToPersian(self::formatDuration($finalWatchSeconds))
+                    : null,
+                'last_watched_at' => $finalLastWatchedAt,
+                'last_watched_display' => self::formatDateTimeForDisplay($finalLastWatchedAt),
+            ],
+            'progress' => [
+                'total_lessons' => $progressData['total_lessons'] ?? 0,
+                'completed_lessons' => $progressData['completed_lessons'] ?? 0,
+                'in_progress_lessons' => $progressData['in_progress_lessons'] ?? 0,
+                'percentage' => $progressData['percentage'] ?? 0,
+                'completed_at' => $progressData['completed_at'] ?? null,
+            ],
+            'exam' => $examMeta,
+        ]);
     }
 
     public function exams(): void
@@ -2716,6 +2934,607 @@ class HomeController {
         include __DIR__ . '/../Views/home/tests/exams.php';
     }
 
+    public function courseExam(): void
+    {
+        AuthHelper::startSession();
+
+        AuthHelper::requireAuth(UtilityHelper::baseUrl('user/login'));
+
+        $title = 'آزمون دوره';
+        $user = AuthHelper::getUser();
+        $organizationId = (int)($user['organization_id'] ?? 0);
+        $organizationUserId = (int)($user['organization_user_id'] ?? 0);
+        $additional_css = [];
+        $additional_js = [];
+        $inline_styles = '';
+        $inline_scripts = '';
+
+        $backUrl = UtilityHelper::baseUrl('courses/personal-development');
+        $requestCourseId = $_SERVER['REQUEST_METHOD'] === 'POST'
+            ? ($_POST['course_id'] ?? ($_POST['course'] ?? null))
+            : ($_GET['course_id'] ?? ($_GET['course'] ?? null));
+        $courseId = (int)UtilityHelper::persianToEnglish((string)($requestCourseId ?? 0));
+
+        if ($organizationId <= 0 || $organizationUserId <= 0 || $courseId <= 0) {
+            ResponseHelper::flashError('دسترسی به آزمون امکان‌پذیر نیست.');
+            UtilityHelper::redirect($backUrl);
+        }
+
+        self::ensureCourseTables();
+        self::ensureCourseExamStorageTables();
+
+        try {
+            $courseRow = DatabaseHelper::fetchOne(
+        'SELECT e.id AS enrollment_id,
+                        c.id AS course_id,
+                        c.title,
+                        c.description,
+                        c.cover_image,
+                        c.category,
+                        c.instructor_name,
+            c.duration_hours,
+            e.completed_at AS enrollment_completed_at
+                 FROM organization_course_enrollments e
+                 INNER JOIN organization_courses c ON c.id = e.course_id
+                 WHERE e.organization_id = :organization_id
+                   AND e.user_id = :user_id
+                   AND e.course_id = :course_id
+                 LIMIT 1',
+                [
+                    'organization_id' => $organizationId,
+                    'user_id' => $organizationUserId,
+                    'course_id' => $courseId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $courseRow = null;
+        }
+
+        if (!$courseRow) {
+            ResponseHelper::flashError('شما به این دوره دسترسی ندارید.');
+            UtilityHelper::redirect($backUrl);
+        }
+
+        $enrollmentId = (int)($courseRow['enrollment_id'] ?? 0);
+        if ($enrollmentId <= 0) {
+            ResponseHelper::flashError('ثبت‌نام معتبر برای این دوره یافت نشد.');
+            UtilityHelper::redirect($backUrl);
+        }
+
+        try {
+            $assignmentRow = DatabaseHelper::fetchOne(
+                'SELECT tool_id
+                 FROM organization_course_exams
+                 WHERE organization_id = :organization_id AND course_id = :course_id
+                 LIMIT 1',
+                [
+                    'organization_id' => $organizationId,
+                    'course_id' => $courseId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $assignmentRow = null;
+        }
+
+        $toolId = (int)($assignmentRow['tool_id'] ?? 0);
+        if ($toolId <= 0) {
+            ResponseHelper::flashError('برای این دوره آزمونی تعریف نشده است.');
+            UtilityHelper::redirect($backUrl);
+        }
+
+        try {
+            $toolRow = DatabaseHelper::fetchOne(
+                'SELECT id, code, name, description, question_type, guide, duration_minutes, is_exam, is_optional
+                 FROM organization_evaluation_tools
+                 WHERE organization_id = :organization_id AND id = :tool_id
+                 LIMIT 1',
+                [
+                    'organization_id' => $organizationId,
+                    'tool_id' => $toolId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $toolRow = null;
+        }
+
+        if (!$toolRow || (int)($toolRow['is_exam'] ?? 0) !== 1) {
+            ResponseHelper::flashError('آزمون انتخاب شده معتبر نیست.');
+            UtilityHelper::redirect($backUrl);
+        }
+
+        $toolIsDisc = self::isDiscTool($toolRow);
+        $toolIsOptional = (int)($toolRow['is_optional'] ?? 0) === 1;
+        $toolDurationMinutes = isset($toolRow['duration_minutes']) && $toolRow['duration_minutes'] !== ''
+            ? (int)$toolRow['duration_minutes']
+            : 0;
+
+        $existingCompletedAt = $courseRow['enrollment_completed_at'] ?? null;
+        $progressData = self::recalculateEnrollmentProgress(
+            $organizationId,
+            $courseId,
+            $enrollmentId,
+            $organizationUserId,
+            $existingCompletedAt
+        );
+
+        $courseExamMetaMap = self::loadCourseExamMeta($organizationId, [$courseId], $organizationUserId);
+        $rawExamMeta = $courseExamMetaMap[$courseId] ?? ['course_id' => $courseId, 'tool_id' => $toolId];
+        if (!isset($rawExamMeta['course_id'])) {
+            $rawExamMeta['course_id'] = $courseId;
+        }
+        if (!isset($rawExamMeta['tool_id'])) {
+            $rawExamMeta['tool_id'] = $toolId;
+        }
+
+        $examMeta = self::finalizeCourseExamMeta($rawExamMeta, $progressData);
+        if (!$examMeta) {
+            $examMeta = [
+                'course_id' => $courseId,
+                'tool_id' => $toolId,
+                'percentage_required' => 100,
+                'is_unlocked' => ($progressData['percentage'] ?? 0) >= 100,
+                'status_message' => 'برای فعال شدن آزمون باید تمام درس‌های دوره را تکمیل کنید.',
+            ];
+        }
+
+        $requiredCompletionPercentage = (int)($examMeta['percentage_required'] ?? 100);
+        $courseProgressPercentage = (int)($progressData['percentage'] ?? 0);
+        $examIsUnlocked = !empty($examMeta['is_unlocked']);
+
+        try {
+            $questionRows = DatabaseHelper::fetchAll(
+                'SELECT id, title, question_text, description, image_path, is_description_only
+                 FROM organization_evaluation_tool_questions
+                 WHERE organization_id = :organization_id AND evaluation_tool_id = :tool_id
+                 ORDER BY display_order ASC, id ASC',
+                [
+                    'organization_id' => $organizationId,
+                    'tool_id' => $toolId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $questionRows = [];
+        }
+
+        $questionIds = array_column($questionRows, 'id');
+        $answersByQuestion = [];
+        if (!empty($questionIds)) {
+            $answerPlaceholders = [];
+            $answerParams = [
+                'organization_id' => $organizationId,
+                'tool_id' => $toolId,
+            ];
+
+            foreach ($questionIds as $index => $questionId) {
+                $placeholder = ':question_' . $index;
+                $answerPlaceholders[] = $placeholder;
+                $answerParams['question_' . $index] = $questionId;
+            }
+
+            $answerSql = sprintf(
+                'SELECT id, question_id, answer_code, option_text, numeric_score, character_score
+                 FROM organization_evaluation_tool_answers
+                 WHERE organization_id = :organization_id
+                   AND evaluation_tool_id = :tool_id
+                   AND question_id IN (%s)
+                 ORDER BY question_id ASC, display_order ASC, id ASC',
+                implode(', ', $answerPlaceholders)
+            );
+
+            try {
+                $answerRows = DatabaseHelper::fetchAll($answerSql, $answerParams);
+                foreach ($answerRows as $answerRow) {
+                    $questionId = (int)($answerRow['question_id'] ?? 0);
+                    if ($questionId <= 0) {
+                        continue;
+                    }
+
+                    if (!isset($answersByQuestion[$questionId])) {
+                        $answersByQuestion[$questionId] = [];
+                    }
+
+                    $answersByQuestion[$questionId][] = [
+                        'id' => (int)($answerRow['id'] ?? 0),
+                        'code' => $answerRow['answer_code'] ?? null,
+                        'text' => trim((string)($answerRow['option_text'] ?? '')),
+                        'numeric_score' => $answerRow['numeric_score'] ?? null,
+                        'character_score' => $answerRow['character_score'] ?? null,
+                    ];
+                }
+            } catch (Exception $exception) {
+                $answersByQuestion = [];
+            }
+        }
+
+        $questions = [];
+        $questionDetailsForStorage = [];
+        $questionsRequiringAnswers = [];
+
+        foreach ($questionRows as $index => $questionRow) {
+            $questionId = (int)($questionRow['id'] ?? 0);
+            if ($questionId <= 0) {
+                continue;
+            }
+
+            $questionAnswers = $answersByQuestion[$questionId] ?? [];
+            $isDescriptionOnly = (int)($questionRow['is_description_only'] ?? 0) === 1;
+            $requiresAnswer = !$toolIsOptional && !$isDescriptionOnly && !empty($questionAnswers);
+
+            $questions[] = [
+                'id' => $questionId,
+                'title' => trim((string)($questionRow['title'] ?? 'سوال ' . UtilityHelper::englishToPersian((string)($index + 1)))),
+                'text' => trim((string)($questionRow['question_text'] ?? '')),
+                'description' => trim((string)($questionRow['description'] ?? '')),
+                'image_path' => $questionRow['image_path'] ?? null,
+                'is_description_only' => $isDescriptionOnly,
+                'answers' => $questionAnswers,
+                'display_index' => $index + 1,
+            ];
+
+            $questionsRequiringAnswers[$questionId] = $requiresAnswer;
+
+            $questionDetailsForStorage[$questionId] = [
+                'title' => trim((string)($questionRow['title'] ?? '')),
+                'text' => trim((string)($questionRow['question_text'] ?? '')),
+                'description' => trim((string)($questionRow['description'] ?? '')),
+                'is_description_only' => $isDescriptionOnly,
+                'requires_answer' => $requiresAnswer,
+                'answers' => [],
+            ];
+
+            foreach ($questionAnswers as $answerMeta) {
+                $answerId = (int)($answerMeta['id'] ?? 0);
+                if ($answerId <= 0) {
+                    continue;
+                }
+
+                $questionDetailsForStorage[$questionId]['answers'][$answerId] = [
+                    'code' => isset($answerMeta['code']) ? (string)$answerMeta['code'] : null,
+                    'text' => isset($answerMeta['text']) ? (string)$answerMeta['text'] : null,
+                ];
+            }
+        }
+
+        $attemptRow = null;
+        try {
+            $attemptRow = DatabaseHelper::fetchOne(
+                'SELECT id, is_completed, completed_at
+                 FROM organization_course_exam_attempts
+                 WHERE organization_id = :organization_id
+                   AND course_id = :course_id
+                   AND tool_id = :tool_id
+                   AND user_id = :user_id
+                 LIMIT 1',
+                [
+                    'organization_id' => $organizationId,
+                    'course_id' => $courseId,
+                    'tool_id' => $toolId,
+                    'user_id' => $organizationUserId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $attemptRow = null;
+        }
+
+        $hasCompletedAttempt = $attemptRow && (int)($attemptRow['is_completed'] ?? 0) === 1;
+        $selectedAnswers = [];
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $action = trim((string)($_POST['action'] ?? ''));
+            if ($action === 'submit_exam') {
+                $csrfToken = $_POST['csrf_token'] ?? '';
+                if (!AuthHelper::verifyCsrfToken((string)$csrfToken)) {
+                    ResponseHelper::flashError('درخواست نامعتبر است. لطفاً دوباره تلاش کنید.');
+                    UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+                }
+
+                if (!$examIsUnlocked) {
+                    $lockedMessage = $examMeta['status_message'] ?? 'امکان شرکت در این آزمون در حال حاضر وجود ندارد.';
+                    ResponseHelper::flashError($lockedMessage);
+                    UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+                }
+
+                if ($hasCompletedAttempt) {
+                    ResponseHelper::flashError('این آزمون قبلاً تکمیل شده است.');
+                    UtilityHelper::redirect($backUrl);
+                }
+
+                if ($toolDurationMinutes > 0) {
+                    $timerState = self::calculateCourseExamTimer(
+                        $organizationId,
+                        $courseId,
+                        $toolId,
+                        $toolDurationMinutes,
+                        true
+                    );
+
+                    if (!empty($timerState['expired'])) {
+                        ResponseHelper::flashError('زمان آزمون به پایان رسیده است.');
+                        UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+                    }
+                }
+
+                $submittedAnswersRaw = $_POST['answers'] ?? [];
+                if ($submittedAnswersRaw !== null && !is_array($submittedAnswersRaw)) {
+                    ResponseHelper::flashError('ساختار پاسخ‌های ارسالی نامعتبر است.');
+                    UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+                }
+
+                $normalizedAnswers = [];
+                if (is_array($submittedAnswersRaw)) {
+                    foreach ($submittedAnswersRaw as $questionKey => $answerValue) {
+                        $questionId = (int)UtilityHelper::persianToEnglish((string)$questionKey);
+                        if ($questionId <= 0) {
+                            continue;
+                        }
+
+                        if ($toolIsDisc) {
+                            $bestRaw = $answerValue['best'] ?? null;
+                            $leastRaw = $answerValue['least'] ?? null;
+
+                            if (is_array($bestRaw)) {
+                                $bestRaw = reset($bestRaw);
+                            }
+                            if (is_array($leastRaw)) {
+                                $leastRaw = reset($leastRaw);
+                            }
+
+                            $bestId = (int)UtilityHelper::persianToEnglish((string)($bestRaw ?? 0));
+                            $leastId = (int)UtilityHelper::persianToEnglish((string)($leastRaw ?? 0));
+
+                            if ($bestId > 0 || $leastId > 0) {
+                                $normalizedAnswers[$questionId] = [
+                                    'best' => $bestId,
+                                    'least' => $leastId,
+                                ];
+                            }
+                        } else {
+                            if (is_array($answerValue)) {
+                                $answerValue = reset($answerValue);
+                            }
+                            $answerId = (int)UtilityHelper::persianToEnglish((string)($answerValue ?? 0));
+                            if ($answerId > 0) {
+                                $normalizedAnswers[$questionId] = $answerId;
+                            }
+                        }
+                    }
+                }
+
+                $missingAnswers = [];
+                $invalidAnswerDetected = false;
+                $duplicateSelectionDetected = false;
+
+                foreach ($questionsRequiringAnswers as $questionId => $requiresAnswer) {
+                    if (!$requiresAnswer) {
+                        continue;
+                    }
+
+                    $validAnswers = $questionDetailsForStorage[$questionId]['answers'] ?? [];
+                    if ($toolIsDisc) {
+                        $answerPayload = $normalizedAnswers[$questionId] ?? null;
+                        $bestId = (int)($answerPayload['best'] ?? 0);
+                        $leastId = (int)($answerPayload['least'] ?? 0);
+
+                        if ($bestId <= 0 || $leastId <= 0) {
+                            $missingAnswers[] = $questionId;
+                            continue;
+                        }
+
+                        if ($bestId === $leastId) {
+                            $duplicateSelectionDetected = true;
+                            break;
+                        }
+
+                        if (!isset($validAnswers[$bestId]) || !isset($validAnswers[$leastId])) {
+                            $invalidAnswerDetected = true;
+                            break;
+                        }
+                    } else {
+                        $answerId = (int)($normalizedAnswers[$questionId] ?? 0);
+                        if ($answerId <= 0) {
+                            $missingAnswers[] = $questionId;
+                            continue;
+                        }
+
+                        if (!isset($validAnswers[$answerId])) {
+                            $invalidAnswerDetected = true;
+                            break;
+                        }
+                    }
+                }
+
+                if ($duplicateSelectionDetected) {
+                    ResponseHelper::flashError('برای هر سوال باید گزینه‌های «بهترین» و «ضعیف‌ترین» متفاوت باشند.');
+                    UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+                }
+
+                if ($invalidAnswerDetected) {
+                    ResponseHelper::flashError('گزینه انتخاب شده معتبر نیست.');
+                    UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+                }
+
+                if (!$toolIsOptional && !empty($missingAnswers)) {
+                    $missingMessage = $toolIsDisc
+                        ? 'لطفاً برای هر سوال گزینه‌های «بهترین توصیف» و «ضعیف‌ترین توصیف» را انتخاب کنید.'
+                        : 'لطفاً برای تمام سوال‌ها گزینه‌ای انتخاب کنید.';
+                    ResponseHelper::flashError($missingMessage);
+                    UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+                }
+
+                $toolMetaForStorage = [
+                    'code' => $toolRow['code'] ?? null,
+                    'name' => $toolRow['name'] ?? null,
+                    'question_type' => $toolRow['question_type'] ?? null,
+                ];
+
+                $persisted = $this->recordCourseExamSubmission(
+                    $organizationId,
+                    $courseId,
+                    $enrollmentId,
+                    $organizationUserId,
+                    $toolId,
+                    $toolMetaForStorage,
+                    $questionDetailsForStorage,
+                    $normalizedAnswers,
+                    $toolIsDisc,
+                    $toolIsOptional
+                );
+
+                if (!$persisted) {
+                    ResponseHelper::flashError('ذخیره‌سازی پاسخ‌ها با خطا مواجه شد. لطفاً دوباره تلاش کنید.');
+                    UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+                }
+
+                ResponseHelper::flashSuccess('آزمون دوره با موفقیت تکمیل شد.');
+                UtilityHelper::redirect($backUrl);
+            }
+
+            ResponseHelper::flashWarning('درخواست ارسال شده ناشناخته بود.');
+            UtilityHelper::redirect(UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId)));
+        }
+
+        $coverImageUrl = null;
+        $coverImage = trim((string)($courseRow['cover_image'] ?? ''));
+        if ($coverImage !== '') {
+            $coverImageUrl = UtilityHelper::baseUrl('public/uploads/courses/' . ltrim($coverImage, '/'));
+        }
+
+        $courseInfo = [
+            'id' => $courseId,
+            'title' => trim((string)($courseRow['title'] ?? 'بدون عنوان')),
+            'description' => trim((string)($courseRow['description'] ?? '')),
+            'category' => trim((string)($courseRow['category'] ?? '')),
+            'instructor' => trim((string)($courseRow['instructor_name'] ?? '')),
+            'duration_hours' => isset($courseRow['duration_hours']) && $courseRow['duration_hours'] !== ''
+                ? (int)$courseRow['duration_hours']
+                : null,
+            'cover_image_url' => $coverImageUrl,
+        ];
+
+        $toolInfo = [
+            'id' => $toolId,
+            'code' => trim((string)($toolRow['code'] ?? '')),
+            'name' => trim((string)($toolRow['name'] ?? 'بدون نام')),
+            'description' => trim((string)($toolRow['description'] ?? '')),
+            'guide' => trim((string)($toolRow['guide'] ?? '')),
+            'question_type' => trim((string)($toolRow['question_type'] ?? '')),
+            'duration_minutes' => $toolDurationMinutes,
+            'is_disc' => $toolIsDisc,
+            'is_optional' => $toolIsOptional,
+        ];
+
+        $formAction = UtilityHelper::baseUrl('tests/course-exam?course_id=' . urlencode((string)$courseId));
+        $examStatusMessage = $examMeta['status_message'] ?? '';
+        $examStatusDetail = $examMeta['status_detail'] ?? null;
+        $formLocked = !$examIsUnlocked || $hasCompletedAttempt;
+        $timerSecondsRemaining = null;
+        $timerExpired = false;
+
+        if (!$formLocked && $toolInfo['duration_minutes'] > 0) {
+            $timerState = self::calculateCourseExamTimer(
+                $organizationId,
+                $courseId,
+                $toolId,
+                (int) $toolInfo['duration_minutes'],
+                true
+            );
+
+            $timerSecondsRemaining = $timerState['remaining_seconds'];
+            if (!empty($timerState['expired'])) {
+                $formLocked = true;
+                $timerExpired = true;
+                $examStatusMessage = 'زمان آزمون به پایان رسیده است.';
+                $examStatusDetail = 'برای ثبت مجدد آزمون با پشتیبانی تماس بگیرید.';
+            }
+        }
+
+        $completedAttemptAt = $attemptRow['completed_at'] ?? null;
+
+        include __DIR__ . '/../Views/home/tests/course-exam.php';
+    }
+
+    private static function ensureCourseExamStorageTables(): void
+    {
+        if (self::$courseExamStorageTablesEnsured) {
+            return;
+        }
+
+        try {
+            $pdo = DatabaseHelper::getConnection();
+
+            $attemptsTableExists = $pdo->query("SHOW TABLES LIKE 'organization_course_exam_attempts'")->fetch();
+            if (!$attemptsTableExists) {
+                $pdo->exec(
+                    "CREATE TABLE IF NOT EXISTS `organization_course_exam_attempts` (
+                        `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        `organization_id` BIGINT UNSIGNED NOT NULL,
+                        `course_id` BIGINT UNSIGNED NOT NULL,
+                        `enrollment_id` BIGINT UNSIGNED NOT NULL,
+                        `tool_id` BIGINT UNSIGNED NOT NULL,
+                        `user_id` BIGINT UNSIGNED NOT NULL,
+                        `tool_code` VARCHAR(100) NULL,
+                        `tool_name` VARCHAR(255) NULL,
+                        `question_type` VARCHAR(100) NULL,
+                        `is_disc` TINYINT(1) NOT NULL DEFAULT 0,
+                        `is_optional` TINYINT(1) NOT NULL DEFAULT 0,
+                        `total_questions` INT UNSIGNED NOT NULL DEFAULT 0,
+                        `answered_questions` INT UNSIGNED NOT NULL DEFAULT 0,
+                        `is_completed` TINYINT(1) NOT NULL DEFAULT 0,
+                        `completed_at` DATETIME NULL,
+                        `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+                        `updated_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY `uq_course_exam_attempt` (`organization_id`, `course_id`, `tool_id`, `user_id`),
+                        KEY `idx_course_exam_attempt_lookup` (`organization_id`, `course_id`, `user_id`),
+                        KEY `idx_course_exam_attempt_tool` (`organization_id`, `tool_id`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
+                );
+            }
+
+            $answersTableExists = $pdo->query("SHOW TABLES LIKE 'organization_course_exam_answers'")->fetch();
+            if (!$answersTableExists) {
+                $pdo->exec(
+                    "CREATE TABLE IF NOT EXISTS `organization_course_exam_answers` (
+                        `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        `attempt_id` BIGINT UNSIGNED NOT NULL,
+                        `organization_id` BIGINT UNSIGNED NOT NULL,
+                        `course_id` BIGINT UNSIGNED NOT NULL,
+                        `enrollment_id` BIGINT UNSIGNED NOT NULL,
+                        `tool_id` BIGINT UNSIGNED NOT NULL,
+                        `user_id` BIGINT UNSIGNED NOT NULL,
+                        `question_id` BIGINT UNSIGNED NOT NULL,
+                        `question_title` VARCHAR(255) NULL,
+                        `question_text` TEXT NULL,
+                        `question_description` TEXT NULL,
+                        `is_description_only` TINYINT(1) NOT NULL DEFAULT 0,
+                        `requires_answer` TINYINT(1) NOT NULL DEFAULT 0,
+                        `answer_id` BIGINT UNSIGNED NULL,
+                        `answer_code` VARCHAR(100) NULL,
+                        `answer_text` TEXT NULL,
+                        `disc_best_answer_id` BIGINT UNSIGNED NULL,
+                        `disc_best_answer_code` VARCHAR(100) NULL,
+                        `disc_best_answer_text` TEXT NULL,
+                        `disc_least_answer_id` BIGINT UNSIGNED NULL,
+                        `disc_least_answer_code` VARCHAR(100) NULL,
+                        `disc_least_answer_text` TEXT NULL,
+                        `answer_payload` TEXT NULL,
+                        `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+                        `updated_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        KEY `idx_course_exam_answer_attempt` (`attempt_id`),
+                        KEY `idx_course_exam_answer_lookup` (`organization_id`, `course_id`, `user_id`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
+                );
+            }
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('ensure_course_exam_storage_failed', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        self::$courseExamStorageTablesEnsured = true;
+    }
+
     private static function ensureExamStorageTables(): void
     {
         if (self::$examStorageTablesEnsured) {
@@ -3037,6 +3856,28 @@ class HomeController {
             }
         }
 
+        try {
+            DatabaseHelper::query(
+                'CREATE TABLE IF NOT EXISTS organization_course_exams (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    organization_id BIGINT UNSIGNED NOT NULL,
+                    course_id BIGINT UNSIGNED NOT NULL,
+                    tool_id BIGINT UNSIGNED NULL,
+                    assigned_by VARCHAR(191) NULL,
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_org_course_exam (organization_id, course_id),
+                    INDEX idx_course_exam_tool (tool_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;'
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::error('ensure_course_exams_table_failed', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
         self::$courseTablesEnsured = true;
     }
 
@@ -3056,6 +3897,563 @@ class HomeController {
                 ]);
             }
         }
+    }
+
+    private static function recalculateEnrollmentProgress(
+        int $organizationId,
+        int $courseId,
+        int $enrollmentId,
+        int $organizationUserId,
+        ?string $existingCompletedAt
+    ): array {
+        $totals = [
+            'total_lessons' => 0,
+            'completed_lessons' => 0,
+            'in_progress_lessons' => 0,
+            'percentage' => 0,
+            'completed_at' => null,
+        ];
+
+        try {
+            $row = DatabaseHelper::fetchOne(
+                'SELECT COUNT(*) AS lesson_count FROM organization_course_lessons WHERE course_id = :course_id',
+                ['course_id' => $courseId]
+            );
+            $totals['total_lessons'] = isset($row['lesson_count']) ? (int)$row['lesson_count'] : 0;
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('course_lessons_count_failed', [
+                    'message' => $exception->getMessage(),
+                    'course_id' => $courseId,
+                ]);
+            }
+        }
+
+        try {
+            $row = DatabaseHelper::fetchOne(
+                'SELECT COUNT(*) AS completed_count
+                 FROM organization_course_progress
+                 WHERE enrollment_id = :enrollment_id AND is_completed = 1',
+                ['enrollment_id' => $enrollmentId]
+            );
+            $totals['completed_lessons'] = isset($row['completed_count']) ? (int)$row['completed_count'] : 0;
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('course_completed_lessons_count_failed', [
+                    'message' => $exception->getMessage(),
+                    'enrollment_id' => $enrollmentId,
+                ]);
+            }
+        }
+
+        try {
+            $row = DatabaseHelper::fetchOne(
+                'SELECT COUNT(*) AS in_progress_count
+                 FROM organization_course_progress
+                 WHERE enrollment_id = :enrollment_id AND is_completed = 0 AND watch_duration_seconds > 0',
+                ['enrollment_id' => $enrollmentId]
+            );
+            $totals['in_progress_lessons'] = isset($row['in_progress_count']) ? (int)$row['in_progress_count'] : 0;
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('course_in_progress_lessons_count_failed', [
+                    'message' => $exception->getMessage(),
+                    'enrollment_id' => $enrollmentId,
+                ]);
+            }
+        }
+
+        $percentageValue = 0.0;
+        if ($totals['total_lessons'] > 0) {
+            $percentageValue = ($totals['completed_lessons'] / $totals['total_lessons']) * 100;
+        }
+
+        $percentageStored = number_format($percentageValue, 2, '.', '');
+        $percentageRounded = (int)round($percentageValue);
+
+        $now = (new DateTime('now', new DateTimeZone('Asia/Tehran')))->format('Y-m-d H:i:s');
+        $completedAt = null;
+        if ($percentageRounded >= 100) {
+            $completedAt = $existingCompletedAt ?: $now;
+        }
+
+        try {
+            DatabaseHelper::update(
+                'organization_course_enrollments',
+                [
+                    'progress_percentage' => $percentageStored,
+                    'completed_at' => $completedAt,
+                ],
+                'id = :id AND organization_id = :organization_id AND user_id = :user_id',
+                [
+                    'id' => $enrollmentId,
+                    'organization_id' => $organizationId,
+                    'user_id' => $organizationUserId,
+                ]
+            );
+        } catch (Exception $exception) {
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('course_enrollment_progress_update_failed', [
+                    'message' => $exception->getMessage(),
+                    'enrollment_id' => $enrollmentId,
+                ]);
+            }
+        }
+
+        $totals['percentage'] = max(0, min(100, $percentageRounded));
+        $totals['completed_at'] = $completedAt;
+
+        return $totals;
+    }
+
+    private static function loadCourseExamMeta(int $organizationId, array $courseIds, int $organizationUserId): array
+    {
+        $courseIds = array_values(array_unique(array_filter(
+            array_map(static fn($value) => (int)$value, $courseIds),
+            static fn($value) => $value > 0
+        )));
+
+        if ($organizationId <= 0 || $organizationUserId <= 0 || empty($courseIds)) {
+            return [];
+        }
+
+        self::ensureCourseTables();
+
+        $courseExamMap = [];
+        $toolIds = [];
+
+        $coursePlaceholders = [];
+        $courseParams = ['organization_id' => $organizationId];
+        foreach ($courseIds as $index => $courseId) {
+            $key = 'course_' . $index;
+            $coursePlaceholders[] = ':' . $key;
+            $courseParams[$key] = $courseId;
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT course_id, tool_id
+                 FROM organization_course_exams
+                 WHERE organization_id = :organization_id AND course_id IN (' . implode(', ', $coursePlaceholders) . ')',
+                $courseParams
+            );
+        } catch (Exception $exception) {
+            $rows = [];
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('load_course_exam_meta_failed', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        foreach ($rows as $row) {
+            $courseId = (int)($row['course_id'] ?? 0);
+            $toolId = (int)($row['tool_id'] ?? 0);
+            if ($courseId <= 0) {
+                continue;
+            }
+
+            $courseExamMap[$courseId] = [
+                'course_id' => $courseId,
+                'tool_id' => $toolId > 0 ? $toolId : null,
+            ];
+
+            if ($toolId > 0) {
+                $toolIds[$toolId] = $toolId;
+            }
+        }
+
+        if (empty($courseExamMap) || empty($toolIds)) {
+            return $courseExamMap;
+        }
+
+        $toolMetaMap = [];
+        $toolPlaceholders = [];
+        $toolParams = ['organization_id' => $organizationId];
+        $toolIds = array_values($toolIds);
+        foreach ($toolIds as $index => $toolId) {
+            $key = 'tool_' . $index;
+            $toolPlaceholders[] = ':' . $key;
+            $toolParams[$key] = $toolId;
+        }
+
+        try {
+            $toolRows = DatabaseHelper::fetchAll(
+                'SELECT id, code, name, question_type, duration_minutes, description
+                 FROM organization_evaluation_tools
+                 WHERE organization_id = :organization_id AND id IN (' . implode(', ', $toolPlaceholders) . ')',
+                $toolParams
+            );
+        } catch (Exception $exception) {
+            $toolRows = [];
+            if (class_exists('LogHelper')) {
+                LogHelper::warning('load_course_exam_tools_failed', [
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        foreach ($toolRows as $toolRow) {
+            $toolId = (int)($toolRow['id'] ?? 0);
+            if ($toolId <= 0) {
+                continue;
+            }
+
+            $toolMetaMap[$toolId] = [
+                'tool_id' => $toolId,
+                'tool_code' => trim((string)($toolRow['code'] ?? '')),
+                'tool_name' => trim((string)($toolRow['name'] ?? '')),
+                'question_type' => trim((string)($toolRow['question_type'] ?? '')),
+                'duration_minutes' => isset($toolRow['duration_minutes']) && $toolRow['duration_minutes'] !== ''
+                    ? (int)$toolRow['duration_minutes']
+                    : null,
+                'tool_description' => trim((string)($toolRow['description'] ?? '')),
+            ];
+        }
+
+        $evaluationsById = [];
+        $evaluationIds = [];
+        $scheduleIds = [];
+
+        try {
+            $evaluationRows = DatabaseHelper::fetchAll(
+                'SELECT id, title, evaluation_date, schedule_id, evaluatees_json
+                 FROM organization_evaluations
+                 WHERE organization_id = :organization_id
+                 ORDER BY id DESC',
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $evaluationRows = [];
+        }
+
+        foreach ($evaluationRows as $evaluationRow) {
+            $evaluationId = (int)($evaluationRow['id'] ?? 0);
+            if ($evaluationId <= 0) {
+                continue;
+            }
+
+            $evaluateesJson = $evaluationRow['evaluatees_json'] ?? '';
+            $evaluatees = [];
+            if (is_string($evaluateesJson) && $evaluateesJson !== '') {
+                $decoded = json_decode($evaluateesJson, true);
+                if (is_array($decoded)) {
+                    $evaluatees = array_map('intval', $decoded);
+                } else {
+                    $str = trim($evaluateesJson);
+                    if ($str !== '') {
+                        $parts = preg_split('/[\s,\[\]\{"\}:]+/', $str);
+                        if (is_array($parts)) {
+                            foreach ($parts as $part) {
+                                $value = (int)UtilityHelper::persianToEnglish(trim($part));
+                                if ($value > 0) {
+                                    $evaluatees[] = $value;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!in_array($organizationUserId, $evaluatees, true)) {
+                if ($courseExamMap) {
+                    foreach ($courseExamMap as $cid => &$meta) {
+                        if (($meta['evaluation_id'] ?? 0) === $evaluationId) {
+                            $meta['has_assignment'] = true;
+                        }
+                    }
+                    unset($meta);
+                }
+                continue;
+            }
+
+            $evaluationsById[$evaluationId] = $evaluationRow;
+            $evaluationIds[] = $evaluationId;
+
+            $scheduleId = (int)($evaluationRow['schedule_id'] ?? 0);
+            if ($scheduleId > 0) {
+                $scheduleIds[$scheduleId] = $scheduleId;
+            }
+        }
+
+        $schedulesById = [];
+        if (!empty($scheduleIds)) {
+            $schedulePlaceholders = [];
+            $scheduleParams = [];
+            $index = 0;
+            foreach ($scheduleIds as $scheduleId) {
+                $key = 'schedule_' . $index;
+                $schedulePlaceholders[] = ':' . $key;
+                $scheduleParams[$key] = $scheduleId;
+                $index++;
+            }
+
+            try {
+                $scheduleRows = DatabaseHelper::fetchAll(
+                    'SELECT id, evaluation_title, evaluation_date, status, is_open
+                     FROM organization_evaluation_schedules
+                     WHERE id IN (' . implode(', ', $schedulePlaceholders) . ')',
+                    $scheduleParams
+                );
+            } catch (Exception $exception) {
+                $scheduleRows = [];
+            }
+
+            foreach ($scheduleRows as $scheduleRow) {
+                $scheduleId = (int)($scheduleRow['id'] ?? 0);
+                if ($scheduleId <= 0) {
+                    continue;
+                }
+                $schedulesById[$scheduleId] = $scheduleRow;
+            }
+        }
+
+        $toolEvaluationAssignments = [];
+        if (!empty($evaluationIds) && !empty($toolIds)) {
+            $assignmentParams = [];
+            $evaluationPlaceholders = [];
+            foreach (array_values($evaluationIds) as $index => $evaluationId) {
+                $key = 'evaluation_' . $index;
+                $evaluationPlaceholders[] = ':' . $key;
+                $assignmentParams[$key] = $evaluationId;
+            }
+
+            $toolPlaceholdersForAssignments = [];
+            foreach ($toolIds as $index => $toolId) {
+                $key = 'tool_filter_' . $index;
+                $toolPlaceholdersForAssignments[] = ':' . $key;
+                $assignmentParams[$key] = $toolId;
+            }
+
+            $assignmentSql = sprintf(
+                'SELECT evaluation_id, tool_id, sort_order
+                 FROM organization_evaluation_tool_assignments
+                 WHERE evaluation_id IN (%s) AND tool_id IN (%s)',
+                implode(', ', $evaluationPlaceholders),
+                implode(', ', $toolPlaceholdersForAssignments)
+            );
+
+            try {
+                $assignmentRows = DatabaseHelper::fetchAll($assignmentSql, $assignmentParams);
+            } catch (Exception $exception) {
+                $assignmentRows = [];
+            }
+
+            foreach ($assignmentRows as $assignmentRow) {
+                $evaluationId = (int)($assignmentRow['evaluation_id'] ?? 0);
+                $toolId = (int)($assignmentRow['tool_id'] ?? 0);
+                if ($evaluationId <= 0 || $toolId <= 0) {
+                    continue;
+                }
+
+                $evaluationRow = $evaluationsById[$evaluationId] ?? null;
+                $scheduleId = $evaluationRow ? (int)($evaluationRow['schedule_id'] ?? 0) : 0;
+                $scheduleRow = $scheduleId > 0 ? ($schedulesById[$scheduleId] ?? null) : null;
+
+                $toolEvaluationAssignments[$toolId][] = [
+                    'evaluation_id' => $evaluationId,
+                    'evaluation_title' => $evaluationRow ? trim((string)($evaluationRow['title'] ?? '')) : null,
+                    'evaluation_date' => $evaluationRow['evaluation_date'] ?? null,
+                    'schedule_id' => $scheduleId > 0 ? $scheduleId : null,
+                    'schedule_status' => $scheduleRow['status'] ?? null,
+                    'schedule_is_open' => $scheduleRow['is_open'] ?? null,
+                    'schedule_evaluation_date' => $scheduleRow['evaluation_date'] ?? null,
+                    'sort_order' => (int)($assignmentRow['sort_order'] ?? 0),
+                ];
+            }
+        }
+
+        foreach ($courseExamMap as $courseId => &$meta) {
+            $toolId = (int)($meta['tool_id'] ?? 0);
+            if ($toolId > 0 && isset($toolMetaMap[$toolId])) {
+                $meta = array_merge($meta, $toolMetaMap[$toolId]);
+            }
+
+            if ($toolId > 0 && isset($toolEvaluationAssignments[$toolId])) {
+                $options = $toolEvaluationAssignments[$toolId];
+                usort($options, static function (array $a, array $b): int {
+                    $openA = self::normalizeBooleanFlag($a['schedule_is_open'] ?? null) ? 1 : 0;
+                    $openB = self::normalizeBooleanFlag($b['schedule_is_open'] ?? null) ? 1 : 0;
+                    if ($openA !== $openB) {
+                        return $openB <=> $openA;
+                    }
+
+                    $orderA = $a['sort_order'] ?? 0;
+                    $orderB = $b['sort_order'] ?? 0;
+                    if ($orderA !== $orderB) {
+                        return $orderA <=> $orderB;
+                    }
+
+                    return ($a['evaluation_id'] ?? 0) <=> ($b['evaluation_id'] ?? 0);
+                });
+
+                $selected = $options[0];
+                $meta['evaluation_id'] = $selected['evaluation_id'];
+                $meta['first_evaluation_id'] = $selected['evaluation_id'];
+                $meta['evaluation_title'] = $selected['evaluation_title'];
+                $meta['evaluation_date'] = $selected['evaluation_date'] ?? $selected['schedule_evaluation_date'] ?? null;
+                $meta['schedule_id'] = $selected['schedule_id'];
+                $meta['schedule_status'] = $selected['schedule_status'];
+                $meta['schedule_is_open'] = $selected['schedule_is_open'];
+            }
+        }
+        unset($meta);
+
+        return $courseExamMap;
+    }
+
+    private static function finalizeCourseExamMeta(?array $meta, array $progress): ?array
+    {
+        if (!is_array($meta)) {
+            return null;
+        }
+
+        $toolId = (int)($meta['tool_id'] ?? 0);
+        if ($toolId <= 0) {
+            return null;
+        }
+
+        $progressPercentage = (int)($progress['percentage'] ?? 0);
+        $requiredPercentage = isset($meta['percentage_required']) ? (int)$meta['percentage_required'] : 100;
+        $meta['percentage_required'] = $requiredPercentage;
+
+        $hasEvaluation = isset($meta['evaluation_id']) && (int)$meta['evaluation_id'] > 0;
+        if (!$hasEvaluation && !empty($meta['has_assignment'])) {
+            $hasEvaluation = true;
+        }
+        $meta['has_evaluation'] = $hasEvaluation;
+
+        $scheduleIsOpen = self::normalizeBooleanFlag($meta['schedule_is_open'] ?? null);
+        $meta['schedule_is_open'] = $scheduleIsOpen;
+
+        $isUnlocked = ($progressPercentage >= $requiredPercentage) && $scheduleIsOpen;
+        $meta['is_unlocked'] = $isUnlocked;
+
+        $courseId = isset($meta['course_id']) ? (int)$meta['course_id'] : 0;
+        $queryParts = [];
+        if ($courseId > 0) {
+            $queryParts[] = 'course_id=' . urlencode((string)$courseId);
+        }
+        $queryParts[] = 'tool_id=' . urlencode((string)$toolId);
+        $meta['start_url'] = UtilityHelper::baseUrl('tests/course-exam?' . implode('&', $queryParts));
+
+    $statusMessage = 'آزمون فعال است؛ به سوالات زیر پاسخ دهید و در پایان روی «ثبت آزمون» بزنید.';
+        $statusDetail = null;
+
+        if ($progressPercentage < $requiredPercentage) {
+            $statusMessage = 'برای فعال شدن آزمون باید تمام درس‌های دوره را تکمیل کنید.';
+            $statusDetail = 'پیشرفت فعلی ' . UtilityHelper::englishToPersian((string)$progressPercentage) . '٪ است و برای فعال شدن آزمون باید حداقل ' . UtilityHelper::englishToPersian((string)$requiredPercentage) . '٪ باشد.';
+        } elseif (!$scheduleIsOpen) {
+            $statusMessage = 'زمان شروع آزمون هنوز باز نشده است.';
+            $statusDetail = 'به محض باز شدن زمان‌بندی آزمون، دکمه فعال خواهد شد.';
+        } elseif (!$isUnlocked) {
+            $statusMessage = 'آزمون به‌زودی فعال می‌شود.';
+        }
+
+        if ($statusDetail !== null) {
+            $meta['status_detail'] = $statusDetail;
+        } else {
+            unset($meta['status_detail']);
+        }
+
+        $meta['status_message'] = $statusMessage;
+
+        if (!empty($meta['evaluation_date'])) {
+            try {
+                $date = new DateTime($meta['evaluation_date'], new DateTimeZone('Asia/Tehran'));
+                $meta['evaluation_date_display'] = UtilityHelper::englishToPersian($date->format('Y/m/d'));
+            } catch (Exception $exception) {
+                $meta['evaluation_date_display'] = UtilityHelper::englishToPersian((string)$meta['evaluation_date']);
+            }
+        }
+
+        return $meta;
+    }
+
+    private static function normalizeBooleanFlag($value): bool
+    {
+        if ($value === null) {
+            return true;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int)$value === 1;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            return in_array($normalized, ['1', 'true', 'yes', 'y', 'open', 'active'], true);
+        }
+
+        return (bool)$value;
+    }
+
+    private static function calculateCourseExamTimer(int $organizationId, int $courseId, int $toolId, int $durationMinutes, bool $createIfMissing = true): array
+    {
+        $totalSeconds = max(0, $durationMinutes * 60);
+
+        $result = [
+            'start_time' => null,
+            'remaining_seconds' => null,
+            'total_seconds' => $totalSeconds,
+            'expired' => false,
+        ];
+
+        if ($totalSeconds <= 0) {
+            return $result;
+        }
+
+        if (!isset($_SESSION['course_exam_progress']) || !is_array($_SESSION['course_exam_progress'])) {
+            if (!$createIfMissing) {
+                return $result;
+            }
+            $_SESSION['course_exam_progress'] = [];
+        }
+
+        if (!isset($_SESSION['course_exam_progress'][$organizationId]) || !is_array($_SESSION['course_exam_progress'][$organizationId])) {
+            if (!$createIfMissing) {
+                return $result;
+            }
+            $_SESSION['course_exam_progress'][$organizationId] = [];
+        }
+
+        if (!isset($_SESSION['course_exam_progress'][$organizationId][$courseId]) || !is_array($_SESSION['course_exam_progress'][$organizationId][$courseId])) {
+            if (!$createIfMissing) {
+                return $result;
+            }
+            $_SESSION['course_exam_progress'][$organizationId][$courseId] = [];
+        }
+
+        if (!isset($_SESSION['course_exam_progress'][$organizationId][$courseId][$toolId]) || !is_array($_SESSION['course_exam_progress'][$organizationId][$courseId][$toolId])) {
+            if (!$createIfMissing) {
+                return $result;
+            }
+            $_SESSION['course_exam_progress'][$organizationId][$courseId][$toolId] = [];
+        }
+
+        $sessionNode =& $_SESSION['course_exam_progress'][$organizationId][$courseId][$toolId];
+        $startTimestamp = isset($sessionNode['start_time']) ? (int)$sessionNode['start_time'] : 0;
+
+        if ($startTimestamp <= 0) {
+            if (!$createIfMissing) {
+                return $result;
+            }
+            $startTimestamp = time();
+            $sessionNode['start_time'] = $startTimestamp;
+        }
+
+        $result['start_time'] = $startTimestamp;
+
+        $elapsedSeconds = max(0, time() - $startTimestamp);
+        $remainingSeconds = max(0, $totalSeconds - $elapsedSeconds);
+        $result['remaining_seconds'] = $remainingSeconds;
+        $result['expired'] = ($remainingSeconds <= 0);
+
+        return $result;
     }
 
     private static function parseDateTime(?string $value): ?DateTime
@@ -3100,6 +4498,26 @@ class HomeController {
         }
 
         return sprintf('%02d:%02d', $minutes, $remaining);
+    }
+
+    private static function isDiscTool(array $toolRow): bool
+    {
+        $candidates = [
+            $toolRow['code'] ?? '',
+            $toolRow['name'] ?? '',
+            $toolRow['description'] ?? '',
+            $toolRow['question_type'] ?? '',
+            $toolRow['guide'] ?? '',
+        ];
+
+        foreach ($candidates as $value) {
+            $normalized = strtolower(trim((string)$value));
+            if ($normalized !== '' && strpos($normalized, 'disc') !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function recordExamSubmission(
@@ -3331,6 +4749,24 @@ class HomeController {
             if ($startedTransaction && $pdo->inTransaction()) {
                 $pdo->commit();
             }
+
+            AuthHelper::startSession();
+
+            if (isset($_SESSION['course_exam_progress'][$organizationId][$courseId][$toolId])) {
+                unset($_SESSION['course_exam_progress'][$organizationId][$courseId][$toolId]);
+
+                if (empty($_SESSION['course_exam_progress'][$organizationId][$courseId])) {
+                    unset($_SESSION['course_exam_progress'][$organizationId][$courseId]);
+                }
+
+                if (empty($_SESSION['course_exam_progress'][$organizationId])) {
+                    unset($_SESSION['course_exam_progress'][$organizationId]);
+                }
+
+                if (empty($_SESSION['course_exam_progress'])) {
+                    unset($_SESSION['course_exam_progress']);
+                }
+            }
             return true;
         } catch (Exception $exception) {
             try {
@@ -3349,6 +4785,260 @@ class HomeController {
                 'tool_id' => $toolId,
                 'evaluatee_id' => $evaluateeId,
             ]);
+            return false;
+        }
+    }
+
+    private function recordCourseExamSubmission(
+        int $organizationId,
+        int $courseId,
+        int $enrollmentId,
+        int $userId,
+        int $toolId,
+        array $toolMeta,
+        array $questionDetails,
+        array $normalizedAnswers,
+        bool $isDiscSubmission,
+        bool $isOptionalSubmission
+    ): bool {
+        if ($organizationId <= 0 || $courseId <= 0 || $enrollmentId <= 0 || $userId <= 0 || $toolId <= 0) {
+            return false;
+        }
+
+        self::ensureCourseExamStorageTables();
+
+        $truncate = static function (?string $value, int $limit): ?string {
+            if ($value === null) {
+                return null;
+            }
+
+            $trimmed = trim($value);
+            if ($trimmed === '') {
+                return null;
+            }
+
+            if (mb_strlen($trimmed, 'UTF-8') > $limit) {
+                return mb_substr($trimmed, 0, $limit, 'UTF-8');
+            }
+
+            return $trimmed;
+        };
+
+        $totalQuestions = count($questionDetails);
+        $answeredQuestions = 0;
+
+        foreach ($questionDetails as $questionId => $questionDetail) {
+            if (!isset($normalizedAnswers[$questionId])) {
+                continue;
+            }
+
+            if ($isDiscSubmission) {
+                $answerPayload = $normalizedAnswers[$questionId];
+                $bestId = (int)($answerPayload['best'] ?? 0);
+                $leastId = (int)($answerPayload['least'] ?? 0);
+                if ($bestId > 0 && $leastId > 0) {
+                    $answeredQuestions++;
+                }
+            } else {
+                $answerId = (int)$normalizedAnswers[$questionId];
+                if ($answerId > 0) {
+                    $answeredQuestions++;
+                }
+            }
+        }
+
+        try {
+            $pdo = DatabaseHelper::getConnection();
+            $startedTransaction = false;
+
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $startedTransaction = true;
+            }
+
+            $now = (new DateTime('now', new DateTimeZone('Asia/Tehran')))->format('Y-m-d H:i:s');
+
+            $existingAttempt = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_course_exam_attempts
+                 WHERE organization_id = :organization_id
+                   AND course_id = :course_id
+                   AND tool_id = :tool_id
+                   AND user_id = :user_id
+                 LIMIT 1',
+                [
+                    'organization_id' => $organizationId,
+                    'course_id' => $courseId,
+                    'tool_id' => $toolId,
+                    'user_id' => $userId,
+                ]
+            );
+
+            $attemptData = [
+                'organization_id' => $organizationId,
+                'course_id' => $courseId,
+                'enrollment_id' => $enrollmentId,
+                'tool_id' => $toolId,
+                'user_id' => $userId,
+                'tool_code' => $truncate((string)($toolMeta['code'] ?? ''), 100),
+                'tool_name' => $truncate((string)($toolMeta['name'] ?? ''), 255),
+                'question_type' => $truncate((string)($toolMeta['question_type'] ?? ''), 100),
+                'is_disc' => $isDiscSubmission ? 1 : 0,
+                'is_optional' => $isOptionalSubmission ? 1 : 0,
+                'total_questions' => $totalQuestions,
+                'answered_questions' => $answeredQuestions,
+                'is_completed' => 1,
+                'completed_at' => $now,
+            ];
+
+            if ($attemptData['tool_code'] === '') {
+                $attemptData['tool_code'] = null;
+            }
+            if ($attemptData['tool_name'] === '') {
+                $attemptData['tool_name'] = null;
+            }
+            if ($attemptData['question_type'] === '') {
+                $attemptData['question_type'] = null;
+            }
+
+            if ($existingAttempt && isset($existingAttempt['id'])) {
+                $attemptId = (int)$existingAttempt['id'];
+                DatabaseHelper::update(
+                    'organization_course_exam_attempts',
+                    $attemptData,
+                    'id = :id',
+                    ['id' => $attemptId]
+                );
+
+                DatabaseHelper::delete(
+                    'organization_course_exam_answers',
+                    'attempt_id = :attempt_id',
+                    ['attempt_id' => $attemptId]
+                );
+            } else {
+                $attemptId = (int)DatabaseHelper::insert('organization_course_exam_attempts', $attemptData);
+            }
+
+            foreach ($questionDetails as $questionId => $questionDetail) {
+                $questionTitle = $truncate((string)($questionDetail['title'] ?? ''), 255);
+                $questionText = trim((string)($questionDetail['text'] ?? ''));
+                $questionDescription = trim((string)($questionDetail['description'] ?? ''));
+                $questionRequiresAnswer = !empty($questionDetail['requires_answer']);
+                $questionIsDescriptionOnly = !empty($questionDetail['is_description_only']);
+                $questionAnswers = is_array($questionDetail['answers'] ?? null) ? $questionDetail['answers'] : [];
+
+                $selectedAnswer = $normalizedAnswers[$questionId] ?? null;
+                $answerRecord = [
+                    'attempt_id' => $attemptId,
+                    'organization_id' => $organizationId,
+                    'course_id' => $courseId,
+                    'enrollment_id' => $enrollmentId,
+                    'tool_id' => $toolId,
+                    'user_id' => $userId,
+                    'question_id' => (int)$questionId,
+                    'question_title' => $questionTitle,
+                    'question_text' => $questionText !== '' ? $questionText : null,
+                    'question_description' => $questionDescription !== '' ? $questionDescription : null,
+                    'is_description_only' => $questionIsDescriptionOnly ? 1 : 0,
+                    'requires_answer' => $questionRequiresAnswer ? 1 : 0,
+                    'answer_id' => null,
+                    'answer_code' => null,
+                    'answer_text' => null,
+                    'disc_best_answer_id' => null,
+                    'disc_best_answer_code' => null,
+                    'disc_best_answer_text' => null,
+                    'disc_least_answer_id' => null,
+                    'disc_least_answer_code' => null,
+                    'disc_least_answer_text' => null,
+                    'answer_payload' => null,
+                ];
+
+                if ($selectedAnswer !== null) {
+                    if ($isDiscSubmission) {
+                        $bestId = (int)($selectedAnswer['best'] ?? 0);
+                        $leastId = (int)($selectedAnswer['least'] ?? 0);
+
+                        $bestMeta = ($bestId > 0 && isset($questionAnswers[$bestId])) ? $questionAnswers[$bestId] : null;
+                        $leastMeta = ($leastId > 0 && isset($questionAnswers[$leastId])) ? $questionAnswers[$leastId] : null;
+
+                        if ($bestId > 0) {
+                            $answerRecord['disc_best_answer_id'] = $bestId;
+                            $answerRecord['disc_best_answer_code'] = $bestMeta && isset($bestMeta['code']) ? $truncate((string)$bestMeta['code'], 100) : null;
+                            $answerRecord['disc_best_answer_text'] = $bestMeta && isset($bestMeta['text']) ? trim((string)$bestMeta['text']) : null;
+                        }
+
+                        if ($leastId > 0) {
+                            $answerRecord['disc_least_answer_id'] = $leastId;
+                            $answerRecord['disc_least_answer_code'] = $leastMeta && isset($leastMeta['code']) ? $truncate((string)$leastMeta['code'], 100) : null;
+                            $answerRecord['disc_least_answer_text'] = $leastMeta && isset($leastMeta['text']) ? trim((string)$leastMeta['text']) : null;
+                        }
+
+                        $answerRecord['answer_payload'] = json_encode(
+                            [
+                                'type' => 'disc',
+                                'best' => [
+                                    'answer_id' => $bestId > 0 ? $bestId : null,
+                                    'code' => $answerRecord['disc_best_answer_code'],
+                                    'text' => $answerRecord['disc_best_answer_text'],
+                                ],
+                                'least' => [
+                                    'answer_id' => $leastId > 0 ? $leastId : null,
+                                    'code' => $answerRecord['disc_least_answer_code'],
+                                    'text' => $answerRecord['disc_least_answer_text'],
+                                ],
+                            ],
+                            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                        );
+                    } else {
+                        $answerId = (int)$selectedAnswer;
+                        $answerMeta = ($answerId > 0 && isset($questionAnswers[$answerId])) ? $questionAnswers[$answerId] : null;
+
+                        if ($answerId > 0) {
+                            $answerRecord['answer_id'] = $answerId;
+                            $answerRecord['answer_code'] = $answerMeta && isset($answerMeta['code']) ? $truncate((string)$answerMeta['code'], 100) : null;
+                            $answerRecord['answer_text'] = $answerMeta && isset($answerMeta['text']) ? trim((string)$answerMeta['text']) : null;
+                        }
+
+                        $answerRecord['answer_payload'] = json_encode(
+                            [
+                                'type' => 'single_choice',
+                                'answer' => [
+                                    'answer_id' => $answerId > 0 ? $answerId : null,
+                                    'code' => $answerRecord['answer_code'],
+                                    'text' => $answerRecord['answer_text'],
+                                ],
+                            ],
+                            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                        );
+                    }
+                }
+
+                DatabaseHelper::insert('organization_course_exam_answers', $answerRecord);
+            }
+
+            if ($startedTransaction && $pdo->inTransaction()) {
+                $pdo->commit();
+            }
+            return true;
+        } catch (Exception $exception) {
+            try {
+                $pdo = DatabaseHelper::getConnection();
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+            } catch (Exception $rollbackException) {
+                // ignore rollback failures
+            }
+
+            if (class_exists('LogHelper')) {
+                LogHelper::error('course_exam_submission_failed', [
+                    'message' => $exception->getMessage(),
+                    'organization_id' => $organizationId,
+                    'course_id' => $courseId,
+                    'tool_id' => $toolId,
+                    'user_id' => $userId,
+                ]);
+            }
+
             return false;
         }
     }

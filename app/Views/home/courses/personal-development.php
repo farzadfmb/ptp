@@ -10,6 +10,7 @@ $inline_styles = $inline_styles ?? '';
 $inline_scripts = $inline_scripts ?? '';
 
 $courses = isset($courses) && is_array($courses) ? $courses : [];
+$csrfToken = AuthHelper::generateCsrfToken();
 
 $inline_styles .= <<<'CSS'
 .course-hero-card {
@@ -130,7 +131,9 @@ $inline_styles .= <<<'CSS'
 }
 .lesson-actions {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
 }
 .lesson-status.badge {
     border-radius: 999px;
@@ -148,10 +151,329 @@ $inline_styles .= <<<'CSS'
     line-height: 1.8;
     color: #1e293b;
 }
+.lesson-pdf-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 1rem;
+}
+.lesson-pdf-controls .lesson-pdf-page-input {
+    width: 80px;
+    text-align: center;
+}
+.lesson-pdf-controls .lesson-pdf-page-label {
+    font-weight: 600;
+}
+#lessonViewerModal.lesson-guard-active .modal-content,
+#lessonViewerModal.lesson-guard-active .modal-body {
+    user-select: none;
+}
+#lessonViewerModal.lesson-guard-active .modal-content ::selection,
+#lessonViewerModal.lesson-guard-active .modal-body ::selection {
+    background: transparent;
+}
+.lesson-actions .form-check {
+    margin: 0;
+}
+.lesson-actions .form-check-label {
+    font-size: 0.75rem;
+}
+.lesson-actions .lesson-complete-switch {
+    cursor: pointer;
+}
+.course-exam-block {
+    background: #f5f7ff;
+    border: 1px dashed rgba(99, 102, 241, 0.4);
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: 16px;
+}
+.course-exam-block .exam-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.course-exam-block .exam-meta span {
+    font-size: 0.85rem;
+    color: #475569;
+}
 CSS;
 
 $inline_scripts .= <<<'JS'
+const LESSON_STATUS_STYLES = {
+    completed: { label: 'تکمیل شده', className: 'bg-success-subtle text-success' },
+    in_progress: { label: 'در حال پیشرفت', className: 'bg-info-subtle text-info' },
+    scheduled: { label: 'به زودی', className: 'bg-warning-subtle text-warning' },
+    pending: { label: 'آماده شروع', className: 'bg-secondary-subtle text-secondary' }
+};
+
+const toPersianDigits = function (value) {
+    const digits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    return String(value ?? '').replace(/[0-9]/g, function (digit) {
+        return digits[parseInt(digit, 10)] ?? digit;
+    });
+};
+
 document.addEventListener('DOMContentLoaded', function () {
+    const pageWrapper = document.querySelector('.page-content-wrapper');
+    const courseProgressEndpoint = pageWrapper ? pageWrapper.dataset.courseProgressEndpoint || '' : '';
+    const courseProgressToken = pageWrapper ? pageWrapper.dataset.courseProgressToken || '' : '';
+
+    const sendLessonProgressRequest = function (payload) {
+        if (!courseProgressEndpoint || !courseProgressToken) {
+            return Promise.resolve(null);
+        }
+
+        const params = new URLSearchParams();
+        params.append('_token', courseProgressToken);
+        params.append('enrollment_id', payload.enrollmentId);
+        params.append('lesson_id', payload.lessonId);
+        params.append('event', payload.event);
+        if (payload.watchSeconds) {
+            params.append('watch_seconds', String(payload.watchSeconds));
+        }
+
+        return fetch(courseProgressEndpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('network');
+                }
+                return response.json();
+            })
+            .then(function (json) {
+                if (json && json.success && json.data) {
+                    applyLessonProgressUpdate(json.data);
+                    return json.data;
+                }
+                throw new Error(json && json.message ? json.message : 'failed');
+            })
+            .catch(function (error) {
+                console.warn('Lesson progress update failed:', error);
+                return null;
+            });
+    };
+
+    const updateCourseProgressSummary = function (courseCard, progress) {
+        if (!courseCard || !progress) {
+            return;
+        }
+
+        const percentageValue = typeof progress.percentage === 'number' ? progress.percentage : parseInt(progress.percentage || 0, 10) || 0;
+        const percentageElement = courseCard.querySelector('[data-progress-percentage-value]');
+        if (percentageElement) {
+            percentageElement.textContent = toPersianDigits(percentageValue);
+        }
+
+        const progressBar = courseCard.querySelector('[data-progress-bar]');
+        if (progressBar) {
+            progressBar.style.width = percentageValue + '%';
+            progressBar.setAttribute('aria-valuenow', String(percentageValue));
+        }
+
+        const completedElement = courseCard.querySelector('[data-progress-completed-value]');
+        if (completedElement) {
+            completedElement.textContent = toPersianDigits(progress.completed_lessons ?? 0);
+        }
+
+        const inProgressElement = courseCard.querySelector('[data-progress-in-progress-value]');
+        if (inProgressElement) {
+            inProgressElement.textContent = toPersianDigits(progress.in_progress_lessons ?? 0);
+        }
+
+        const totalElement = courseCard.querySelector('[data-progress-total-value]');
+        if (totalElement) {
+            totalElement.textContent = toPersianDigits(progress.total_lessons ?? 0);
+        }
+    };
+
+    const updateCourseExamBlock = function (courseCard, examMeta) {
+        const examBlock = courseCard ? courseCard.querySelector('[data-course-exam]') : null;
+        if (!examBlock) {
+            return;
+        }
+
+        const messageElement = examBlock.querySelector('[data-exam-status]');
+        const titleElement = examBlock.querySelector('[data-exam-title]');
+        const detailsElement = examBlock.querySelector('[data-exam-meta-details]');
+        const detailElement = examBlock.querySelector('[data-exam-status-detail]');
+        const actionButton = examBlock.querySelector('[data-exam-button]');
+
+        if (!examMeta) {
+            if (messageElement) {
+                messageElement.textContent = 'برای این دوره آزمونی تعریف نشده است.';
+            }
+            if (titleElement) {
+                titleElement.textContent = '';
+                titleElement.classList.add('d-none');
+            }
+            if (detailsElement) {
+                detailsElement.textContent = '';
+                detailsElement.classList.add('d-none');
+            }
+            if (detailElement) {
+                detailElement.textContent = '';
+                detailElement.classList.add('d-none');
+            }
+            if (actionButton) {
+                actionButton.classList.add('disabled', 'btn-outline-secondary');
+                actionButton.classList.remove('btn-success');
+                actionButton.setAttribute('aria-disabled', 'true');
+                actionButton.href = '#';
+            }
+            return;
+        }
+
+        if (messageElement) {
+            messageElement.textContent = examMeta.status_message || 'برای این دوره آزمونی تعریف نشده است.';
+        }
+
+        if (titleElement) {
+            const titleParts = [];
+            if (examMeta.tool_name) {
+                titleParts.push(examMeta.tool_name);
+            }
+            if (examMeta.evaluation_title) {
+                titleParts.push(examMeta.evaluation_title);
+            }
+            if (titleParts.length > 0) {
+                titleElement.textContent = titleParts.join(' • ');
+                titleElement.classList.remove('d-none');
+            } else {
+                titleElement.textContent = '';
+                titleElement.classList.add('d-none');
+            }
+        }
+
+        if (detailsElement) {
+            const details = [];
+            if (examMeta.duration_minutes) {
+                details.push('زمان آزمون: ' + toPersianDigits(examMeta.duration_minutes) + ' دقیقه');
+            }
+            if (examMeta.evaluation_date_display) {
+                details.push('تاریخ برگزاری: ' + examMeta.evaluation_date_display);
+            }
+            detailsElement.textContent = details.join(' | ');
+            detailsElement.classList.toggle('d-none', details.length === 0);
+        }
+
+        if (detailElement) {
+            const detailText = examMeta.status_detail ? String(examMeta.status_detail) : '';
+            detailElement.textContent = detailText;
+            detailElement.classList.toggle('d-none', detailText === '');
+        }
+
+        if (actionButton) {
+            if (examMeta.is_unlocked && examMeta.start_url) {
+                actionButton.classList.remove('disabled', 'btn-outline-secondary');
+                actionButton.classList.add('btn-success');
+                actionButton.setAttribute('aria-disabled', 'false');
+                actionButton.href = examMeta.start_url;
+            } else {
+                actionButton.classList.add('disabled', 'btn-outline-secondary');
+                actionButton.classList.remove('btn-success');
+                actionButton.setAttribute('aria-disabled', 'true');
+                actionButton.href = '#';
+            }
+        }
+    };
+
+    const updateLessonRow = function (courseCard, lessonPayload) {
+        if (!courseCard || !lessonPayload) {
+            return;
+        }
+
+        const lessonItem = courseCard.querySelector('.lesson-item[data-lesson-id="' + lessonPayload.lesson_id + '"]');
+        if (!lessonItem) {
+            return;
+        }
+
+        const statusSpan = lessonItem.querySelector('[data-lesson-status]');
+        if (statusSpan) {
+            const status = LESSON_STATUS_STYLES[lessonPayload.progress_state] || LESSON_STATUS_STYLES.pending;
+            statusSpan.textContent = status.label;
+            statusSpan.className = 'badge lesson-status ' + status.className;
+        }
+
+        const watchSpan = lessonItem.querySelector('[data-lesson-watch]');
+        if (watchSpan) {
+            const watchTextElement = watchSpan.querySelector('[data-lesson-watch-text]');
+            if (lessonPayload.watch_duration_display) {
+                watchSpan.classList.remove('d-none');
+                if (watchTextElement) {
+                    watchTextElement.textContent = 'در حال تماشا: ' + lessonPayload.watch_duration_display;
+                }
+            } else {
+                watchSpan.classList.add('d-none');
+                if (watchTextElement) {
+                    watchTextElement.textContent = '';
+                }
+            }
+        }
+
+        const lastSpan = lessonItem.querySelector('[data-lesson-last]');
+        if (lastSpan) {
+            const lastTextElement = lastSpan.querySelector('[data-lesson-last-text]');
+            if (lessonPayload.last_watched_display) {
+                lastSpan.classList.remove('d-none');
+                if (lastTextElement) {
+                    lastTextElement.textContent = 'آخرین مشاهده: ' + lessonPayload.last_watched_display;
+                }
+            } else {
+                lastSpan.classList.add('d-none');
+                if (lastTextElement) {
+                    lastTextElement.textContent = '';
+                }
+            }
+        }
+
+        const completionSwitch = lessonItem.querySelector('[data-lesson-complete]');
+        if (completionSwitch) {
+            completionSwitch.checked = !!lessonPayload.is_completed;
+        }
+    };
+
+    const applyLessonProgressUpdate = function (payload) {
+        if (!payload) {
+            return;
+        }
+
+        const courseCard = document.querySelector('.course-card[data-course-id="' + payload.course_id + '"]');
+        if (courseCard && payload.progress) {
+            updateCourseProgressSummary(courseCard, payload.progress);
+        }
+
+        if (courseCard) {
+            updateCourseExamBlock(courseCard, payload.exam || null);
+        }
+
+        if (courseCard && payload.lesson) {
+            updateLessonRow(courseCard, payload.lesson);
+        }
+    };
+
+    const maybeMarkLessonViewed = function (button) {
+        const courseId = button.getAttribute('data-course-id');
+        const enrollmentId = button.getAttribute('data-enrollment-id');
+        const lessonId = button.getAttribute('data-lesson-id');
+        if (!courseId || !enrollmentId || !lessonId) {
+            return;
+        }
+
+        sendLessonProgressRequest({
+            courseId: courseId,
+            enrollmentId: enrollmentId,
+            lessonId: lessonId,
+            event: 'viewed'
+        });
+    };
+
     const modalElement = document.getElementById('lessonViewerModal');
     if (!modalElement) {
         return;
@@ -161,6 +483,189 @@ document.addEventListener('DOMContentLoaded', function () {
     const modalTitle = modalElement.querySelector('.lesson-viewer-title');
     const modalBody = modalElement.querySelector('#lessonViewerContainer');
     const downloadButton = modalElement.querySelector('#lessonViewerDownload');
+
+    let guardActive = false;
+    const blockedKeyCodes = ['KeyS', 'KeyP', 'KeyO', 'KeyU', 'KeyC', 'KeyA', 'KeyX'];
+    const blockedKeyNames = ['s', 'p', 'o', 'u', 'c', 'a', 'x'];
+    const blockedDevToolsCodes = ['KeyI', 'KeyJ', 'KeyC', 'KeyK'];
+    const blockedDevToolsNames = ['i', 'j', 'c', 'k'];
+    const macScreenshotCodes = ['Digit3', 'Digit4', 'Digit5'];
+    const macScreenshotNames = ['3', '4', '5'];
+
+    let currentPdfContext = null;
+
+    const clearPdfContext = function () {
+        currentPdfContext = null;
+    };
+
+    const refreshPdfControls = function () {
+        if (!currentPdfContext) {
+            return;
+        }
+
+        if (currentPdfContext.prevButton) {
+            currentPdfContext.prevButton.disabled = currentPdfContext.currentPage <= 1;
+        }
+
+        if (currentPdfContext.nextButton) {
+            if (currentPdfContext.totalPages) {
+                currentPdfContext.nextButton.disabled = currentPdfContext.currentPage >= currentPdfContext.totalPages;
+            } else {
+                currentPdfContext.nextButton.disabled = currentPdfContext.currentPage <= 0;
+            }
+        }
+
+        if (currentPdfContext.pageInput) {
+            currentPdfContext.pageInput.value = String(currentPdfContext.currentPage);
+        }
+
+        if (currentPdfContext.pageLabel) {
+            currentPdfContext.pageLabel.textContent = String(currentPdfContext.currentPage);
+        }
+
+        if (currentPdfContext.pageTotalLabel) {
+            if (currentPdfContext.totalPages) {
+                currentPdfContext.pageTotalLabel.textContent = 'از ' + String(currentPdfContext.totalPages);
+            } else {
+                currentPdfContext.pageTotalLabel.textContent = '';
+            }
+        }
+    };
+
+    const buildPdfViewerSrc = function (sourceUrl, page) {
+        const parts = String(sourceUrl || '').split('#');
+        const baseUrl = parts[0];
+        const hash = parts.slice(1).join('#');
+        const params = new URLSearchParams(hash);
+        params.set('toolbar', '0');
+        params.set('navpanes', '0');
+        params.set('statusbar', '0');
+        if (page && page > 0) {
+            params.set('page', String(page));
+        } else {
+            params.delete('page');
+        }
+        const paramString = params.toString();
+        return paramString !== '' ? baseUrl + '#' + paramString : baseUrl;
+    };
+
+    const navigateToPdfPage = function (page) {
+        if (!currentPdfContext) {
+            return;
+        }
+
+        let targetPage = parseInt(page, 10);
+        if (Number.isNaN(targetPage) || targetPage < 1) {
+            targetPage = 1;
+        }
+
+        if (currentPdfContext.totalPages && targetPage > currentPdfContext.totalPages) {
+            targetPage = currentPdfContext.totalPages;
+        }
+
+        currentPdfContext.currentPage = targetPage;
+
+        if (currentPdfContext.iframe) {
+            currentPdfContext.iframe.src = buildPdfViewerSrc(currentPdfContext.source, currentPdfContext.currentPage);
+        }
+
+        refreshPdfControls();
+    };
+
+    const stepPdfPage = function (delta) {
+        if (!currentPdfContext) {
+            return;
+        }
+
+        navigateToPdfPage(currentPdfContext.currentPage + delta);
+    };
+
+    const blockContextMenu = function (event) {
+        if (!guardActive) {
+            return;
+        }
+        event.preventDefault();
+    };
+
+    const blockKeyboardShortcuts = function (event) {
+        if (!guardActive) {
+            return;
+        }
+
+        const keyCode = event.code || '';
+        const keyName = (event.key || '').toLowerCase();
+
+        if (keyCode === 'PrintScreen' || keyName === 'printscreen') {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && (blockedKeyCodes.includes(keyCode) || blockedKeyNames.includes(keyName))) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && (blockedDevToolsCodes.includes(keyCode) || blockedDevToolsNames.includes(keyName))) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.altKey && (blockedDevToolsCodes.includes(keyCode) || blockedDevToolsNames.includes(keyName))) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
+        if (event.metaKey && event.shiftKey && (macScreenshotCodes.includes(keyCode) || macScreenshotNames.includes(keyName))) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
+        if (keyName === 'f12') {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    };
+
+    const blockPrintScreen = function (event) {
+        if (!guardActive) {
+            return;
+        }
+
+        const keyCode = event.code || '';
+        const keyName = (event.key || '').toLowerCase();
+
+        if (keyCode === 'PrintScreen' || keyName === 'printscreen') {
+            event.preventDefault();
+            event.stopPropagation();
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                navigator.clipboard.writeText('').catch(function () {});
+            }
+        }
+    };
+
+    const enableGuards = function () {
+        if (guardActive) {
+            return;
+        }
+        guardActive = true;
+        modalElement.classList.add('lesson-guard-active');
+        document.addEventListener('contextmenu', blockContextMenu, true);
+        document.addEventListener('keydown', blockKeyboardShortcuts, true);
+        document.addEventListener('keyup', blockPrintScreen, true);
+    };
+
+    const disableGuards = function () {
+        guardActive = false;
+        modalElement.classList.remove('lesson-guard-active');
+        document.removeEventListener('contextmenu', blockContextMenu, true);
+        document.removeEventListener('keydown', blockKeyboardShortcuts, true);
+        document.removeEventListener('keyup', blockPrintScreen, true);
+    };
 
     const decodeBase64 = function (value) {
         if (!value) {
@@ -194,6 +699,8 @@ document.addEventListener('DOMContentLoaded', function () {
             modalBody.innerHTML = '';
             downloadButton.classList.add('d-none');
             downloadButton.removeAttribute('href');
+            clearPdfContext();
+            disableGuards();
 
             if (lessonType === 'video' && viewerUrl) {
                 const video = document.createElement('video');
@@ -207,16 +714,97 @@ document.addEventListener('DOMContentLoaded', function () {
                     downloadButton.href = mediaUrl;
                     downloadButton.classList.remove('d-none');
                 }
-            } else if (lessonType === 'pdf' && viewerUrl) {
-                const iframe = document.createElement('iframe');
-                iframe.src = viewerUrl.includes('#') ? viewerUrl : viewerUrl + '#toolbar=0';
-                iframe.className = 'lesson-viewer-iframe';
-                iframe.setAttribute('frameborder', '0');
-                modalBody.appendChild(iframe);
+            } else if (lessonType === 'pdf') {
+                const pdfSource = viewerUrl !== '' ? viewerUrl : mediaUrl;
+                if (pdfSource !== '') {
+                    const pdfWrapper = document.createElement('div');
+                    pdfWrapper.className = 'lesson-pdf-wrapper';
+                    const controls = document.createElement('div');
+                    controls.className = 'lesson-pdf-controls';
 
-                if (mediaUrl) {
-                    downloadButton.href = mediaUrl;
-                    downloadButton.classList.remove('d-none');
+                    const prevButton = document.createElement('button');
+                    prevButton.type = 'button';
+                    prevButton.className = 'btn btn-sm btn-outline-secondary';
+                    prevButton.textContent = 'صفحه قبل';
+                    prevButton.addEventListener('click', function () {
+                        stepPdfPage(-1);
+                    });
+
+                    const pageInput = document.createElement('input');
+                    pageInput.type = 'number';
+                    pageInput.className = 'form-control form-control-sm lesson-pdf-page-input';
+                    pageInput.value = '1';
+                    pageInput.min = '1';
+                    pageInput.setAttribute('inputmode', 'numeric');
+                    pageInput.addEventListener('change', function () {
+                        navigateToPdfPage(pageInput.value);
+                    });
+                    pageInput.addEventListener('keyup', function (event) {
+                        if (event.key === 'Enter') {
+                            navigateToPdfPage(pageInput.value);
+                        }
+                    });
+
+                    const pageInfo = document.createElement('div');
+                    pageInfo.className = 'd-flex align-items-center gap-2';
+                    const pageLabelPrefix = document.createElement('span');
+                    pageLabelPrefix.textContent = 'صفحه';
+                    const pageLabel = document.createElement('span');
+                    pageLabel.className = 'lesson-pdf-page-label';
+                    pageLabel.textContent = '1';
+                    const pageTotalLabel = document.createElement('span');
+                    pageTotalLabel.className = 'text-secondary small';
+                    pageInfo.appendChild(pageLabelPrefix);
+                    pageInfo.appendChild(pageLabel);
+                    pageInfo.appendChild(pageTotalLabel);
+
+                    const nextButton = document.createElement('button');
+                    nextButton.type = 'button';
+                    nextButton.className = 'btn btn-sm btn-outline-secondary';
+                    nextButton.textContent = 'صفحه بعد';
+                    nextButton.addEventListener('click', function () {
+                        stepPdfPage(1);
+                    });
+
+                    controls.appendChild(prevButton);
+                    controls.appendChild(pageInput);
+                    controls.appendChild(pageInfo);
+                    controls.appendChild(nextButton);
+
+                    const iframe = document.createElement('iframe');
+                    iframe.className = 'lesson-viewer-iframe';
+                    iframe.setAttribute('frameborder', '0');
+                    iframe.setAttribute('allow', 'fullscreen');
+
+                    pdfWrapper.appendChild(controls);
+                    pdfWrapper.appendChild(iframe);
+                    modalBody.appendChild(pdfWrapper);
+
+                    currentPdfContext = {
+                        source: pdfSource,
+                        iframe: iframe,
+                        currentPage: 1,
+                        totalPages: null,
+                        prevButton: prevButton,
+                        nextButton: nextButton,
+                        pageInput: pageInput,
+                        pageLabel: pageLabel,
+                        pageTotalLabel: pageTotalLabel
+                    };
+
+                    const pageCountAttr = button.getAttribute('data-page-count');
+                    if (pageCountAttr) {
+                        const parsedPageCount = parseInt(pageCountAttr, 10);
+                        if (!Number.isNaN(parsedPageCount) && parsedPageCount > 0) {
+                            currentPdfContext.totalPages = parsedPageCount;
+                            pageInput.max = String(parsedPageCount);
+                        }
+                    }
+
+                    navigateToPdfPage(1);
+                    enableGuards();
+                } else {
+                    modalBody.innerHTML = '<div class="alert alert-warning mb-0">فایل این درس در دسترس نیست.</div>';
                 }
             } else if (lessonType === 'ppt' && viewerUrl) {
                 const iframe = document.createElement('iframe');
@@ -256,11 +844,49 @@ document.addEventListener('DOMContentLoaded', function () {
                 modalBody.innerHTML = '<div class="alert alert-warning mb-0">محتوای این درس در حال حاضر در دسترس نیست.</div>';
             }
 
+            maybeMarkLessonViewed(button);
             modal.show();
         });
     });
 
+    document.querySelectorAll('[data-lesson-complete]').forEach(function (input) {
+        input.addEventListener('change', function () {
+            if (input.disabled || input.dataset.pending === '1') {
+                return;
+            }
+
+            const courseId = input.getAttribute('data-course-id');
+            const enrollmentId = input.getAttribute('data-enrollment-id');
+            const lessonId = input.getAttribute('data-lesson-id');
+
+            if (!courseId || !enrollmentId || !lessonId) {
+                return;
+            }
+
+            input.dataset.pending = '1';
+            input.disabled = true;
+
+            const eventType = input.checked ? 'complete' : 'incomplete';
+
+            sendLessonProgressRequest({
+                courseId: courseId,
+                enrollmentId: enrollmentId,
+                lessonId: lessonId,
+                event: eventType
+            }).then(function (data) {
+                if (!data) {
+                    input.checked = !input.checked;
+                }
+            }).finally(function () {
+                input.disabled = false;
+                input.dataset.pending = '0';
+            });
+        });
+    });
+
     modalElement.addEventListener('hidden.bs.modal', function () {
+        clearPdfContext();
+        disableGuards();
         modalBody.innerHTML = '';
     });
 });
@@ -274,7 +900,9 @@ include __DIR__ . '/../../layouts/home-header.php';
 include __DIR__ . '/../../layouts/home-sidebar.php';
 ?>
 <?php include __DIR__ . '/../../layouts/home-navbar.php'; ?>
-<div class="page-content-wrapper">
+<div class="page-content-wrapper"
+    data-course-progress-endpoint="<?= htmlspecialchars(UtilityHelper::baseUrl('courses/lessons/progress'), ENT_QUOTES, 'UTF-8'); ?>"
+    data-course-progress-token="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
     <div class="page-content">
         <div class="row g-4 mb-4">
             <div class="col-12">
@@ -310,15 +938,58 @@ include __DIR__ . '/../../layouts/home-sidebar.php';
                     $instructor = trim((string)($course['instructor_name'] ?? ''));
                     $category = trim((string)($course['category'] ?? ''));
                     $durationHours = (int)($course['duration_hours'] ?? 0);
+                    $enrollmentId = (int)($course['enrollment_id'] ?? 0);
                     $progress = isset($course['progress']) && is_array($course['progress']) ? $course['progress'] : ['percentage' => 0, 'total_lessons' => 0, 'completed_lessons' => 0, 'in_progress_lessons' => 0];
                     $lessons = isset($course['lessons']) && is_array($course['lessons']) ? $course['lessons'] : [];
                     $coverImageUrl = trim((string)($course['cover_image_url'] ?? ''));
                     $enrolledAt = trim((string)($course['enrolled_at_display'] ?? ''));
                     $completedAt = trim((string)($course['completed_at_display'] ?? ''));
                     $collapseId = 'courseLessons' . $courseId . '_' . $index;
+                    $examMeta = isset($course['exam']) && is_array($course['exam']) ? $course['exam'] : null;
+                    $examButtonHref = '#';
+                    $examButtonClass = 'btn btn-outline-secondary rounded-pill disabled';
+                    $examButtonAria = 'true';
+                    $examStatusMessage = 'برای این دوره آزمونی تعریف نشده است.';
+                    $examTitleText = '';
+                    $examDetailsText = '';
+                    $examStatusDetail = null;
+
+                    if ($examMeta) {
+                        if (!empty($examMeta['status_message'])) {
+                            $examStatusMessage = $examMeta['status_message'];
+                        }
+
+                        $titleParts = [];
+                        if (!empty($examMeta['tool_name'])) {
+                            $titleParts[] = $examMeta['tool_name'];
+                        }
+                        if (!empty($examMeta['evaluation_title'])) {
+                            $titleParts[] = $examMeta['evaluation_title'];
+                        }
+                        if (!empty($titleParts)) {
+                            $examTitleText = implode(' • ', $titleParts);
+                        }
+
+                        if (!empty($examMeta['duration_minutes'])) {
+                            $examDetailsText .= 'زمان آزمون: ' . UtilityHelper::englishToPersian((string)$examMeta['duration_minutes']) . ' دقیقه';
+                        }
+                        if (!empty($examMeta['evaluation_date_display'])) {
+                            if ($examDetailsText !== '') {
+                                $examDetailsText .= ' | ';
+                            }
+                            $examDetailsText .= 'تاریخ برگزاری: ' . $examMeta['evaluation_date_display'];
+                        }
+
+                        if (!empty($examMeta['is_unlocked']) && !empty($examMeta['start_url'])) {
+                            $examButtonHref = $examMeta['start_url'];
+                            $examButtonClass = 'btn btn-success rounded-pill';
+                            $examButtonAria = 'false';
+                        }
+                        $examStatusDetail = !empty($examMeta['status_detail']) ? (string)$examMeta['status_detail'] : null;
+                    }
                 ?>
                 <div class="col-12 col-xl-6">
-                    <div class="course-card">
+                    <div class="course-card" data-course-id="<?= $courseId; ?>" data-enrollment-id="<?= $enrollmentId; ?>">
                         <div class="course-cover">
                             <?php if ($coverImageUrl !== ''): ?>
                                 <img src="<?= htmlspecialchars($coverImageUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="کاور دوره">
@@ -358,15 +1029,30 @@ include __DIR__ . '/../../layouts/home-sidebar.php';
                             <div class="course-progress">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <span class="fw-semibold text-dark">پیشرفت دوره</span>
-                                    <span class="text-primary fw-semibold"><?= htmlspecialchars(UtilityHelper::englishToPersian((string)($progress['percentage'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?>٪</span>
+                                    <span class="text-primary fw-semibold"><span data-progress-percentage-value><?= htmlspecialchars(UtilityHelper::englishToPersian((string)($progress['percentage'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></span>٪</span>
                                 </div>
                                 <div class="progress bg-white">
-                                    <div class="progress-bar bg-primary" role="progressbar" style="width: <?= (int)($progress['percentage'] ?? 0); ?>%;" aria-valuenow="<?= (int)($progress['percentage'] ?? 0); ?>" aria-valuemin="0" aria-valuemax="100"></div>
+                                    <div class="progress-bar bg-primary" data-progress-bar role="progressbar" style="width: <?= (int)($progress['percentage'] ?? 0); ?>%;" aria-valuenow="<?= (int)($progress['percentage'] ?? 0); ?>" aria-valuemin="0" aria-valuemax="100"></div>
                                 </div>
                                 <div class="d-flex flex-wrap gap-3 small text-secondary mt-3">
-                                    <span><ion-icon name="checkmark-circle-outline"></ion-icon> تکمیل شده: <?= htmlspecialchars(UtilityHelper::englishToPersian((string)($progress['completed_lessons'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></span>
-                                    <span><ion-icon name="ellipse-outline"></ion-icon> در حال پیشرفت: <?= htmlspecialchars(UtilityHelper::englishToPersian((string)($progress['in_progress_lessons'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></span>
-                                    <span><ion-icon name="list-outline"></ion-icon> کل دروس: <?= htmlspecialchars(UtilityHelper::englishToPersian((string)($progress['total_lessons'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <span><ion-icon name="checkmark-circle-outline"></ion-icon> تکمیل شده: <span data-progress-completed-value><?= htmlspecialchars(UtilityHelper::englishToPersian((string)($progress['completed_lessons'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></span></span>
+                                    <span><ion-icon name="ellipse-outline"></ion-icon> در حال پیشرفت: <span data-progress-in-progress-value><?= htmlspecialchars(UtilityHelper::englishToPersian((string)($progress['in_progress_lessons'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></span></span>
+                                    <span><ion-icon name="list-outline"></ion-icon> کل دروس: <span data-progress-total-value><?= htmlspecialchars(UtilityHelper::englishToPersian((string)($progress['total_lessons'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></span></span>
+                                </div>
+                            </div>
+                            <div class="course-exam-block" data-course-exam="1">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                                    <div class="exam-meta">
+                                        <span class="fw-semibold text-dark">آزمون دوره</span>
+                                        <span class="small text-secondary <?= $examTitleText === '' ? 'd-none' : ''; ?>" data-exam-title><?= htmlspecialchars($examTitleText, ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <span class="small text-secondary <?= $examDetailsText === '' ? 'd-none' : ''; ?>" data-exam-meta-details><?= htmlspecialchars($examDetailsText, ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <span class="small text-secondary" data-exam-status><?= htmlspecialchars($examStatusMessage, ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <span class="small text-danger <?= empty($examStatusDetail) ? 'd-none' : ''; ?>" data-exam-status-detail><?= htmlspecialchars((string)($examStatusDetail ?? ''), ENT_QUOTES, 'UTF-8'); ?></span>
+                                    </div>
+                                    <a href="<?= htmlspecialchars($examButtonHref, ENT_QUOTES, 'UTF-8'); ?>"
+                                       class="<?= $examButtonClass; ?>"
+                                       data-exam-button
+                                       aria-disabled="<?= $examButtonAria; ?>">شروع آزمون</a>
                                 </div>
                             </div>
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -381,11 +1067,14 @@ include __DIR__ . '/../../layouts/home-sidebar.php';
                                         <div class="text-center text-secondary small">درسی برای این دوره ثبت نشده است.</div>
                                     <?php else: ?>
                                         <?php foreach ($lessons as $lesson):
+                                            $lessonId = (int)($lesson['id'] ?? 0);
                                             $lessonTitle = trim((string)($lesson['title'] ?? 'بدون عنوان'));
                                             $lessonState = (string)($lesson['progress_state'] ?? 'pending');
                                             $durationMinutes = (int)($lesson['duration_minutes'] ?? 0);
                                             $watchLabel = trim((string)($lesson['watch_duration_display'] ?? ''));
                                             $availableDisplay = trim((string)($lesson['available_at_display'] ?? ''));
+                                            $lastDisplay = trim((string)($lesson['last_watched_display'] ?? ''));
+                                            $switchId = 'lesson-complete-' . $courseId . '-' . $lessonId;
                                             $shortDescription = trim((string)($lesson['short_description'] ?? ''));
                                             $contentType = (string)($lesson['content_type'] ?? 'video');
                                             $isAvailable = (int)($lesson['is_available'] ?? 0) === 1;
@@ -415,12 +1104,12 @@ include __DIR__ . '/../../layouts/home-sidebar.php';
 
                                             $buttonDisabled = !$isAvailable || ($contentType !== 'text' && $mediaUrl === '' && $viewerUrl === '');
                                         ?>
-                                        <div class="lesson-item">
+                                        <div class="lesson-item" data-lesson-item="1" data-course-id="<?= $courseId; ?>" data-enrollment-id="<?= $enrollmentId; ?>" data-lesson-id="<?= $lessonId; ?>">
                                             <div class="lesson-icon"><ion-icon name="<?= htmlspecialchars($iconName, ENT_QUOTES, 'UTF-8'); ?>"></ion-icon></div>
                                             <div class="lesson-content">
                                                 <div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-2">
                                                     <h3 class="h6 mb-0 text-dark"><?= htmlspecialchars($lessonTitle, ENT_QUOTES, 'UTF-8'); ?></h3>
-                                                    <span class="badge lesson-status <?= htmlspecialchars($status['class'], ENT_QUOTES, 'UTF-8'); ?>"><?= htmlspecialchars($status['label'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                                    <span class="badge lesson-status <?= htmlspecialchars($status['class'], ENT_QUOTES, 'UTF-8'); ?>" data-lesson-status><?= htmlspecialchars($status['label'], ENT_QUOTES, 'UTF-8'); ?></span>
                                                 </div>
                                                 <?php if ($shortDescription !== ''): ?>
                                                     <p class="text-secondary small mb-2" style="line-height: 1.7;">
@@ -431,20 +1120,25 @@ include __DIR__ . '/../../layouts/home-sidebar.php';
                                                     <?php if ($durationMinutes > 0): ?>
                                                         <span><ion-icon name="time-outline"></ion-icon> مدت: <?= htmlspecialchars(UtilityHelper::englishToPersian((string)$durationMinutes), ENT_QUOTES, 'UTF-8'); ?> دقیقه</span>
                                                     <?php endif; ?>
-                                                    <?php if ($watchLabel !== ''): ?>
-                                                        <span><ion-icon name="timer-outline"></ion-icon> در حال تماشا: <?= htmlspecialchars($watchLabel, ENT_QUOTES, 'UTF-8'); ?></span>
-                                                    <?php endif; ?>
+                                                    <span class="lesson-meta-watch <?= $watchLabel === '' ? 'd-none' : ''; ?>" data-lesson-watch>
+                                                        <ion-icon name="timer-outline"></ion-icon>
+                                                        <span data-lesson-watch-text><?= $watchLabel !== '' ? 'در حال تماشا: ' . htmlspecialchars($watchLabel, ENT_QUOTES, 'UTF-8') : ''; ?></span>
+                                                    </span>
                                                     <?php if (!$isAvailable && $availableDisplay !== ''): ?>
                                                         <span><ion-icon name="lock-closed-outline"></ion-icon> دسترسی از <?= htmlspecialchars($availableDisplay, ENT_QUOTES, 'UTF-8'); ?></span>
                                                     <?php endif; ?>
-                                                    <?php if ($isCompleted && !empty($lesson['last_watched_display'])): ?>
-                                                        <span><ion-icon name="checkmark-done-outline"></ion-icon> آخرین مشاهده: <?= htmlspecialchars((string)$lesson['last_watched_display'], ENT_QUOTES, 'UTF-8'); ?></span>
-                                                    <?php endif; ?>
+                                                    <span class="lesson-meta-last <?= $lastDisplay === '' ? 'd-none' : ''; ?>" data-lesson-last>
+                                                        <ion-icon name="checkmark-done-outline"></ion-icon>
+                                                        <span data-lesson-last-text><?= $lastDisplay !== '' ? 'آخرین مشاهده: ' . htmlspecialchars($lastDisplay, ENT_QUOTES, 'UTF-8') : ''; ?></span>
+                                                    </span>
                                                 </div>
                                             </div>
                                             <div class="lesson-actions">
                                                 <button type="button" class="btn btn-sm <?= $buttonDisabled ? 'btn-outline-secondary' : 'btn-primary'; ?> rounded-pill"
                                                     data-lesson-viewer="1"
+                                                    data-course-id="<?= $courseId; ?>"
+                                                    data-enrollment-id="<?= $enrollmentId; ?>"
+                                                    data-lesson-id="<?= $lessonId; ?>"
                                                     data-lesson-title="<?= htmlspecialchars($lessonTitle, ENT_QUOTES, 'UTF-8'); ?>"
                                                     data-lesson-type="<?= htmlspecialchars($contentType, ENT_QUOTES, 'UTF-8'); ?>"
                                                     data-media-url="<?= htmlspecialchars($mediaUrl, ENT_QUOTES, 'UTF-8'); ?>"
@@ -453,6 +1147,18 @@ include __DIR__ . '/../../layouts/home-sidebar.php';
                                                     <?= $buttonDisabled ? 'disabled' : ''; ?>>
                                                     <?= $buttonDisabled ? 'در دسترس نیست' : 'مشاهده محتوا'; ?>
                                                 </button>
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input lesson-complete-switch" type="checkbox"
+                                                        role="switch"
+                                                        id="<?= htmlspecialchars($switchId, ENT_QUOTES, 'UTF-8'); ?>"
+                                                        data-lesson-complete="1"
+                                                        data-course-id="<?= $courseId; ?>"
+                                                        data-enrollment-id="<?= $enrollmentId; ?>"
+                                                        data-lesson-id="<?= $lessonId; ?>"
+                                                        <?= $isCompleted ? 'checked' : ''; ?>
+                                                        <?= (!$isAvailable ? 'disabled' : ''); ?>>
+                                                    <label class="form-check-label text-secondary" for="<?= htmlspecialchars($switchId, ENT_QUOTES, 'UTF-8'); ?>">تکمیل درس</label>
+                                                </div>
                                             </div>
                                         </div>
                                         <?php endforeach; ?>
