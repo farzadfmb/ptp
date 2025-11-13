@@ -325,7 +325,7 @@ $inline_scripts .= "\n";
 
 $inline_scripts .= <<<'SCRIPT'
     document.addEventListener('DOMContentLoaded', function () {
-        var dateSelectors = ['#expirationDate', '#reportDate'];
+    var dateSelectors = ['#expirationDate', '#reportDate', '#letterDate'];
 
         dateSelectors.forEach(function (selector) {
             var inputElement = document.querySelector(selector);
@@ -440,7 +440,7 @@ $checkboxState = static function (string $key, string $fallback = '0') use ($org
                             </div>
                         <?php endif; ?>
 
-                        <form action="<?= UtilityHelper::baseUrl('organizations/users/update'); ?>" method="post" class="organization-user-form">
+                        <form action="<?= UtilityHelper::baseUrl('organizations/users/update'); ?>" method="post" class="organization-user-form" enctype="multipart/form-data">
                             <?= csrf_field(); ?>
                             <input type="hidden" name="user_id" value="<?= htmlspecialchars((string) ($organizationUser['id'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
 
@@ -495,6 +495,13 @@ $checkboxState = static function (string $key, string $fallback = '0') use ($org
                                         <?php endif; ?>
                                     </div>
                                     <div class="col-md-4">
+                                        <label class="form-label fw-semibold">نام پدر</label>
+                                        <input type="text" name="father_name" class="form-control" value="<?= htmlspecialchars(old('father_name', $organizationUser['father_name'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: یونس">
+                                        <?php if (!empty($validationErrors['father_name'])): ?>
+                                            <small class="text-danger d-block mt-6"><?= htmlspecialchars($validationErrors['father_name'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="col-md-4">
                                         <label class="form-label fw-semibold">جنسیت</label>
                                         <?php $selectedGender = old('gender', $organizationUser['gender'] ?? ''); ?>
                                         <select name="gender" class="form-select">
@@ -526,6 +533,39 @@ $checkboxState = static function (string $key, string $fallback = '0') use ($org
                                         <input type="text" name="personnel_code" class="form-control ltr-input" value="<?= htmlspecialchars(old('personnel_code', $organizationUser['personnel_code'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: PRS-452" required>
                                         <?php if (!empty($validationErrors['personnel_code'])): ?>
                                             <small class="text-danger d-block mt-6"><?= htmlspecialchars($validationErrors['personnel_code'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">شماره نامه</label>
+                                        <input type="text" name="letter_number" class="form-control ltr-input" value="<?= htmlspecialchars(old('letter_number', $organizationUser['letter_number'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۳۲۰/۱۴۲۲">
+                                        <?php if (!empty($validationErrors['letter_number'])): ?>
+                                            <small class="text-danger d-block mt-6"><?= htmlspecialchars($validationErrors['letter_number'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold">تاریخ نامه</label>
+                                        <input type="text" name="letter_date" id="letterDate" class="form-control date-picker-input" value="<?= htmlspecialchars(old('letter_date', $organizationUser['letter_date'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" placeholder="مثال: ۱۴۰۴/۰۸/۰۳" autocomplete="off" readonly>
+                                        <?php if (!empty($validationErrors['letter_date'])): ?>
+                                            <small class="text-danger d-block mt-6"><?= htmlspecialchars($validationErrors['letter_date'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <div class="row g-16 mt-0">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-semibold">تصویر نامه</label>
+                                        <input type="file" name="letter_image" class="form-control" accept="image/*">
+                                        <small class="text-muted d-block mt-6">فرمت‌های مجاز: JPG، PNG، GIF یا WEBP</small>
+                                        <?php if (!empty($validationErrors['letter_image'])): ?>
+                                            <small class="text-danger d-block mt-6"><?= htmlspecialchars($validationErrors['letter_image'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                        <?php endif; ?>
+                                        <?php $existingLetterImage = $organizationUser['letter_image_path'] ?? null; ?>
+                                        <?php if (!empty($existingLetterImage)): ?>
+                                            <div class="mt-8">
+                                                <a href="<?= UtilityHelper::baseUrl('public/' . ltrim($existingLetterImage, '/')); ?>" target="_blank" class="d-inline-flex align-items-center gap-6 text-decoration-none">
+                                                    <ion-icon name="open-outline"></ion-icon>
+                                                    <span>مشاهده تصویر فعلی</span>
+                                                </a>
+                                            </div>
                                         <?php endif; ?>
                                     </div>
                                 </div>

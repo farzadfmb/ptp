@@ -47,8 +47,12 @@ class OrganizationController
         'storeOrganizationEvaluationCalendar' => ['evaluation_calendar_manage'],
         'updateOrganizationEvaluationCalendar' => ['evaluation_calendar_manage'],
         'deleteOrganizationEvaluationCalendar' => ['evaluation_calendar_manage'],
-        'organizationEvaluationCalendarMatrix' => ['evaluation_calendar_matrix_manage'],
-        'organizationCertificatePreview' => ['reports_settings_manage'],
+    'organizationEvaluationCalendarMatrix' => ['evaluation_calendar_matrix_manage'],
+    'organizationCertificateMaker' => ['reports_settings_manage'],
+    'saveOrganizationCertificateMaker' => ['reports_settings_manage'],
+    'organizationCertificatePreview' => ['reports_settings_manage'],
+    'organizationCertificateList' => ['reports_self_view', 'reports_settings_manage'],
+    'organizationCertificateView' => ['reports_self_view', 'reports_settings_manage'],
     ];
 
     private $currentAction = null;
@@ -10508,8 +10512,7 @@ class OrganizationController
         $this->ensureOrganizationEvaluationMatrixVisibilityTableExists();
 
         $title = 'گزارش اکسل ارزیابی‌شوندگان';
-        $organization = $sessionData['organization'] ?? [];
-        $user = $sessionData['user'] ?? [];
+    $organization = $sessionData['organization'] ?? [];
 
         $organizationId = (int) ($organization['id'] ?? 0);
 
@@ -10575,6 +10578,662 @@ class OrganizationController
         $infoMessage = flash('info');
 
         include __DIR__ . '/../Views/organizations/reports/self-assessment.php';
+    }
+
+    public function organizationCertificateList(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_self_view', 'reports_settings_manage']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationEvaluationsTableExists();
+        $this->ensureOrganizationEvaluationToolAssignmentsTableExists();
+        $this->ensureOrganizationEvaluationToolsTableExists();
+        $this->ensureOrganizationEvaluationToolQuestionsTableExists();
+        $this->ensureOrganizationEvaluationExamAnswersTableExists();
+        $this->ensureOrganizationEvaluationExamParticipationsTableExists();
+        $this->ensureOrganizationEvaluationAgreedScoresTableExists();
+
+        $title = 'لیست گواهی‌ها';
+        $organization = $sessionData['organization'] ?? [];
+        $user = $sessionData['user'] ?? [];
+
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $search = trim((string) ($_GET['search'] ?? ''));
+        $evaluationFilterRaw = UtilityHelper::persianToEnglish(trim((string) ($_GET['evaluation_id'] ?? '0')));
+        $evaluationIdFilter = (int) $evaluationFilterRaw;
+        if ($evaluationIdFilter <= 0) {
+            $evaluationIdFilter = null;
+        }
+
+        $dataset = $this->buildCertificateEligibleDataset($organizationId, $evaluationIdFilter, $search);
+
+        $certificateRows = $dataset['rows'];
+        $certificateSummary = $dataset['summary'];
+        $evaluationOptions = $dataset['evaluation_options'];
+        $selectedEvaluationId = $dataset['selected_evaluation_id'];
+        $searchQuery = $dataset['search_term'];
+
+        $successMessage = flash('success');
+        $errorMessage = flash('error');
+        $warningMessage = flash('warning');
+        $infoMessage = flash('info');
+
+        include __DIR__ . '/../Views/organizations/reports/certificate-list.php';
+    }
+
+    public function organizationCertificateMaker(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_settings_manage']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationCertificateSettingsTableExists();
+
+        $organization = $sessionData['organization'] ?? [];
+        $user = $sessionData['user'] ?? [];
+
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $defaultSample = [
+            'logo_url' => UtilityHelper::baseUrl('public/assets/images/logo/logo.png'),
+            'organization_name' => isset($organization['name']) ? (string) $organization['name'] : 'سازمان امور مالیاتی کشور',
+            'organization_subtitle' => isset($organization['subtitle']) ? (string) $organization['subtitle'] : 'کانون ارزیابی و توسعه شایستگی',
+            'title' => 'گواهی‌نامه',
+            'title_secondary' => 'صلاحیت عمومی مدیران حرفه‌ای',
+            'certificate_number' => UtilityHelper::englishToPersian('۳۲۴۰/۷۹۴۰'),
+            'issue_date' => UtilityHelper::englishToPersian(date('Y/m/d')),
+            'subject_title' => 'آقای',
+            'subject_name' => 'مختار سلیمانی‌کیا',
+            'subject_father_name' => 'یونس',
+            'subject_national_id' => UtilityHelper::englishToPersian('۰۵۹۶۲۸۹۰۸۱'),
+            'letter_number' => UtilityHelper::englishToPersian('۳۲۰/۱۴۲۲'),
+            'letter_date' => UtilityHelper::englishToPersian(date('Y/m/d')), 
+            'signature_right_name' => 'نام امضاءکننده راست',
+            'signature_right_title' => 'سمت امضاءکننده راست',
+            'signature_left_name' => 'نام امضاءکننده چپ',
+            'signature_left_title' => 'سمت امضاءکننده چپ',
+            'logo_position' => 'right',
+            'meta_position' => 'left',
+        ];
+
+        $defaultTemplate = <<<'TXT'
+بدینوسیله گواهی می‌شود {{subject_title}} {{subject_name}} فرزند {{subject_father_name}} با کد ملی {{subject_national_id}} در برنامه ارزیابی {{organization_name}} شرکت نموده و بر اساس نامه شماره {{letter_number}} مورخ {{letter_date}} با موفقیت دوره مربوطه را به اتمام رسانده است.
+TXT;
+
+        $savedSample = [];
+        $savedTemplate = null;
+        $logoInputValue = $defaultSample['logo_url'];
+
+        if ($organizationId > 0) {
+            try {
+                $existing = DatabaseHelper::fetchOne(
+                    'SELECT simple_certificate_json FROM organization_certificate_settings WHERE organization_id = :organization_id LIMIT 1',
+                    ['organization_id' => $organizationId]
+                );
+            } catch (Exception $exception) {
+                $existing = null;
+            }
+
+            if ($existing && !empty($existing['simple_certificate_json'])) {
+                $decoded = json_decode((string) $existing['simple_certificate_json'], true);
+                if (is_array($decoded)) {
+                    if (isset($decoded['fields']) && is_array($decoded['fields'])) {
+                        $savedSample = $decoded['fields'];
+                    }
+                    if (!empty($decoded['template'])) {
+                        $savedTemplate = (string) $decoded['template'];
+                    }
+                }
+            }
+        }
+
+        $sampleCertificate = array_merge($defaultSample, array_filter($savedSample, static function ($value) {
+            return $value !== null && $value !== '';
+        }));
+
+        if (!empty($sampleCertificate['logo_url'])) {
+            $logoInputValue = (string) $sampleCertificate['logo_url'];
+        }
+
+        $certificateBodyTemplate = $savedTemplate !== null ? $savedTemplate : $defaultTemplate;
+
+        $renderTemplate = static function (string $template, array $values): string {
+            return preg_replace_callback(
+                '/{{\s*([a-zA-Z0-9_]+)\s*}}/u',
+                static function (array $matches) use ($values): string {
+                    $key = $matches[1];
+                    $replacement = $values[$key] ?? '';
+                    return is_scalar($replacement) ? (string) $replacement : '';
+                },
+                $template
+            );
+        };
+
+        $certificateBodyRendered = $renderTemplate($certificateBodyTemplate, $sampleCertificate);
+
+        $title = 'گواهی ساز';
+        $isReadonly = false;
+
+        $successMessage = flash('success');
+        $errorMessage = flash('error');
+
+        include __DIR__ . '/../Views/organizations/reports/certificate-maker.php';
+    }
+
+    public function saveOrganizationCertificateMaker(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_settings_manage']);
+
+        AuthHelper::startSession();
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            UtilityHelper::redirect(UtilityHelper::baseUrl('organizations/reports/certificate-maker'));
+        }
+
+        $this->ensureOrganizationCertificateSettingsTableExists();
+
+        $organization = $sessionData['organization'] ?? [];
+        $user = $sessionData['user'] ?? [];
+
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $userIdentifier = (string) ($user['id'] ?? '');
+
+        $redirectUrl = UtilityHelper::baseUrl('organizations/reports/certificate-maker');
+
+        $token = $_POST['_token'] ?? '';
+        if (!AuthHelper::verifyCsrfToken($token)) {
+            ResponseHelper::flashError('توکن امنیتی نامعتبر است.');
+            UtilityHelper::redirect($redirectUrl);
+        }
+
+        if ($organizationId <= 0) {
+            ResponseHelper::flashError('سازمان معتبر یافت نشد.');
+            UtilityHelper::redirect($redirectUrl);
+        }
+
+        $fields = [
+            'title' => trim((string) ($_POST['title'] ?? '')),
+            'title_secondary' => trim((string) ($_POST['title_secondary'] ?? '')),
+            'subject_title' => trim((string) ($_POST['subject_title'] ?? '')),
+            'subject_name' => trim((string) ($_POST['subject_name'] ?? '')),
+            'subject_father_name' => trim((string) ($_POST['subject_father_name'] ?? '')),
+            'subject_national_id' => trim((string) ($_POST['subject_national_id'] ?? '')),
+            'organization_name' => trim((string) ($_POST['organization_name'] ?? '')),
+            'letter_number' => trim((string) ($_POST['letter_number'] ?? '')),
+            'letter_date' => trim((string) ($_POST['letter_date'] ?? '')),
+            'certificate_number' => trim((string) ($_POST['certificate_number'] ?? '')),
+            'issue_date' => trim((string) ($_POST['issue_date'] ?? '')),
+            'signature_right_name' => trim((string) ($_POST['signature_right_name'] ?? '')),
+            'signature_right_title' => trim((string) ($_POST['signature_right_title'] ?? '')),
+            'signature_left_name' => trim((string) ($_POST['signature_left_name'] ?? '')),
+            'signature_left_title' => trim((string) ($_POST['signature_left_title'] ?? '')),
+            'logo_url' => trim((string) ($_POST['logo_url'] ?? '')),
+            'logo_position' => trim((string) ($_POST['logo_position'] ?? 'right')),
+            'meta_position' => trim((string) ($_POST['meta_position'] ?? 'left')),
+        ];
+
+        if ($fields['subject_title'] === '' || !in_array($fields['subject_title'], ['آقای', 'خانم'], true)) {
+            $fields['subject_title'] = 'آقای';
+        }
+
+        if (!in_array($fields['logo_position'], ['left', 'right'], true)) {
+            $fields['logo_position'] = 'right';
+        }
+
+        if (!in_array($fields['meta_position'], ['left', 'right'], true)) {
+            $fields['meta_position'] = $fields['logo_position'] === 'left' ? 'right' : 'left';
+        }
+
+        if ($fields['organization_name'] === '') {
+            $fields['organization_name'] = isset($organization['name']) ? (string) $organization['name'] : 'سازمان امور مالیاتی کشور';
+        }
+
+        if ($fields['issue_date'] === '') {
+            $fields['issue_date'] = UtilityHelper::englishToPersian(date('Y/m/d'));
+        }
+
+        if ($fields['letter_date'] === '') {
+            $fields['letter_date'] = UtilityHelper::englishToPersian(date('Y/m/d'));
+        }
+
+        if ($fields['logo_url'] === '') {
+            $fields['logo_url'] = UtilityHelper::baseUrl('public/assets/images/logo/logo.png');
+        }
+
+        $certificateBodyTemplate = trim((string) ($_POST['certificate_body'] ?? ''));
+        if ($certificateBodyTemplate === '') {
+            $certificateBodyTemplate = <<<'TXT'
+بدینوسیله گواهی می‌شود {{subject_title}} {{subject_name}} فرزند {{subject_father_name}} با کد ملی {{subject_national_id}} در برنامه ارزیابی {{organization_name}} شرکت نموده و بر اساس نامه شماره {{letter_number}} مورخ {{letter_date}} با موفقیت دوره مربوطه را به اتمام رسانده است.
+TXT;
+        }
+
+        $payload = [
+            'fields' => $fields,
+            'template' => $certificateBodyTemplate,
+            'updated_at' => date('c'),
+            'updated_by' => $userIdentifier !== '' ? $userIdentifier : 'system',
+        ];
+
+        $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        if ($encoded === false) {
+            ResponseHelper::flashError('ذخیره تنظیمات امکان‌پذیر نبود.');
+            UtilityHelper::redirect($redirectUrl);
+        }
+
+        try {
+            $existing = DatabaseHelper::fetchOne(
+                'SELECT id FROM organization_certificate_settings WHERE organization_id = :organization_id LIMIT 1',
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $existing = null;
+        }
+
+        try {
+            if ($existing) {
+                DatabaseHelper::query(
+                    'UPDATE organization_certificate_settings
+                     SET simple_certificate_json = :simple_certificate_json,
+                         user_id = :user_id,
+                         updated_at = NOW()
+                     WHERE id = :id',
+                    [
+                        'simple_certificate_json' => $encoded,
+                        'user_id' => $userIdentifier !== '' ? $userIdentifier : 'system',
+                        'id' => (int) $existing['id'],
+                    ]
+                );
+            } else {
+                DatabaseHelper::query(
+                    'INSERT INTO organization_certificate_settings (
+                        organization_id, title_ribbon_text, statement_text, template_key,
+                        show_org_logo, show_signatures, enable_decorations, pdf_mode, extra_footer_text,
+                        simple_certificate_json, user_id, created_at, updated_at
+                    ) VALUES (
+                        :organization_id, :title_ribbon_text, :statement_text, :template_key,
+                        :show_org_logo, :show_signatures, :enable_decorations, :pdf_mode, :extra_footer_text,
+                        :simple_certificate_json, :user_id, NOW(), NOW()
+                    )',
+                    [
+                        'organization_id' => $organizationId,
+                        'title_ribbon_text' => 'گواهی پایان دوره',
+                        'statement_text' => 'گزارش بازخورد',
+                        'template_key' => 'classic',
+                        'show_org_logo' => 1,
+                        'show_signatures' => 1,
+                        'enable_decorations' => 1,
+                        'pdf_mode' => 'simple',
+                        'extra_footer_text' => '',
+                        'simple_certificate_json' => $encoded,
+                        'user_id' => $userIdentifier !== '' ? $userIdentifier : 'system',
+                    ]
+                );
+            }
+
+            ResponseHelper::flashSuccess('تنظیمات گواهی با موفقیت ذخیره شد.');
+        } catch (Exception $exception) {
+            ResponseHelper::flashError('در ذخیره تنظیمات خطایی رخ داد.');
+        }
+
+        UtilityHelper::redirect($redirectUrl);
+    }
+
+    public function organizationCertificateView(): void
+    {
+        $sessionData = $this->ensureOrganizationSession(['reports_self_view', 'reports_settings_manage']);
+
+        AuthHelper::startSession();
+
+        $this->ensureOrganizationUsersTableExists();
+        $this->ensureOrganizationEvaluationsTableExists();
+        $this->ensureOrganizationEvaluationToolAssignmentsTableExists();
+        $this->ensureOrganizationEvaluationToolsTableExists();
+        $this->ensureOrganizationEvaluationToolQuestionsTableExists();
+        $this->ensureOrganizationEvaluationExamAnswersTableExists();
+        $this->ensureOrganizationEvaluationExamParticipationsTableExists();
+        $this->ensureOrganizationEvaluationAgreedScoresTableExists();
+        $this->ensureOrganizationCertificateSettingsTableExists();
+
+        $organization = $sessionData['organization'] ?? [];
+        $user = $sessionData['user'] ?? [];
+
+        $organizationId = (int) ($organization['id'] ?? 0);
+        $redirectUrl = UtilityHelper::baseUrl('organizations/reports/certificate-list');
+
+        $evaluationId = (int) UtilityHelper::persianToEnglish(trim((string) ($_GET['evaluation_id'] ?? '0')));
+        $evaluateeId = (int) UtilityHelper::persianToEnglish(trim((string) ($_GET['evaluatee_id'] ?? '0')));
+
+        if ($organizationId <= 0 || $evaluationId <= 0 || $evaluateeId <= 0) {
+            ResponseHelper::flashError('پارامترهای ورودی نامعتبر است.');
+            UtilityHelper::redirect($redirectUrl);
+        }
+
+        $dataset = $this->buildCertificateEligibleDataset($organizationId, $evaluationId, '');
+        $rows = isset($dataset['rows']) && is_array($dataset['rows']) ? $dataset['rows'] : [];
+
+        $targetRow = null;
+        foreach ($rows as $row) {
+            if ((int) ($row['evaluation_id'] ?? 0) === $evaluationId && (int) ($row['evaluatee_id'] ?? 0) === $evaluateeId) {
+                $targetRow = $row;
+                break;
+            }
+        }
+
+        if (!$targetRow) {
+            ResponseHelper::flashWarning('این کاربر هنوز واجد شرایط دریافت گواهی نیست.');
+            UtilityHelper::redirect($redirectUrl);
+        }
+
+        try {
+            $evaluatee = DatabaseHelper::fetchOne(
+                'SELECT * FROM organization_users WHERE organization_id = :organization_id AND id = :id LIMIT 1',
+                [
+                    'organization_id' => $organizationId,
+                    'id' => $evaluateeId,
+                ]
+            );
+        } catch (Exception $exception) {
+            $evaluatee = null;
+        }
+
+        if (!$evaluatee) {
+            ResponseHelper::flashError('کاربر مورد نظر یافت نشد.');
+            UtilityHelper::redirect($redirectUrl);
+        }
+
+        $firstName = trim((string) ($evaluatee['first_name'] ?? ($targetRow['first_name'] ?? '')));
+        $lastName = trim((string) ($evaluatee['last_name'] ?? ($targetRow['last_name'] ?? '')));
+        $fullName = trim($firstName . ' ' . $lastName);
+        if ($fullName === '') {
+            $fullName = trim((string) ($evaluatee['username'] ?? ($targetRow['username'] ?? '')));
+        }
+        if ($fullName === '') {
+            $fullName = 'ارزیابی‌شونده';
+        }
+
+        $fatherNameRaw = trim((string) ($evaluatee['father_name'] ?? ''));
+        $fatherName = $fatherNameRaw !== '' ? $fatherNameRaw : '—';
+
+        $genderRaw = '';
+        if (isset($evaluatee['gender']) && $evaluatee['gender'] !== null) {
+            $genderRaw = trim((string) $evaluatee['gender']);
+        } elseif (isset($evaluatee['gender_title']) && $evaluatee['gender_title'] !== null) {
+            $genderRaw = trim((string) $evaluatee['gender_title']);
+        }
+
+        if ($genderRaw === '' && isset($evaluatee['gender_label'])) {
+            $genderRaw = trim((string) $evaluatee['gender_label']);
+        }
+
+        $genderNormalized = $genderRaw !== ''
+            ? (function_exists('mb_strtolower') ? mb_strtolower($genderRaw, 'UTF-8') : strtolower($genderRaw))
+            : '';
+
+        $subjectTitle = 'آقای';
+        if ($genderNormalized !== '') {
+            if (in_array($genderNormalized, ['خانم', 'خانوم', 'زن', 'female', 'f'], true)) {
+                $subjectTitle = 'خانم';
+            }
+        }
+
+        $nationalCodeRaw = trim((string) ($evaluatee['national_code'] ?? ($targetRow['national_code'] ?? '')));
+        $nationalCodeDisplay = $nationalCodeRaw !== '' ? UtilityHelper::englishToPersian($nationalCodeRaw) : '—';
+
+        $letterNumberRaw = trim((string) ($evaluatee['letter_number'] ?? ($evaluatee['letter_no'] ?? '')));
+        $letterNumberDisplay = $letterNumberRaw !== '' ? UtilityHelper::englishToPersian($letterNumberRaw) : '—';
+
+        $letterDateRaw = trim((string) ($evaluatee['letter_date'] ?? ''));
+
+        $evaluationTitle = trim((string) ($targetRow['evaluation_title'] ?? ''));
+        if ($evaluationTitle === '') {
+            $evaluationTitle = 'برنامه ارزیابی #' . UtilityHelper::englishToPersian((string) $evaluationId);
+        }
+
+        $evaluationDateDisplay = trim((string) ($targetRow['evaluation_date_display'] ?? ''));
+        if ($evaluationDateDisplay === '') {
+            $evaluationDateDisplay = '—';
+        }
+
+        $averageScore = $targetRow['average_score'] ?? null;
+        $averageScoreDisplay = ($averageScore !== null && $averageScore !== '')
+            ? UtilityHelper::englishToPersian(number_format((float) $averageScore, 2))
+            : '—';
+
+        $normalizeDate = static function (?string $value, ?string $fallback = null): string {
+            $primary = trim((string) ($value ?? ''));
+            if ($primary === '' && $fallback !== null) {
+                $primary = trim((string) $fallback);
+            }
+
+            if ($primary === '') {
+                return UtilityHelper::englishToPersian(date('Y/m/d'));
+            }
+
+            $englishDigits = UtilityHelper::persianToEnglish($primary);
+
+            if (preg_match('/^\d{4}[\/-]\d{1,2}[\/-]\d{1,2}$/', $englishDigits)) {
+                $englishDigits = str_replace('-', '/', $englishDigits);
+                return UtilityHelper::englishToPersian($englishDigits);
+            }
+
+            if (preg_match('/^\d{4}\d{2}\d{2}$/', $englishDigits)) {
+                $formatted = substr($englishDigits, 0, 4) . '/' . substr($englishDigits, 4, 2) . '/' . substr($englishDigits, 6, 2);
+                return UtilityHelper::englishToPersian($formatted);
+            }
+
+            return UtilityHelper::englishToPersian($primary);
+        };
+
+        $letterDateDisplay = $normalizeDate($letterDateRaw, $evaluationDateDisplay !== '—' ? $evaluationDateDisplay : null);
+        $issueDateDisplay = $normalizeDate(null, date('Y/m/d'));
+
+        $certificateNumber = UtilityHelper::englishToPersian(sprintf('CF-%04d-%05d', $evaluationId, $evaluateeId));
+
+        $organizationName = trim((string) ($organization['name'] ?? ''));
+        $organizationSubtitle = trim((string) ($organization['subtitle'] ?? ''));
+
+        try {
+            $orgRecord = $this->fetchOrganization($organizationId);
+            if ($orgRecord) {
+                if (empty($organizationName) && !empty($orgRecord['name'])) {
+                    $organizationName = (string) $orgRecord['name'];
+                }
+                if (empty($organizationSubtitle) && !empty($orgRecord['short_name'])) {
+                    $organizationSubtitle = (string) $orgRecord['short_name'];
+                }
+            }
+        } catch (Exception $exception) {
+            $orgRecord = null;
+        }
+
+        if ($organizationName === '') {
+            $organizationName = 'سازمان';
+        }
+
+        if ($organizationSubtitle === '') {
+            $organizationSubtitle = 'کانون ارزیابی و توسعه شایستگی';
+        }
+
+        $orgLogoUrl = UtilityHelper::baseUrl('public/assets/images/logo/logo.png');
+        if (!empty($orgRecord)) {
+            if (!empty($orgRecord['report_cover_logo_path'])) {
+                $orgLogoUrl = UtilityHelper::baseUrl('public/' . ltrim((string) $orgRecord['report_cover_logo_path'], '/'));
+            } elseif (!empty($orgRecord['logo_path'])) {
+                $orgLogoUrl = UtilityHelper::baseUrl('public/' . ltrim((string) $orgRecord['logo_path'], '/'));
+            }
+        }
+
+        $subjectNameDisplay = $fullName !== '' ? $fullName : 'ارزیابی‌شونده';
+
+        $defaultCertificateBodyTemplate = <<<'TXT'
+بدینوسیله گواهی می‌شود {{subject_title}} {{subject_name}} فرزند {{subject_father_name}} با کد ملی {{subject_national_id}} در برنامه ارزیابی {{evaluation_title}} که در تاریخ {{evaluation_date}} برگزار شد شرکت نموده و مطابق نامه شماره {{letter_number}} مورخ {{letter_date}}، با کسب امتیاز {{final_score}} موفق به دریافت این گواهی گردیده است.
+TXT;
+
+        $placeholderValues = [
+            'subject_title' => $subjectTitle,
+            'subject_name' => $subjectNameDisplay,
+            'subject_father_name' => $fatherName,
+            'subject_national_id' => $nationalCodeDisplay,
+            'letter_number' => $letterNumberDisplay,
+            'letter_date' => $letterDateDisplay,
+            'organization_name' => $organizationName,
+            'organization_subtitle' => $organizationSubtitle,
+            'evaluation_title' => $evaluationTitle,
+            'evaluation_date' => $evaluationDateDisplay,
+            'final_score' => $averageScoreDisplay,
+            'final_score_display' => $averageScoreDisplay,
+            'certificate_number' => $certificateNumber,
+            'issue_date' => $issueDateDisplay,
+        ];
+
+        $renderTemplate = static function (string $template, array $values): string {
+            return preg_replace_callback(
+                '/{{\s*([a-zA-Z0-9_]+)\s*}}/u',
+                static function (array $matches) use ($values): string {
+                    $key = $matches[1];
+                    $replacement = $values[$key] ?? '';
+                    return is_scalar($replacement) ? (string) $replacement : '';
+                },
+                $template
+            );
+        };
+
+        $savedFields = [];
+        $savedTemplate = null;
+
+        try {
+            $certificateSettingsRow = DatabaseHelper::fetchOne(
+                'SELECT simple_certificate_json FROM organization_certificate_settings WHERE organization_id = :organization_id LIMIT 1',
+                ['organization_id' => $organizationId]
+            );
+        } catch (Exception $exception) {
+            $certificateSettingsRow = null;
+        }
+
+        if ($certificateSettingsRow && !empty($certificateSettingsRow['simple_certificate_json'])) {
+            $decodedCertificateJson = json_decode((string) $certificateSettingsRow['simple_certificate_json'], true);
+            if (is_array($decodedCertificateJson)) {
+                if (!empty($decodedCertificateJson['fields']) && is_array($decodedCertificateJson['fields'])) {
+                    $savedFields = $decodedCertificateJson['fields'];
+                }
+                if (isset($decodedCertificateJson['template']) && $decodedCertificateJson['template'] !== '') {
+                    $savedTemplate = (string) $decodedCertificateJson['template'];
+                }
+            }
+        }
+
+        $fieldDefaults = [
+            'logo_url' => $orgLogoUrl,
+            'organization_name' => $organizationName,
+            'organization_subtitle' => $organizationSubtitle,
+            'title' => 'گواهی پایان دوره',
+            'title_secondary' => $evaluationTitle,
+            'certificate_number' => $certificateNumber,
+            'issue_date' => $issueDateDisplay,
+            'subject_title' => $subjectTitle,
+            'subject_name' => $subjectNameDisplay,
+            'subject_father_name' => $fatherName,
+            'subject_national_id' => $nationalCodeDisplay,
+            'letter_number' => $letterNumberDisplay,
+            'letter_date' => $letterDateDisplay,
+            'signature_right_name' => 'نماینده ارشد سازمان',
+            'signature_right_title' => 'مدیر ارزیابی و توسعه',
+            'signature_left_name' => 'نماینده کانون ارزیابی',
+            'signature_left_title' => 'ناظر اجرای برنامه',
+            'logo_position' => 'right',
+            'meta_position' => 'left',
+            'final_score_display' => $averageScoreDisplay,
+        ];
+
+        foreach ($savedFields as $fieldKey => $fieldValue) {
+            if (!is_string($fieldKey)) {
+                continue;
+            }
+
+            if (is_scalar($fieldValue)) {
+                $fieldStringValue = (string) $fieldValue;
+            } elseif (
+                (is_array($fieldValue) || is_object($fieldValue))
+            ) {
+                continue;
+            } else {
+                $fieldStringValue = '';
+            }
+
+            if ($fieldStringValue === '') {
+                continue;
+            }
+
+            $fieldDefaults[$fieldKey] = $fieldStringValue;
+        }
+
+        $dynamicFieldOverrides = [
+            'subject_title' => $placeholderValues['subject_title'] ?? $subjectTitle,
+            'subject_name' => $placeholderValues['subject_name'] ?? $subjectNameDisplay,
+            'subject_father_name' => $placeholderValues['subject_father_name'] ?? $fatherName,
+            'subject_national_id' => $placeholderValues['subject_national_id'] ?? $nationalCodeDisplay,
+            'letter_number' => $placeholderValues['letter_number'] ?? $letterNumberDisplay,
+            'letter_date' => $placeholderValues['letter_date'] ?? $letterDateDisplay,
+            'certificate_number' => $placeholderValues['certificate_number'] ?? $certificateNumber,
+            'issue_date' => $placeholderValues['issue_date'] ?? $issueDateDisplay,
+            'title_secondary' => $evaluationTitle,
+            'evaluation_title' => $evaluationTitle,
+            'final_score_display' => $placeholderValues['final_score_display'] ?? $averageScoreDisplay,
+        ];
+
+        foreach ($dynamicFieldOverrides as $overrideKey => $overrideValue) {
+            $fieldDefaults[$overrideKey] = $overrideValue;
+        }
+
+        $logoPosition = isset($fieldDefaults['logo_position']) && in_array($fieldDefaults['logo_position'], ['left', 'right'], true)
+            ? $fieldDefaults['logo_position']
+            : 'right';
+
+        $metaPosition = isset($fieldDefaults['meta_position']) && in_array($fieldDefaults['meta_position'], ['left', 'right'], true)
+            ? $fieldDefaults['meta_position']
+            : ($logoPosition === 'left' ? 'right' : 'left');
+
+        $fieldDefaults['logo_position'] = $logoPosition;
+        $fieldDefaults['meta_position'] = $metaPosition;
+
+        $certificateBodyTemplate = $savedTemplate !== null ? $savedTemplate : $defaultCertificateBodyTemplate;
+        if (trim($certificateBodyTemplate) === '') {
+            $certificateBodyTemplate = $defaultCertificateBodyTemplate;
+        }
+
+        $renderContext = array_merge($placeholderValues, $fieldDefaults);
+
+        $resolvedFields = $fieldDefaults;
+        foreach ($resolvedFields as $resolvedKey => $resolvedValue) {
+            if (is_string($resolvedValue) && $resolvedValue !== '') {
+                $resolvedFields[$resolvedKey] = $renderTemplate($resolvedValue, $renderContext);
+            }
+        }
+
+        $certificateBodyRendered = $renderTemplate($certificateBodyTemplate, array_merge($renderContext, $resolvedFields));
+        if (trim($certificateBodyRendered) === '') {
+            $certificateBodyRendered = $renderTemplate($defaultCertificateBodyTemplate, array_merge($renderContext, $resolvedFields));
+        }
+
+        $sampleCertificate = array_merge($resolvedFields, [
+            'certificate_body' => $certificateBodyRendered,
+            'final_score_display' => $resolvedFields['final_score_display'] ?? $averageScoreDisplay,
+            'evaluation_title' => $evaluationTitle,
+        ]);
+
+        $title = 'پیش‌نمایش گواهی';
+        $isReadonly = true;
+        $logoInputValue = isset($sampleCertificate['logo_url']) && $sampleCertificate['logo_url'] !== ''
+            ? (string) $sampleCertificate['logo_url']
+            : $orgLogoUrl;
+
+        $successMessage = flash('success');
+        $errorMessage = flash('error');
+
+        include __DIR__ . '/../Views/organizations/reports/certificate-maker.php';
     }
 
     public function organizationSelfAssessmentCertificate(): void
@@ -13544,6 +14203,519 @@ class OrganizationController
             'summary' => $summary,
             'evaluation_options' => $evaluationOptions,
             'selected_evaluation_id' => $evaluationIdFilter ?? 0,
+            'search_term' => $searchTerm,
+        ];
+    }
+
+    private function buildCertificateEligibleDataset(int $organizationId, ?int $evaluationIdFilter, string $searchTerm): array
+    {
+        $searchTerm = trim($searchTerm);
+        $normalizedSearch = $searchTerm !== '' ? UtilityHelper::persianToEnglish($searchTerm) : '';
+        $normalizedSearchLower = $normalizedSearch !== ''
+            ? (function_exists('mb_strtolower') ? mb_strtolower($normalizedSearch, 'UTF-8') : strtolower($normalizedSearch))
+            : '';
+
+        $evaluationParams = ['organization_id' => $organizationId];
+        $evaluationWhere = 'organization_id = :organization_id';
+        if ($evaluationIdFilter !== null && $evaluationIdFilter > 0) {
+            $evaluationWhere .= ' AND id = :evaluation_id';
+            $evaluationParams['evaluation_id'] = $evaluationIdFilter;
+        }
+
+        try {
+            $evaluationRows = DatabaseHelper::fetchAll(
+                'SELECT id, title, evaluation_date, general_model, specific_model, evaluatees_json
+                 FROM organization_evaluations
+                 WHERE ' . $evaluationWhere . '
+                 ORDER BY (evaluation_date IS NULL) ASC, evaluation_date DESC, id DESC',
+                $evaluationParams
+            );
+        } catch (Exception $exception) {
+            $evaluationRows = [];
+        }
+
+        $evaluationOptions = [
+            [
+                'value' => 0,
+                'label' => 'همه برنامه‌های ارزیابی',
+            ],
+        ];
+
+        $evaluationIds = [];
+        $evaluationEvaluatees = [];
+        $evaluationMeta = [];
+
+        foreach ($evaluationRows as $evaluationRow) {
+            $evaluationId = (int) ($evaluationRow['id'] ?? 0);
+            if ($evaluationId <= 0) {
+                continue;
+            }
+
+            $evaluationIds[] = $evaluationId;
+
+            $rawTitle = trim((string) ($evaluationRow['title'] ?? ''));
+            $title = $rawTitle !== ''
+                ? $rawTitle
+                : 'برنامه ارزیابی #' . UtilityHelper::englishToPersian((string) $evaluationId);
+
+            $evaluationOptions[] = [
+                'value' => $evaluationId,
+                'label' => $title,
+            ];
+
+            $evaluateesList = $this->decodeUserList($evaluationRow['evaluatees_json'] ?? null, []);
+            $evaluateeIds = [];
+            foreach ($evaluateesList as $entry) {
+                $evaluateeId = (int) ($entry['id'] ?? 0);
+                if ($evaluateeId > 0) {
+                    $evaluateeIds[$evaluateeId] = $evaluateeId;
+                }
+            }
+            $evaluationEvaluatees[$evaluationId] = array_values($evaluateeIds);
+
+            $specificModelRaw = trim((string) ($evaluationRow['specific_model'] ?? ''));
+            $generalModelRaw = trim((string) ($evaluationRow['general_model'] ?? ''));
+            $competencyLabel = '—';
+
+            if ($specificModelRaw !== '') {
+                $specificModelMeta = $this->resolveCompetencyModelByLabel($organizationId, $specificModelRaw);
+                $competencyLabel = !empty($specificModelMeta['title']) ? $specificModelMeta['title'] : $specificModelRaw;
+            } elseif ($generalModelRaw !== '') {
+                $generalModelMeta = $this->resolveCompetencyModelByLabel($organizationId, $generalModelRaw);
+                $competencyLabel = !empty($generalModelMeta['title']) ? $generalModelMeta['title'] : $generalModelRaw;
+            }
+
+            $evaluationMeta[$evaluationId] = [
+                'title' => $title,
+                'evaluation_date' => $evaluationRow['evaluation_date'] ?? null,
+                'competency_label' => $competencyLabel,
+            ];
+        }
+
+        $selectedEvaluationId = $evaluationIdFilter !== null ? $evaluationIdFilter : 0;
+
+        $allEvaluateeIds = [];
+        foreach ($evaluationEvaluatees as $ids) {
+            foreach ($ids as $uid) {
+                if ($uid > 0) {
+                    $allEvaluateeIds[$uid] = true;
+                }
+            }
+        }
+        $allEvaluateeIds = array_keys($allEvaluateeIds);
+
+        $userMap = [];
+        if (!empty($allEvaluateeIds)) {
+            $placeholders = implode(',', array_fill(0, count($allEvaluateeIds), '?'));
+            $params = array_merge([$organizationId], $allEvaluateeIds);
+            try {
+                $userRows = DatabaseHelper::fetchAll(
+                    "SELECT id, username, national_code, first_name, last_name
+                     FROM organization_users
+                     WHERE organization_id = ? AND id IN ({$placeholders})",
+                    $params
+                );
+            } catch (Exception $exception) {
+                $userRows = [];
+            }
+
+            foreach ($userRows as $userRow) {
+                $userId = (int) ($userRow['id'] ?? 0);
+                if ($userId <= 0) {
+                    continue;
+                }
+
+                $userMap[$userId] = [
+                    'username' => trim((string) ($userRow['username'] ?? '')),
+                    'national_code' => trim((string) ($userRow['national_code'] ?? '')),
+                    'first_name' => trim((string) ($userRow['first_name'] ?? '')),
+                    'last_name' => trim((string) ($userRow['last_name'] ?? '')),
+                ];
+            }
+        }
+
+        $examToolsByEvaluation = [];
+        if (!empty($evaluationIds)) {
+            $evalPlaceholder = implode(',', array_fill(0, count($evaluationIds), '?'));
+            try {
+                $assignmentRows = DatabaseHelper::fetchAll(
+                    "SELECT a.evaluation_id, a.tool_id
+                     FROM organization_evaluation_tool_assignments a
+                     INNER JOIN organization_evaluation_tools t ON t.id = a.tool_id AND t.is_exam = 1
+                     WHERE a.evaluation_id IN ({$evalPlaceholder})",
+                    $evaluationIds
+                );
+            } catch (Exception $exception) {
+                $assignmentRows = [];
+            }
+
+            foreach ($assignmentRows as $assignmentRow) {
+                $evaluationId = (int) ($assignmentRow['evaluation_id'] ?? 0);
+                $toolId = (int) ($assignmentRow['tool_id'] ?? 0);
+
+                if ($evaluationId <= 0 || $toolId <= 0) {
+                    continue;
+                }
+
+                if (!isset($examToolsByEvaluation[$evaluationId])) {
+                    $examToolsByEvaluation[$evaluationId] = [];
+                }
+
+                $examToolsByEvaluation[$evaluationId][$toolId] = true;
+            }
+        }
+
+        $toolIdsAll = [];
+        foreach ($examToolsByEvaluation as $toolSet) {
+            foreach (array_keys($toolSet) as $toolId) {
+                $toolIdsAll[$toolId] = true;
+            }
+        }
+        $toolIdsAll = array_keys($toolIdsAll);
+
+        $questionCountsByTool = [];
+        if (!empty($toolIdsAll)) {
+            $toolPlaceholder = implode(',', array_fill(0, count($toolIdsAll), '?'));
+            try {
+                $questionRows = DatabaseHelper::fetchAll(
+                    "SELECT evaluation_tool_id AS tool_id, COUNT(*) AS total_q
+                     FROM organization_evaluation_tool_questions
+                     WHERE evaluation_tool_id IN ({$toolPlaceholder})
+                     GROUP BY evaluation_tool_id",
+                    $toolIdsAll
+                );
+            } catch (Exception $exception) {
+                $questionRows = [];
+            }
+
+            foreach ($questionRows as $questionRow) {
+                $toolId = (int) ($questionRow['tool_id'] ?? 0);
+                if ($toolId <= 0) {
+                    continue;
+                }
+
+                $questionCountsByTool[$toolId] = (int) ($questionRow['total_q'] ?? 0);
+            }
+        }
+
+        $answerCounts = [];
+        if (!empty($evaluationIds) && !empty($allEvaluateeIds)) {
+            $evalPh = implode(',', array_fill(0, count($evaluationIds), '?'));
+            $usrPh = implode(',', array_fill(0, count($allEvaluateeIds), '?'));
+            $params = array_merge([$organizationId], $evaluationIds, $allEvaluateeIds);
+
+            try {
+                $answerRows = DatabaseHelper::fetchAll(
+                    "SELECT evaluation_id, tool_id, evaluatee_id, COUNT(*) AS total_answers
+                     FROM organization_evaluation_exam_answers
+                     WHERE organization_id = ?
+                       AND evaluation_id IN ({$evalPh})
+                       AND evaluatee_id IN ({$usrPh})
+                     GROUP BY evaluation_id, tool_id, evaluatee_id",
+                    $params
+                );
+            } catch (Exception $exception) {
+                $answerRows = [];
+            }
+
+            foreach ($answerRows as $answerRow) {
+                $evaluationId = (int) ($answerRow['evaluation_id'] ?? 0);
+                $toolId = (int) ($answerRow['tool_id'] ?? 0);
+                $evaluateeId = (int) ($answerRow['evaluatee_id'] ?? 0);
+
+                if ($evaluationId <= 0 || $toolId <= 0 || $evaluateeId <= 0) {
+                    continue;
+                }
+
+                if (!isset($answerCounts[$evaluationId])) {
+                    $answerCounts[$evaluationId] = [];
+                }
+                if (!isset($answerCounts[$evaluationId][$evaluateeId])) {
+                    $answerCounts[$evaluationId][$evaluateeId] = [];
+                }
+
+                $answerCounts[$evaluationId][$evaluateeId][$toolId] = (int) ($answerRow['total_answers'] ?? 0);
+            }
+        }
+
+        $participationMeta = [];
+        if (!empty($evaluationIds) && !empty($allEvaluateeIds)) {
+            $evalPh = implode(',', array_fill(0, count($evaluationIds), '?'));
+            $params = array_merge([$organizationId], $evaluationIds);
+            $usrPh = implode(',', array_fill(0, count($allEvaluateeIds), '?'));
+            $params = array_merge($params, $allEvaluateeIds);
+
+            try {
+                $participationRows = DatabaseHelper::fetchAll(
+                    "SELECT evaluation_id, tool_id, evaluatee_id,
+                            MAX(is_completed) AS is_completed,
+                            MAX(COALESCE(completed_at, updated_at)) AS last_completion
+                     FROM organization_evaluation_exam_participations
+                     WHERE organization_id = ?
+                       AND evaluation_id IN ({$evalPh})
+                       AND evaluatee_id IN ({$usrPh})
+                     GROUP BY evaluation_id, tool_id, evaluatee_id",
+                    $params
+                );
+            } catch (Exception $exception) {
+                $participationRows = [];
+            }
+
+            foreach ($participationRows as $participationRow) {
+                $evaluationId = (int) ($participationRow['evaluation_id'] ?? 0);
+                $toolId = (int) ($participationRow['tool_id'] ?? 0);
+                $evaluateeId = (int) ($participationRow['evaluatee_id'] ?? 0);
+
+                if ($evaluationId <= 0 || $toolId <= 0 || $evaluateeId <= 0) {
+                    continue;
+                }
+
+                if (!isset($participationMeta[$evaluationId])) {
+                    $participationMeta[$evaluationId] = [];
+                }
+                if (!isset($participationMeta[$evaluationId][$evaluateeId])) {
+                    $participationMeta[$evaluationId][$evaluateeId] = [];
+                }
+
+                $participationMeta[$evaluationId][$evaluateeId][$toolId] = [
+                    'completed' => ((int) ($participationRow['is_completed'] ?? 0) === 1),
+                    'last_completion' => $participationRow['last_completion'] ?? null,
+                ];
+            }
+        }
+
+        $washupStats = [];
+        if (!empty($evaluationIds) && !empty($allEvaluateeIds)) {
+            $evalPh = implode(',', array_fill(0, count($evaluationIds), '?'));
+            $usrPh = implode(',', array_fill(0, count($allEvaluateeIds), '?'));
+            $params = array_merge([$organizationId], $evaluationIds, $allEvaluateeIds);
+
+            try {
+                $washupRows = DatabaseHelper::fetchAll(
+                    "SELECT evaluation_id, evaluatee_id,
+                            COUNT(*) AS agreed_count,
+                            AVG(agreed_score) AS avg_score,
+                            MAX(updated_at) AS last_updated
+                     FROM organization_evaluation_agreed_scores
+                     WHERE organization_id = ?
+                       AND evaluation_id IN ({$evalPh})
+                       AND evaluatee_id IN ({$usrPh})
+                       AND agreed_score IS NOT NULL
+                     GROUP BY evaluation_id, evaluatee_id",
+                    $params
+                );
+            } catch (Exception $exception) {
+                $washupRows = [];
+            }
+
+            foreach ($washupRows as $washupRow) {
+                $evaluationId = (int) ($washupRow['evaluation_id'] ?? 0);
+                $evaluateeId = (int) ($washupRow['evaluatee_id'] ?? 0);
+                if ($evaluationId <= 0 || $evaluateeId <= 0) {
+                    continue;
+                }
+
+                if (!isset($washupStats[$evaluationId])) {
+                    $washupStats[$evaluationId] = [];
+                }
+
+                $washupStats[$evaluationId][$evaluateeId] = [
+                    'agreed_count' => (int) ($washupRow['agreed_count'] ?? 0),
+                    'avg_score' => isset($washupRow['avg_score']) ? (float) $washupRow['avg_score'] : null,
+                    'last_updated' => $washupRow['last_updated'] ?? null,
+                ];
+            }
+        }
+
+        $formatDateTimeDisplay = static function (?string $dateTime): string {
+            if ($dateTime === null || trim((string) $dateTime) === '') {
+                return '—';
+            }
+
+            try {
+                $dt = new DateTime($dateTime, new DateTimeZone('Asia/Tehran'));
+            } catch (Exception $exception) {
+                try {
+                    $dt = new DateTime($dateTime);
+                } catch (Exception $innerException) {
+                    return '—';
+                }
+
+                $dt->setTimezone(new DateTimeZone('Asia/Tehran'));
+            }
+
+            if (class_exists('IntlDateFormatter')) {
+                $formatter = new IntlDateFormatter(
+                    'fa_IR',
+                    IntlDateFormatter::SHORT,
+                    IntlDateFormatter::SHORT,
+                    'Asia/Tehran',
+                    IntlDateFormatter::GREGORIAN,
+                    'HH:mm yyyy/MM/dd'
+                );
+
+                $formatted = $formatter->format($dt);
+                if ($formatted !== false) {
+                    return UtilityHelper::englishToPersian((string) $formatted);
+                }
+            }
+
+            return UtilityHelper::englishToPersian($dt->format('H:i Y/m/d'));
+        };
+
+        $rows = [];
+        $eligibleEvaluations = [];
+        $avgScoreAccumulator = 0.0;
+        $avgScoreCount = 0;
+        $totalAgreedScores = 0;
+
+        foreach ($evaluationEvaluatees as $evaluationId => $evaluateeIds) {
+            $examToolSet = $examToolsByEvaluation[$evaluationId] ?? [];
+            $examToolIds = array_keys($examToolSet);
+
+            if (empty($examToolIds)) {
+                continue;
+            }
+
+            foreach ($evaluateeIds as $evaluateeId) {
+                if ($evaluateeId <= 0 || !isset($userMap[$evaluateeId])) {
+                    continue;
+                }
+
+                $allExamCompleted = true;
+                $latestCompletion = null;
+
+                foreach ($examToolIds as $toolId) {
+                    $questionCount = (int) ($questionCountsByTool[$toolId] ?? 0);
+                    $answers = (int) ($answerCounts[$evaluationId][$evaluateeId][$toolId] ?? 0);
+                    $participation = $participationMeta[$evaluationId][$evaluateeId][$toolId] ?? null;
+                    $isCompletedFlag = $participation['completed'] ?? false;
+                    $completionTimestamp = $participation['last_completion'] ?? null;
+
+                    if ($questionCount > 0) {
+                        if ($answers < $questionCount) {
+                            $allExamCompleted = false;
+                            break;
+                        }
+                    } else {
+                        if (!$isCompletedFlag) {
+                            $allExamCompleted = false;
+                            break;
+                        }
+                    }
+
+                    if ($completionTimestamp !== null) {
+                        if ($latestCompletion === null || strcmp($completionTimestamp, $latestCompletion) > 0) {
+                            $latestCompletion = $completionTimestamp;
+                        }
+                    }
+                }
+
+                if (!$allExamCompleted) {
+                    continue;
+                }
+
+                $washupMeta = $washupStats[$evaluationId][$evaluateeId] ?? null;
+                if (!$washupMeta || (int) ($washupMeta['agreed_count'] ?? 0) <= 0) {
+                    continue;
+                }
+
+                $userData = $userMap[$evaluateeId];
+                $fullName = trim((string) ($userData['first_name'] ?? '') . ' ' . (string) ($userData['last_name'] ?? ''));
+                if ($fullName === '') {
+                    $fullName = (string) ($userData['username'] ?? 'ارزیابی‌شونده');
+                }
+
+                $evaluationTitle = $evaluationMeta[$evaluationId]['title'] ?? ('برنامه ارزیابی #' . UtilityHelper::englishToPersian((string) $evaluationId));
+                $dateMeta = $this->formatEvaluationPersianDate($evaluationMeta[$evaluationId]['evaluation_date'] ?? null);
+                $competencyLabel = $evaluationMeta[$evaluationId]['competency_label'] ?? '—';
+
+                if ($normalizedSearchLower !== '') {
+                    $candidateFields = [
+                        UtilityHelper::persianToEnglish($fullName),
+                        UtilityHelper::persianToEnglish((string) ($userData['username'] ?? '')),
+                        UtilityHelper::persianToEnglish((string) ($userData['national_code'] ?? '')),
+                        UtilityHelper::persianToEnglish($evaluationTitle),
+                        UtilityHelper::persianToEnglish($competencyLabel),
+                        UtilityHelper::persianToEnglish($dateMeta['display'] ?? ''),
+                    ];
+
+                    $matchesSearch = false;
+                    foreach ($candidateFields as $field) {
+                        if ($field === '') {
+                            continue;
+                        }
+
+                        $fieldLower = function_exists('mb_strtolower') ? mb_strtolower($field, 'UTF-8') : strtolower($field);
+                        if (strpos($fieldLower, $normalizedSearchLower) !== false) {
+                            $matchesSearch = true;
+                            break;
+                        }
+                    }
+
+                    if (!$matchesSearch) {
+                        continue;
+                    }
+                }
+
+                $avgScore = $washupMeta['avg_score'] ?? null;
+                if ($avgScore !== null) {
+                    $avgScoreAccumulator += (float) $avgScore;
+                    $avgScoreCount++;
+                }
+
+                $agreedCount = (int) ($washupMeta['agreed_count'] ?? 0);
+                $totalAgreedScores += $agreedCount;
+
+                $rows[] = [
+                    'evaluation_id' => $evaluationId,
+                    'evaluatee_id' => $evaluateeId,
+                    'first_name' => $userData['first_name'] ?? '',
+                    'last_name' => $userData['last_name'] ?? '',
+                    'username' => $userData['username'] ?? '',
+                    'national_code' => $userData['national_code'] ?? '',
+                    'full_name' => $fullName,
+                    'evaluation_title' => $evaluationTitle,
+                    'evaluation_date_display' => $dateMeta['display'] ?? '—',
+                    'competency_model' => $competencyLabel,
+                    'average_score' => $avgScore,
+                    'agreed_count' => $agreedCount,
+                    'washup_updated_display' => $formatDateTimeDisplay($washupMeta['last_updated'] ?? null),
+                    'exam_completed_at_display' => $formatDateTimeDisplay($latestCompletion),
+                ];
+
+                $eligibleEvaluations[$evaluationId] = true;
+            }
+        }
+
+        if (!empty($rows)) {
+            usort($rows, static function (array $a, array $b): int {
+                $titleCompare = strcmp($a['evaluation_title'] ?? '', $b['evaluation_title'] ?? '');
+                if ($titleCompare !== 0) {
+                    return $titleCompare;
+                }
+
+                $nameCompare = strcmp($a['full_name'] ?? '', $b['full_name'] ?? '');
+                if ($nameCompare !== 0) {
+                    return $nameCompare;
+                }
+
+                return ($a['evaluatee_id'] ?? 0) <=> ($b['evaluatee_id'] ?? 0);
+            });
+        }
+
+        $summary = [
+            'total' => count($rows),
+            'evaluations' => count($eligibleEvaluations),
+            'average_score' => $avgScoreCount > 0 ? round($avgScoreAccumulator / $avgScoreCount, 2) : null,
+            'agreed_scores' => $totalAgreedScores,
+        ];
+
+        return [
+            'rows' => $rows,
+            'summary' => $summary,
+            'evaluation_options' => $evaluationOptions,
+            'selected_evaluation_id' => $selectedEvaluationId,
             'search_term' => $searchTerm,
         ];
     }
@@ -25621,6 +26793,11 @@ SQL;
             $builderToolsCol->execute();
             if (!$builderToolsCol->fetch()) {
                 DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN builder_assessment_tools_json LONGTEXT NULL AFTER builder_components_json");
+            }
+            $simpleFormCol = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'simple_certificate_json'");
+            $simpleFormCol->execute();
+            if (!$simpleFormCol->fetch()) {
+                DatabaseHelper::query("ALTER TABLE organization_certificate_settings ADD COLUMN simple_certificate_json LONGTEXT NULL AFTER builder_assessment_tools_json");
             }
             // THIRD PAGE: items json
             $tp6 = $pdo->prepare("SHOW COLUMNS FROM organization_certificate_settings LIKE 'third_page_items_json'");

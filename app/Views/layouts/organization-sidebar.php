@@ -227,7 +227,9 @@ $organizationSidebarMenu = [
             // ['title' => 'گزارش برنامه های توسعه فردی', 'route' => 'report/EducationList.php', 'permission' => 'reports_dev_program_view'],
             // ['title' => 'تنظیمات گزارش ارزیابی', 'route' => 'report/reportsetting.php', 'permission' => 'reports_settings_manage'],
             // ['title' => 'تنظیمات گواهی دوره', 'route' => 'organizations/reports/certificate-settings', 'permission' => 'reports_settings_manage'],
-            ['title' => 'سازنده گواهی پیشرفته', 'route' => 'organizations/reports/certificate-builder', 'permission' => 'reports_settings_manage'],
+            ['title' => 'لیست گواهی‌ها', 'route' => 'organizations/reports/certificate-list', 'permissions' => ['reports_self_view', 'reports_settings_manage']],
+            ['title' => 'سازنده گزارش پیشرفته', 'route' => 'organizations/reports/certificate-builder', 'permission' => 'reports_settings_manage'],
+            ['title' => 'گواهی ساز', 'route' => 'organizations/reports/certificate-maker', 'permission' => 'reports_settings_manage'],
         ],
     ],
 ];

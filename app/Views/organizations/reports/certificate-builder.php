@@ -3,7 +3,7 @@ if (!class_exists('UtilityHelper')) {
     require_once __DIR__ . '/../../Helpers/autoload.php';
 }
 
-$title = $title ?? 'سازنده گواهی پیشرفته';
+$title = $title ?? 'سازنده گزارش پیشرفته';
 $user = $user ?? null;
 $organization = $organization ?? null;
 $builderStateJson = $builderStateJson ?? htmlspecialchars(json_encode(['pages' => []], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
@@ -42,13 +42,13 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
             <div class="card-body p-24">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-12 mb-16">
                     <div>
-                        <h2 class="mb-6">سازنده گواهی پیشرفته</h2>
-                        <p class="text-muted mb-0">صفحات گواهی را طراحی کنید، قالب تعیین کنید و بلوک‌های اطلاعاتی را با کشیدن و رها کردن بچینید.</p>
+                        <h2 class="mb-6">سازنده گزارش پیشرفته</h2>
+                        <p class="text-muted mb-0">صفحات گزارش را طراحی کنید، قالب تعیین کنید و بلوک‌های اطلاعاتی را با کشیدن و رها کردن بچینید.</p>
                     </div>
                     <div class="d-flex flex-wrap gap-10">
                         <a href="<?= UtilityHelper::baseUrl('organizations/reports/certificate-preview'); ?>" target="_blank" class="btn btn-outline-main d-inline-flex align-items-center gap-6">
                             <ion-icon name="eye-outline"></ion-icon>
-                            پیش‌نمایش گواهی
+                            پیش‌نمایش گزارش
                         </a>
                         <a href="<?= UtilityHelper::baseUrl('organizations/reports/certificate-settings'); ?>" class="btn btn-outline-secondary d-inline-flex align-items-center gap-6">
                             <ion-icon name="contract-outline"></ion-icon>

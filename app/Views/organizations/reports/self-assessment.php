@@ -145,14 +145,14 @@ $navbarUser = $user;
                                             <?php if ($evaluationId > 0 && $evaluateeId > 0): ?>
                                                 <?php if ($viewable): ?>
                                                     <div class="d-flex gap-6 justify-content-center flex-wrap">
-                                                        <a href="<?= htmlspecialchars($certUrl, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-success btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6" title="مشاهده گواهی">
+                                                        <a href="<?= htmlspecialchars($certUrl, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-outline-success btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6" title="مشاهده گزارش">
                                                             <ion-icon name="ribbon-outline"></ion-icon>
-                                                            گواهی
+                                                            گزارش
                                                         </a>
                                                         <button type="button" class="btn btn-primary btn-sm rounded-pill px-16 d-inline-flex align-items-center gap-6 download-cert-btn" 
                                                                 data-evaluation-id="<?= (int) $evaluationId; ?>" 
                                                                 data-evaluatee-id="<?= (int) $evaluateeId; ?>" 
-                                                                title="دانلود گواهی به صورت PDF">
+                                                                title="دانلود گزارش به صورت PDF">
                                                             <ion-icon name="download-outline"></ion-icon>
                                                             دانلود
                                                         </button>
