@@ -211,24 +211,35 @@ CSS;
                                                 $evaluationDateRaw = trim((string) ($item['evaluation_date'] ?? ''));
                                                 $evaluationDateObject = $parsePersianEvaluationDate($evaluationDateRaw);
 
+                                                $relativeDaysDifference = null;
                                                 $isEvaluationPast = false;
+                                                $isEvaluationGraceWindow = false;
+                                                $isEvaluationExpired = false;
                                                 $isEvaluationTodayOrFuture = false;
 
                                                 if ($evaluationDateObject && $todayGregorian) {
-                                                    $evalKey = (int) $evaluationDateObject->format('Ymd');
-                                                    $todayKey = (int) $todayGregorian->format('Ymd');
+                                                    $interval = $evaluationDateObject->diff($todayGregorian);
+                                                    $relativeDaysDifference = (int) $interval->format('%r%a');
 
-                                                    if ($evalKey < $todayKey) {
+                                                    if ($relativeDaysDifference > 0) {
                                                         $isEvaluationPast = true;
-                                                    } else {
+                                                    }
+
+                                                    if ($relativeDaysDifference >= 3) {
+                                                        $isEvaluationExpired = true;
+                                                    }
+
+                                                    if ($relativeDaysDifference <= 0) {
                                                         $isEvaluationTodayOrFuture = true;
+                                                    } elseif ($relativeDaysDifference > 0 && $relativeDaysDifference < 3) {
+                                                        $isEvaluationGraceWindow = true;
                                                     }
                                                 }
 
-                                                if ($isEvaluationPast) {
+                                                if ($isEvaluationExpired) {
                                                     $statusLabel = 'تاریخ آزمون گذشته';
                                                     $statusClass = 'bg-danger-subtle text-danger';
-                                                } elseif ($isEvaluationTodayOrFuture) {
+                                                } elseif ($isEvaluationTodayOrFuture || $isEvaluationGraceWindow) {
                                                     $statusLabel = 'آماده شروع';
                                                     $statusClass = 'bg-success-subtle text-success';
                                                 } else {
@@ -237,7 +248,7 @@ CSS;
                                                 }
 
                                                 $canShowStartButton = false;
-                                                if ($isEvaluationTodayOrFuture && !empty($startExamUrl) && !empty($item['has_exam_tools']) && !$allToolsCompleted) {
+                                                if (($isEvaluationTodayOrFuture || $isEvaluationGraceWindow) && !empty($startExamUrl) && !empty($item['has_exam_tools']) && !$allToolsCompleted) {
                                                     $canShowStartButton = true;
                                                 }
                                             ?>
@@ -274,7 +285,7 @@ CSS;
                                                         <a href="<?= htmlspecialchars($startExamUrl, ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-sm btn-primary rounded-pill mt-2">
                                                             <?= $statusCode === 'in_progress' ? 'ادامه آزمون' : 'شروع آزمون'; ?>
                                                         </a>
-                                                    <?php elseif ($isEvaluationPast): ?>
+                                                    <?php elseif ($isEvaluationExpired): ?>
                                                         <div class="text-danger small mt-2">این ارزیابی مربوط به تاریخ گذشته است.</div>
                                                     <?php elseif (empty($item['has_exam_tools'])): ?>
                                                         <div class="text-muted small mt-2">برای این ارزیابی هنوز آزمونی تعریف نشده است.</div>

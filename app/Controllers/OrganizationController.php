@@ -19722,10 +19722,13 @@ TXT;
             'password' => (string)($_POST['password'] ?? ''),
             'first_name' => trim((string)($_POST['first_name'] ?? '')),
             'last_name' => trim((string)($_POST['last_name'] ?? '')),
+            'father_name' => trim((string)($_POST['father_name'] ?? '')),
             'gender' => trim((string)($_POST['gender'] ?? '')),
             'evaluation_code' => trim((string)($_POST['evaluation_code'] ?? '')),
             'national_code' => trim((string)($_POST['national_code'] ?? '')),
             'personnel_code' => trim((string)($_POST['personnel_code'] ?? '')),
+            'letter_number' => trim((string)($_POST['letter_number'] ?? '')),
+            'letter_date' => trim((string)($_POST['letter_date'] ?? '')),
             'email' => trim((string)($_POST['email'] ?? '')),
             'executive_devices' => trim((string)($_POST['executive_devices'] ?? '')),
             'province' => trim((string)($_POST['province'] ?? '')),
@@ -19788,10 +19791,40 @@ TXT;
             }
         }
 
+        $letterImageShouldUpload = false;
+        if (isset($_FILES['letter_image']) && is_array($_FILES['letter_image'])) {
+            $letterImageError = (int) ($_FILES['letter_image']['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($letterImageError !== UPLOAD_ERR_NO_FILE) {
+                $letterImageShouldUpload = true;
+                if ($letterImageError !== UPLOAD_ERR_OK) {
+                    $validationErrors['letter_image'] = 'بارگذاری تصویر نامه با خطا مواجه شد.';
+                } elseif (!FileHelper::isValidImage($_FILES['letter_image'])) {
+                    $validationErrors['letter_image'] = 'فرمت تصویر نامه معتبر نیست.';
+                }
+            }
+        }
+
         if (!empty($validationErrors)) {
             $_SESSION['validation_errors'] = $validationErrors;
             ResponseHelper::flashError('لطفاً خطاهای فرم را بررسی کنید.');
             UtilityHelper::redirect($redirectCreate);
+        }
+
+        $letterImagePath = null;
+        if ($letterImageShouldUpload) {
+            $uploadResult = FileHelper::uploadFile(
+                $_FILES['letter_image'],
+                'uploads/organizations/letter-images/',
+                ['jpg', 'jpeg', 'png', 'gif', 'webp']
+            );
+
+            if (!($uploadResult['success'] ?? false)) {
+                $_SESSION['validation_errors'] = ['letter_image' => $uploadResult['error'] ?? 'بارگذاری تصویر نامه انجام نشد.'];
+                ResponseHelper::flashError($uploadResult['error'] ?? 'بارگذاری تصویر نامه انجام نشد.');
+                UtilityHelper::redirect($redirectCreate);
+            }
+
+            $letterImagePath = (string) ($uploadResult['path'] ?? '');
         }
 
         $organization = $sessionData['organization'];
@@ -19803,6 +19836,18 @@ TXT;
         if ($organizationId <= 0 || $currentUserId === '') {
             ResponseHelper::flashError('امکان ثبت کاربر در حال حاضر وجود ندارد.');
             UtilityHelper::redirect($redirectCreate);
+        }
+
+        $normalizedLetterNumber = $input['letter_number'] !== ''
+            ? $input['letter_number']
+            : null;
+
+        $normalizedLetterDate = $input['letter_date'] !== ''
+            ? $input['letter_date']
+            : null;
+
+        if ($normalizedLetterDate !== null) {
+            $normalizedLetterDate = str_replace('-', '/', $normalizedLetterDate);
         }
 
         try {
@@ -19830,10 +19875,14 @@ TXT;
                 'password_hash' => $passwordHash,
                 'first_name' => $input['first_name'],
                 'last_name' => $input['last_name'],
+                'father_name' => $input['father_name'] !== '' ? $input['father_name'] : null,
                 'gender' => $input['gender'] !== '' ? $input['gender'] : null,
                 'evaluation_code' => $input['evaluation_code'],
                 'national_code' => $input['national_code'],
                 'personnel_code' => $input['personnel_code'],
+                'letter_number' => $normalizedLetterNumber,
+                'letter_date' => $normalizedLetterDate,
+                'letter_image_path' => $letterImagePath !== '' ? $letterImagePath : null,
                 'email' => $input['email'] !== '' ? $input['email'] : null,
                 'executive_devices' => $input['executive_devices'] !== '' ? $input['executive_devices'] : null,
                 'province' => $input['province'] !== '' ? $input['province'] : null,
@@ -19855,6 +19904,10 @@ TXT;
             ResponseHelper::flashSuccess('کاربر جدید با موفقیت ثبت شد.');
             UtilityHelper::redirect($redirectIndex);
         } catch (Exception $exception) {
+            if ($letterImagePath !== null && $letterImagePath !== '') {
+                FileHelper::deleteFile($letterImagePath);
+            }
+
             ResponseHelper::flashError('در هنگام ذخیره اطلاعات خطایی رخ داد.');
             UtilityHelper::redirect($redirectCreate);
         }
@@ -20125,10 +20178,13 @@ TXT;
             'password' => (string) ($_POST['password'] ?? ''),
             'first_name' => trim((string) ($_POST['first_name'] ?? '')),
             'last_name' => trim((string) ($_POST['last_name'] ?? '')),
+            'father_name' => trim((string) ($_POST['father_name'] ?? '')),
             'gender' => trim((string) ($_POST['gender'] ?? '')),
             'evaluation_code' => trim((string) ($_POST['evaluation_code'] ?? '')),
             'national_code' => trim((string) ($_POST['national_code'] ?? '')),
             'personnel_code' => trim((string) ($_POST['personnel_code'] ?? '')),
+            'letter_number' => trim((string) ($_POST['letter_number'] ?? '')),
+            'letter_date' => trim((string) ($_POST['letter_date'] ?? '')),
             'email' => trim((string) ($_POST['email'] ?? '')),
             'executive_devices' => trim((string) ($_POST['executive_devices'] ?? '')),
             'province' => trim((string) ($_POST['province'] ?? '')),
@@ -20191,6 +20247,19 @@ TXT;
             }
         }
 
+        $letterImageShouldUpload = false;
+        if (isset($_FILES['letter_image']) && is_array($_FILES['letter_image'])) {
+            $letterImageError = (int) ($_FILES['letter_image']['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($letterImageError !== UPLOAD_ERR_NO_FILE) {
+                $letterImageShouldUpload = true;
+                if ($letterImageError !== UPLOAD_ERR_OK) {
+                    $validationErrors['letter_image'] = 'بارگذاری تصویر نامه با خطا مواجه شد.';
+                } elseif (!FileHelper::isValidImage($_FILES['letter_image'])) {
+                    $validationErrors['letter_image'] = 'فرمت تصویر نامه معتبر نیست.';
+                }
+            }
+        }
+
         if ($input['username'] !== '' && $input['username'] !== ($organizationUser['username'] ?? '')) {
             try {
                 $existingUser = DatabaseHelper::fetchOne(
@@ -20217,14 +20286,46 @@ TXT;
             UtilityHelper::redirect($redirectEdit);
         }
 
+        $letterImagePath = null;
+        if ($letterImageShouldUpload) {
+            $uploadResult = FileHelper::uploadFile(
+                $_FILES['letter_image'],
+                'uploads/organizations/letter-images/',
+                ['jpg', 'jpeg', 'png', 'gif', 'webp']
+            );
+
+            if (!($uploadResult['success'] ?? false)) {
+                $_SESSION['validation_errors'] = ['letter_image' => $uploadResult['error'] ?? 'بارگذاری تصویر نامه انجام نشد.'];
+                ResponseHelper::flashError($uploadResult['error'] ?? 'بارگذاری تصویر نامه انجام نشد.');
+                UtilityHelper::redirect($redirectEdit);
+            }
+
+            $letterImagePath = (string) ($uploadResult['path'] ?? '');
+        }
+
+        $normalizedLetterNumber = $input['letter_number'] !== ''
+            ? $input['letter_number']
+            : null;
+
+        $normalizedLetterDate = $input['letter_date'] !== ''
+            ? $input['letter_date']
+            : null;
+
+        if ($normalizedLetterDate !== null) {
+            $normalizedLetterDate = str_replace('-', '/', $normalizedLetterDate);
+        }
+
         $updateData = [
             'username' => $input['username'],
             'first_name' => $input['first_name'],
             'last_name' => $input['last_name'],
+            'father_name' => $input['father_name'] !== '' ? $input['father_name'] : null,
             'gender' => $input['gender'] !== '' ? $input['gender'] : null,
             'evaluation_code' => $input['evaluation_code'],
             'national_code' => $input['national_code'],
             'personnel_code' => $input['personnel_code'],
+            'letter_number' => $normalizedLetterNumber,
+            'letter_date' => $normalizedLetterDate,
             'email' => $input['email'] !== '' ? $input['email'] : null,
             'executive_devices' => $input['executive_devices'] !== '' ? $input['executive_devices'] : null,
             'province' => $input['province'] !== '' ? $input['province'] : null,
@@ -20247,6 +20348,10 @@ TXT;
             $updateData['password_hash'] = password_hash($input['password'], PASSWORD_BCRYPT);
         }
 
+        if ($letterImagePath !== null && $letterImagePath !== '') {
+            $updateData['letter_image_path'] = $letterImagePath;
+        }
+
         try {
             DatabaseHelper::update(
                 'organization_users',
@@ -20255,11 +20360,19 @@ TXT;
                 ['id' => $userId, 'organization_id' => $organizationId]
             );
 
+            if ($letterImagePath !== null && $letterImagePath !== '' && !empty($organizationUser['letter_image_path']) && $organizationUser['letter_image_path'] !== $letterImagePath) {
+                FileHelper::deleteFile((string) $organizationUser['letter_image_path']);
+            }
+
             unset($_SESSION['old_input'], $_SESSION['validation_errors']);
 
             ResponseHelper::flashSuccess('اطلاعات کاربر با موفقیت بروزرسانی شد.');
             UtilityHelper::redirect($redirectIndex);
         } catch (Exception $exception) {
+            if ($letterImagePath !== null && $letterImagePath !== '') {
+                FileHelper::deleteFile($letterImagePath);
+            }
+
             ResponseHelper::flashError('در هنگام بروزرسانی اطلاعات خطایی رخ داد.');
             UtilityHelper::redirect($redirectEdit);
         }
@@ -27104,6 +27217,10 @@ SQL;
         $this->ensureOrganizationUsersColumn('organization_users', 'organization_post', 'VARCHAR(191) NULL', 'ADD COLUMN');
         $this->ensureOrganizationUsersColumn('organization_users', 'organization_name', 'VARCHAR(191) NULL', 'ADD COLUMN');
         $this->ensureOrganizationUsersColumn('organization_users', 'organization_role_id', 'BIGINT UNSIGNED NULL', 'ADD COLUMN');
+    $this->ensureOrganizationUsersColumn('organization_users', 'father_name', 'VARCHAR(100) NULL', 'ADD COLUMN');
+    $this->ensureOrganizationUsersColumn('organization_users', 'letter_number', 'VARCHAR(100) NULL', 'ADD COLUMN');
+    $this->ensureOrganizationUsersColumn('organization_users', 'letter_date', 'VARCHAR(50) NULL', 'ADD COLUMN');
+    $this->ensureOrganizationUsersColumn('organization_users', 'letter_image_path', 'VARCHAR(255) NULL', 'ADD COLUMN');
 
         $this->ensureOrganizationUsersIndex('organization_users', 'uq_org_users_username', 'UNIQUE KEY uq_org_users_username (organization_id, username)');
         $this->ensureOrganizationUsersIndex('organization_users', 'idx_org_users_role', 'INDEX idx_org_users_role (organization_role_id)');
@@ -27274,6 +27391,7 @@ SQL;
             'user_id' => null,
             'first_name' => '-',
             'last_name' => '-',
+            'father_name' => null,
             'gender' => null,
             'evaluation_code' => '-',
             'is_system_admin' => 0,
@@ -27284,6 +27402,9 @@ SQL;
             'organization_name' => '-',
             'province' => '-',
             'city' => '-',
+            'letter_number' => null,
+            'letter_date' => null,
+            'letter_image_path' => null,
             'created_at' => null,
             'show_report_date_instead_of_calendar' => 0,
         ];
