@@ -60,6 +60,72 @@ $inline_styles .= <<<'CSS'
 .exam-list.muted {
     color: #94a3b8;
 }
+@media (max-width: 768px) {
+    .calendar-table {
+        min-width: 100%;
+        border-spacing: 0 18px;
+        border-collapse: separate;
+    }
+    .calendar-table thead {
+        display: none;
+    }
+    .calendar-table tbody tr {
+        display: block;
+        margin-bottom: 18px;
+        padding: 22px 20px 12px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #ffffff, #f1f5f9);
+        box-shadow: 0 16px 32px rgba(15,23,42,0.08);
+        position: relative;
+    }
+    .calendar-table tbody td {
+        display: block;
+        padding: 10px 0;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 0.95rem;
+    }
+    .calendar-table tbody td:last-child {
+        border-bottom: none;
+    }
+    .calendar-table tbody td::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #64748b;
+        margin-bottom: 6px;
+    }
+    .calendar-table tbody td.calendar-index {
+        position: absolute;
+        top: -14px;
+        right: 18px;
+        background: #e0f2fe;
+        color: #0369a1;
+        border-radius: 12px;
+        padding: 8px 14px;
+        font-weight: 700;
+        box-shadow: 0 10px 18px rgba(14,165,233,0.25);
+        border-bottom: none;
+    }
+    .calendar-table tbody td.calendar-index::before {
+        content: '';
+    }
+    .calendar-table tbody td.status-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .calendar-table tbody td.status-cell .btn {
+        width: 100%;
+    }
+    .calendar-table tbody td .exam-list-title {
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+    }
+    .calendar-table tbody td .exam-list {
+        font-size: 0.85rem;
+    }
+}
 CSS;
 
         AuthHelper::startSession();
@@ -253,27 +319,31 @@ CSS;
                                                 }
                                             ?>
                                             <tr>
-                                                <td class="text-center fw-semibold"><?= htmlspecialchars(UtilityHelper::englishToPersian((string) ($index + 1)), ENT_QUOTES, 'UTF-8'); ?></td>
-                                                <td>
+                                                <td class="text-center fw-semibold calendar-index" data-label="ردیف">
+                                                    <?= htmlspecialchars(UtilityHelper::englishToPersian((string) ($index + 1)), ENT_QUOTES, 'UTF-8'); ?>
+                                                </td>
+                                                <td data-label="عنوان ارزیابی">
                                                     <div class="fw-semibold text-dark mb-1"><?= htmlspecialchars($item['title'] ?? 'بدون عنوان', ENT_QUOTES, 'UTF-8'); ?></div>
                                                     <div class="text-secondary small">مدل: <?= htmlspecialchars($item['model'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></div>
                                                 </td>
-                                                <td><?= htmlspecialchars($item['evaluation_date'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                <td>
+                                                <td data-label="تاریخ">
+                                                    <?= htmlspecialchars($item['evaluation_date'] ?? '—', ENT_QUOTES, 'UTF-8'); ?>
+                                                </td>
+                                                <td data-label="آزمون‌های تکمیل‌شده">
                                                     <div class="exam-list-title text-success fw-semibold">تکمیل شده</div>
                                                     <div class="exam-list <?= $completedLabel === '—' ? 'muted' : 'text-success'; ?>">
                                                         <?= htmlspecialchars($completedLabel, ENT_QUOTES, 'UTF-8'); ?>
                                                     </div>
                                                     <div class="small text-muted mt-1">تعداد: <?= htmlspecialchars(UtilityHelper::englishToPersian((string) ($item['completed_tools_count'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></div>
                                                 </td>
-                                                <td>
+                                                <td data-label="آزمون‌های باقی‌مانده">
                                                     <div class="exam-list-title text-danger fw-semibold">باقی‌مانده</div>
                                                     <div class="exam-list <?= $remainingLabel === '—' ? 'muted' : 'text-danger'; ?>">
                                                         <?= htmlspecialchars($remainingLabel, ENT_QUOTES, 'UTF-8'); ?>
                                                     </div>
                                                     <div class="small text-muted mt-1">تعداد: <?= htmlspecialchars(UtilityHelper::englishToPersian((string) ($item['incomplete_tools_count'] ?? 0)), ENT_QUOTES, 'UTF-8'); ?></div>
                                                 </td>
-                                                <td>
+                                                <td class="status-cell" data-label="وضعیت / اقدام">
                                                     <div>
                                                         <span class="status-badge <?= htmlspecialchars($statusClass, ENT_QUOTES, 'UTF-8'); ?>">
                                                             <?= htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8'); ?>
