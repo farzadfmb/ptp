@@ -8,6 +8,7 @@ class OrganizationController
     'dashboard' => ['dashboard_overview_view'],
     // Profile should be accessible to all authenticated organization users
     'organizationProfile' => [],
+    'contactInfo' => [],
         'reportSettings' => ['org_report_settings_manage'],
         'createReportSetting' => ['org_report_settings_manage'],
         'editReportSetting' => ['org_report_settings_manage'],
@@ -58,6 +59,24 @@ class OrganizationController
     private $currentAction = null;
 
     private $cachedSessionData = null;
+
+    private function getTimeSlotOptions(): array
+    {
+        $slots = [];
+        for ($hour = 0; $hour < 24; $hour++) {
+            foreach ([0, 30] as $minute) {
+                $slots[] = sprintf('%02d:%02d', $hour, $minute);
+            }
+        }
+
+        return $slots;
+    }
+
+    private function convertTimeToMinutes(string $time): int
+    {
+        [$hour, $minute] = array_pad(explode(':', $time, 2), 2, '0');
+        return ((int) $hour * 60) + (int) $minute;
+    }
 
     private function getDashboardSummaryCards(int $organizationId): array
     {
@@ -791,6 +810,445 @@ class OrganizationController
         ];
 
         include __DIR__ . '/../Views/organizations/profile/index.php';
+    }
+
+    public function contactInfo(): void
+    {
+        $sessionData = $this->ensureOrganizationSession();
+
+        $title = 'اطلاعات تماس';
+        $user = $sessionData['user'];
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $this->ensureOrganizationContactChannelsTableExists();
+        AuthHelper::startSession();
+        $responseTimeOptions = $this->getTimeSlotOptions();
+
+        $availableDayOptions = [
+            'sat' => 'شنبه',
+            'sun' => 'یکشنبه',
+            'mon' => 'دوشنبه',
+            'tue' => 'سه‌شنبه',
+            'wed' => 'چهارشنبه',
+            'thu' => 'پنجشنبه',
+            'fri' => 'جمعه',
+        ];
+
+        $contactChannels = [
+            'phone' => 'تلفن ثابت',
+            'mobile' => 'موبایل / پیام‌رسان',
+            'email' => 'ایمیل',
+            'ticket' => 'سامانه تیکت',
+            'inperson' => 'پشتیبانی حضوری',
+        ];
+
+        $priorityOptions = [
+            'normal' => 'اولویت معمولی',
+            'high' => 'فوری (کمتر از ۲ ساعت)',
+            'low' => 'اطلاع‌رسانی صرف',
+        ];
+
+        $validationErrors = $_SESSION['contact_directory_errors'] ?? [];
+        $oldInput = $_SESSION['contact_directory_old_input'] ?? [];
+        $pendingEditId = isset($_SESSION['contact_directory_edit_id'])
+            ? (int) $_SESSION['contact_directory_edit_id']
+            : 0;
+        unset(
+            $_SESSION['contact_directory_errors'],
+            $_SESSION['contact_directory_old_input'],
+            $_SESSION['contact_directory_edit_id']
+        );
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $redirectUrl = UtilityHelper::baseUrl('organizations/contact-info');
+            $token = (string) ($_POST['_token'] ?? '');
+            if (!AuthHelper::verifyCsrfToken($token)) {
+                ResponseHelper::flashError('توکن امنیتی نامعتبر است. لطفاً دوباره تلاش کنید.');
+                UtilityHelper::redirect($redirectUrl);
+            }
+
+            $action = (string) ($_POST['action'] ?? 'add');
+            $entryId = isset($_POST['entry_id']) ? (int) $_POST['entry_id'] : 0;
+            if ($action === 'reset') {
+                try {
+                    DatabaseHelper::delete(
+                        'organization_contact_channels',
+                        'organization_id = :organization_id',
+                        ['organization_id' => $organizationId]
+                    );
+                    ResponseHelper::flashSuccess('آرشیو اطلاعات تماس پاک‌سازی شد.');
+                } catch (Exception $exception) {
+                    ResponseHelper::flashError('در حذف اطلاعات تماس خطایی رخ داد.');
+                }
+                UtilityHelper::redirect($redirectUrl);
+            }
+
+            if ($action === 'update') {
+                if ($entryId <= 0) {
+                    ResponseHelper::flashError('شناسه کانال تماس معتبر نیست.');
+                    UtilityHelper::redirect($redirectUrl);
+                }
+
+                try {
+                    $existingEntry = DatabaseHelper::fetchOne(
+                        'SELECT id FROM organization_contact_channels WHERE id = :id AND organization_id = :organization_id LIMIT 1',
+                        [
+                            'id' => $entryId,
+                            'organization_id' => $organizationId,
+                        ]
+                    );
+                } catch (Exception $exception) {
+                    $existingEntry = null;
+                }
+
+                if (!$existingEntry) {
+                    ResponseHelper::flashError('رکورد موردنظر برای ویرایش یافت نشد.');
+                    UtilityHelper::redirect($redirectUrl);
+                }
+            }
+
+            $rawDays = $_POST['available_days'] ?? [];
+            $selectedDays = [];
+            if (is_array($rawDays)) {
+                foreach ($rawDays as $dayKey) {
+                    if (array_key_exists($dayKey, $availableDayOptions)) {
+                        $selectedDays[] = $dayKey;
+                    }
+                }
+            }
+
+            $input = [
+                'team_name' => trim((string) ($_POST['team_name'] ?? '')),
+                'contact_phone' => trim(UtilityHelper::persianToEnglish((string) ($_POST['contact_phone'] ?? ''))),
+                'contact_email' => trim((string) ($_POST['contact_email'] ?? '')),
+                'support_channel' => (string) ($_POST['support_channel'] ?? 'phone'),
+                'response_start' => trim((string) ($_POST['response_start'] ?? '')),
+                'response_end' => trim((string) ($_POST['response_end'] ?? '')),
+                'priority_level' => (string) ($_POST['priority_level'] ?? 'normal'),
+                'notes' => trim((string) ($_POST['notes'] ?? '')),
+                'support_region' => trim((string) ($_POST['support_region'] ?? '')),
+                'is_active' => isset($_POST['is_active']) ? 1 : 0,
+                'is_remote' => isset($_POST['is_remote']) ? 1 : 0,
+            ];
+            $input['available_days'] = $selectedDays;
+
+            $errors = [];
+            if ($input['team_name'] === '') {
+                $errors['team_name'] = 'نام تیم یا واحد الزامی است.';
+            }
+
+            if ($input['contact_phone'] === '' && $input['contact_email'] === '') {
+                $errors['contact_phone'] = 'حداقل یکی از روش‌های تماس (تلفن یا ایمیل) را وارد کنید.';
+            }
+
+            if ($input['contact_email'] !== '' && !filter_var($input['contact_email'], FILTER_VALIDATE_EMAIL)) {
+                $errors['contact_email'] = 'ایمیل وارد شده معتبر نیست.';
+            }
+
+            if ($input['response_start'] === '' || $input['response_end'] === '') {
+                $errors['response_start'] = 'بازه زمانی را انتخاب کنید.';
+            } elseif (!in_array($input['response_start'], $responseTimeOptions, true) || !in_array($input['response_end'], $responseTimeOptions, true)) {
+                $errors['response_start'] = 'ساعت انتخاب شده معتبر نیست.';
+            } else {
+                $startMinutes = $this->convertTimeToMinutes($input['response_start']);
+                $endMinutes = $this->convertTimeToMinutes($input['response_end']);
+                if ($endMinutes <= $startMinutes) {
+                    $errors['response_start'] = 'زمان پایان باید بعد از زمان شروع باشد.';
+                }
+            }
+
+            if (!array_key_exists($input['support_channel'], $contactChannels)) {
+                $errors['support_channel'] = 'کانال ارتباطی انتخابی معتبر نیست.';
+            }
+
+            if (!array_key_exists($input['priority_level'], $priorityOptions)) {
+                $errors['priority_level'] = 'اولویت انتخاب شده معتبر نیست.';
+            }
+
+            if (!empty($errors)) {
+                $_SESSION['contact_directory_errors'] = $errors;
+                $_SESSION['contact_directory_old_input'] = $input;
+                if ($action === 'update' && $entryId > 0) {
+                    $_SESSION['contact_directory_edit_id'] = $entryId;
+                }
+                ResponseHelper::flashError('لطفاً خطاهای فرم را بررسی کنید.');
+                UtilityHelper::redirect($redirectUrl);
+            }
+
+            $payload = [
+                'organization_id' => $organizationId,
+                'team_name' => $input['team_name'],
+                'contact_phone' => $input['contact_phone'] !== '' ? $input['contact_phone'] : null,
+                'contact_email' => $input['contact_email'] !== '' ? $input['contact_email'] : null,
+                'support_channel' => $input['support_channel'],
+                'response_start' => $input['response_start'],
+                'response_end' => $input['response_end'],
+                'priority_level' => $input['priority_level'],
+                'support_region' => $input['support_region'] !== '' ? $input['support_region'] : null,
+                'notes' => $input['notes'] !== '' ? $input['notes'] : null,
+                'available_days' => !empty($selectedDays) ? json_encode($selectedDays, JSON_UNESCAPED_UNICODE) : null,
+                'is_active' => $input['is_active'],
+                'is_remote' => $input['is_remote'],
+                'created_by' => (string) ($user['id'] ?? ($user['username'] ?? null)),
+            ];
+
+            if ($action === 'update') {
+                $updatePayload = $payload;
+                unset($updatePayload['organization_id'], $updatePayload['created_by']);
+
+                try {
+                    DatabaseHelper::update(
+                        'organization_contact_channels',
+                        $updatePayload,
+                        'id = :id AND organization_id = :organization_id',
+                        [
+                            'id' => $entryId,
+                            'organization_id' => $organizationId,
+                        ]
+                    );
+                } catch (Exception $exception) {
+                    $_SESSION['contact_directory_edit_id'] = $entryId;
+                    ResponseHelper::flashError('در به‌روزرسانی اطلاعات تماس خطایی رخ داد.');
+                    UtilityHelper::redirect($redirectUrl);
+                }
+
+                unset($_SESSION['contact_directory_errors'], $_SESSION['contact_directory_old_input']);
+                ResponseHelper::flashSuccess('اطلاعات تماس با موفقیت به‌روزرسانی شد.');
+                UtilityHelper::redirect($redirectUrl);
+            }
+
+            try {
+                DatabaseHelper::insert('organization_contact_channels', $payload);
+            } catch (Exception $exception) {
+                ResponseHelper::flashError('در ذخیره‌سازی اطلاعات تماس خطایی رخ داد.');
+                UtilityHelper::redirect($redirectUrl);
+            }
+
+            unset($_SESSION['contact_directory_errors'], $_SESSION['contact_directory_old_input']);
+            ResponseHelper::flashSuccess('اطلاعات تماس جدید با موفقیت ثبت شد.');
+            UtilityHelper::redirect($redirectUrl);
+        }
+
+        $contactEntries = [];
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT id, organization_id, team_name, contact_phone, contact_email, support_channel, response_start, response_end, priority_level, support_region, notes, available_days, is_active, is_remote, created_at
+                 FROM organization_contact_channels
+                 WHERE organization_id = :organization_id
+                 ORDER BY created_at DESC
+                 LIMIT 12',
+                ['organization_id' => $organizationId]
+            );
+
+            foreach ($rows as $row) {
+                $decodedDays = [];
+                if (!empty($row['available_days'])) {
+                    $decoded = json_decode((string) $row['available_days'], true);
+                    if (is_array($decoded)) {
+                        $decodedDays = $decoded;
+                    }
+                }
+                $row['available_days'] = $decodedDays;
+                if (!empty($row['response_start']) && !empty($row['response_end'])) {
+                    $row['response_hours'] = $row['response_start'] . ' تا ' . $row['response_end'];
+                }
+                $contactEntries[] = $row;
+            }
+        } catch (Exception $exception) {
+            $contactEntries = [];
+        }
+
+        $totalContactCount = 0;
+        $activeContactCount = 0;
+        try {
+            $aggregate = DatabaseHelper::fetchOne(
+                'SELECT COUNT(*) AS total_count, SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active_count
+                 FROM organization_contact_channels
+                 WHERE organization_id = :organization_id',
+                ['organization_id' => $organizationId]
+            );
+            $totalContactCount = (int) ($aggregate['total_count'] ?? 0);
+            $activeContactCount = (int) ($aggregate['active_count'] ?? 0);
+        } catch (Exception $exception) {
+            $totalContactCount = count($contactEntries);
+            foreach ($contactEntries as $entryRow) {
+                if (!empty($entryRow['is_active'])) {
+                    $activeContactCount++;
+                }
+            }
+        }
+
+        $editingEntryId = 0;
+        $editingEntry = null;
+        $requestedEditId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
+        if ($requestedEditId > 0) {
+            $editingEntryId = $requestedEditId;
+        } elseif ($pendingEditId > 0) {
+            $editingEntryId = $pendingEditId;
+        }
+
+        if ($editingEntryId > 0) {
+            try {
+                $editingEntry = DatabaseHelper::fetchOne(
+                    'SELECT id, team_name, contact_phone, contact_email, support_channel, response_start, response_end, priority_level, support_region, notes, available_days, is_active, is_remote
+                     FROM organization_contact_channels
+                     WHERE id = :id AND organization_id = :organization_id
+                     LIMIT 1',
+                    [
+                        'id' => $editingEntryId,
+                        'organization_id' => $organizationId,
+                    ]
+                );
+            } catch (Exception $exception) {
+                $editingEntry = null;
+            }
+
+            if (!$editingEntry) {
+                ResponseHelper::flashError('کانال انتخابی برای ویرایش یافت نشد.');
+                UtilityHelper::redirect(UtilityHelper::baseUrl('organizations/contact-info'));
+            }
+
+            $decodedDays = [];
+            if (!empty($editingEntry['available_days'])) {
+                $decoded = json_decode((string) $editingEntry['available_days'], true);
+                if (is_array($decoded)) {
+                    $decodedDays = $decoded;
+                }
+            }
+            $editingEntry['available_days'] = $decodedDays;
+
+            $editDefaults = [
+                'team_name' => (string) ($editingEntry['team_name'] ?? ''),
+                'contact_phone' => (string) ($editingEntry['contact_phone'] ?? ''),
+                'contact_email' => (string) ($editingEntry['contact_email'] ?? ''),
+                'support_channel' => (string) ($editingEntry['support_channel'] ?? 'phone'),
+                'response_start' => (string) ($editingEntry['response_start'] ?? ''),
+                'response_end' => (string) ($editingEntry['response_end'] ?? ''),
+                'priority_level' => (string) ($editingEntry['priority_level'] ?? 'normal'),
+                'support_region' => (string) ($editingEntry['support_region'] ?? ''),
+                'notes' => (string) ($editingEntry['notes'] ?? ''),
+                'available_days' => $editingEntry['available_days'],
+                'is_active' => !empty($editingEntry['is_active']) ? 1 : 0,
+                'is_remote' => !empty($editingEntry['is_remote']) ? 1 : 0,
+            ];
+
+            $oldInput = array_merge($editDefaults, $oldInput);
+        }
+
+        $csrfToken = AuthHelper::generateCsrfToken();
+        include __DIR__ . '/../Views/organizations/contact-info.php';
+    }
+
+    public function organizationSupport(): void
+    {
+        $sessionData = $this->ensureOrganizationSession();
+
+        AuthHelper::startSession();
+        $this->ensureOrganizationContactChannelsTableExists();
+
+        $title = 'پشتیبانی سازمان';
+        $user = $sessionData['user'];
+        $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $availableDayOptions = [
+            'sat' => 'شنبه',
+            'sun' => 'یکشنبه',
+            'mon' => 'دوشنبه',
+            'tue' => 'سه‌شنبه',
+            'wed' => 'چهارشنبه',
+            'thu' => 'پنجشنبه',
+            'fri' => 'جمعه',
+        ];
+
+        $contactChannels = [
+            'phone' => 'تلفن ثابت',
+            'mobile' => 'موبایل / پیام‌رسان',
+            'email' => 'ایمیل',
+            'ticket' => 'سامانه تیکت',
+            'inperson' => 'پشتیبانی حضوری',
+        ];
+
+        $priorityOptions = [
+            'normal' => 'اولویت معمولی',
+            'high' => 'فوری (کمتر از ۲ ساعت)',
+            'low' => 'اطلاع‌رسانی صرف',
+        ];
+
+        $contactEntries = [];
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT id, team_name, contact_phone, contact_email, support_channel, response_start, response_end, priority_level, support_region, notes, available_days, is_active, is_remote, created_at
+                 FROM organization_contact_channels
+                 WHERE organization_id = :organization_id
+                 ORDER BY is_active DESC, priority_level = \'high\' DESC, priority_level = \'normal\' DESC, created_at DESC',
+                ['organization_id' => $organizationId]
+            );
+
+            foreach ($rows as $row) {
+                $decodedDays = [];
+                if (!empty($row['available_days'])) {
+                    $decoded = json_decode((string) $row['available_days'], true);
+                    if (is_array($decoded)) {
+                        $decodedDays = $decoded;
+                    }
+                }
+                $row['available_days'] = $decodedDays;
+                if (!empty($row['response_start']) && !empty($row['response_end'])) {
+                    $row['response_hours'] = $row['response_start'] . ' تا ' . $row['response_end'];
+                } else {
+                    $row['response_hours'] = null;
+                }
+                $contactEntries[] = $row;
+            }
+        } catch (Exception $exception) {
+            $contactEntries = [];
+        }
+
+        $totalContactCount = count($contactEntries);
+        $activeContactCount = 0;
+        $remoteContactCount = 0;
+        $channelStats = [];
+        $latestUpdate = null;
+
+        foreach ($contactEntries as $entry) {
+            if (!empty($entry['is_active'])) {
+                $activeContactCount++;
+            }
+            if (!empty($entry['is_remote'])) {
+                $remoteContactCount++;
+            }
+
+            $channelKey = (string) ($entry['support_channel'] ?? 'phone');
+            if (!isset($channelStats[$channelKey])) {
+                $channelStats[$channelKey] = [
+                    'label' => $contactChannels[$channelKey] ?? 'نامشخص',
+                    'count' => 0,
+                    'active' => 0,
+                ];
+            }
+            $channelStats[$channelKey]['count']++;
+            if (!empty($entry['is_active'])) {
+                $channelStats[$channelKey]['active']++;
+            }
+
+            if (!empty($entry['created_at'])) {
+                $timestamp = strtotime((string) $entry['created_at']);
+                if ($timestamp !== false && ($latestUpdate === null || $timestamp > $latestUpdate)) {
+                    $latestUpdate = $timestamp;
+                }
+            }
+        }
+
+        $supportHighlights = [
+            'total' => $totalContactCount,
+            'active' => $activeContactCount,
+            'inactive' => max($totalContactCount - $activeContactCount, 0),
+            'remote' => $remoteContactCount,
+        ];
+
+        include __DIR__ . '/../Views/organizations/support/index.php';
     }
 
     public function reportSettings(): void
@@ -21148,6 +21606,41 @@ XML
         return $competencies;
     }
 
+    private function getCourseCompetencyIds(int $organizationId, int $courseId): array
+    {
+        if ($organizationId <= 0 || $courseId <= 0) {
+            return [];
+        }
+
+        try {
+            $rows = DatabaseHelper::fetchAll(
+                'SELECT competency_id FROM organization_course_competencies WHERE organization_id = :organization_id AND course_id = :course_id',
+                [
+                    'organization_id' => $organizationId,
+                    'course_id' => $courseId,
+                ]
+            );
+        } catch (Exception $exception) {
+            return [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['competency_id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $ids[$id] = $id;
+        }
+
+        return array_values($ids);
+    }
+
     private function normalizeCompetencyIdArray($input): array
     {
         if (!is_array($input)) {
@@ -21826,6 +22319,47 @@ SQL;
         $this->ensureOrganizationCompetencyModelItemsIndex('idx_org_competency_model_items_model', 'INDEX idx_org_competency_model_items_model (model_id)');
         $this->ensureOrganizationCompetencyModelItemsIndex('idx_org_competency_model_items_competency', 'INDEX idx_org_competency_model_items_competency (competency_id)');
         $this->ensureOrganizationCompetencyModelItemsUnique('uq_org_competency_model_items', 'UNIQUE KEY uq_org_competency_model_items (organization_id, model_id, competency_id)');
+
+        $ensured = true;
+    }
+
+    private function ensureOrganizationContactChannelsTableExists(): void
+    {
+        static $ensured = false;
+
+        if ($ensured) {
+            return;
+        }
+
+        try {
+            $createTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS organization_contact_channels (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    organization_id BIGINT UNSIGNED NOT NULL,
+    team_name VARCHAR(255) NOT NULL,
+    contact_phone VARCHAR(64) DEFAULT NULL,
+    contact_email VARCHAR(191) DEFAULT NULL,
+    support_channel VARCHAR(50) NOT NULL,
+    response_start CHAR(5) NOT NULL,
+    response_end CHAR(5) NOT NULL,
+    priority_level VARCHAR(20) NOT NULL DEFAULT 'normal',
+    support_region VARCHAR(191) DEFAULT NULL,
+    notes TEXT NULL,
+    available_days TEXT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    is_remote TINYINT(1) NOT NULL DEFAULT 0,
+    created_by VARCHAR(191) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_org_contact_channels_org (organization_id),
+    INDEX idx_org_contact_channels_active (organization_id, is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL;
+
+            DatabaseHelper::query($createTableSql);
+        } catch (Exception $exception) {
+            // Fail silently; follow-up queries will reveal the issue if needed.
+        }
 
         $ensured = true;
     }
@@ -34372,9 +34906,18 @@ SQL;
             $courses = [];
         }
 
+        // Prepare map for easy access by course id
+        $courseMap = [];
+
         // Get lesson counts and enrollment counts for each course
         foreach ($courses as &$course) {
             $courseId = (int) ($course['id'] ?? 0);
+            if ($courseId <= 0) {
+                $course['competency_titles'] = [];
+            } else {
+                $courseMap[$courseId] =& $course;
+                $course['competency_titles'] = [];
+            }
             
             // Count lessons
             try {
@@ -34400,6 +34943,52 @@ SQL;
         }
         unset($course);
 
+        // Load associated competency titles for listed courses
+        if (!empty($courseMap)) {
+            $bindings = ['organization_id' => $organizationId];
+            $placeholders = [];
+            $index = 0;
+            foreach (array_keys($courseMap) as $courseId) {
+                $placeholder = ':course_id_' . $index;
+                $placeholders[] = $placeholder;
+                $bindings[$placeholder] = $courseId;
+                $index++;
+            }
+
+            try {
+                $competencyRows = DatabaseHelper::fetchAll(
+                    'SELECT occ.course_id, oc.title AS competency_title
+                     FROM organization_course_competencies occ
+                     INNER JOIN organization_competencies oc ON oc.id = occ.competency_id
+                     WHERE occ.organization_id = :organization_id
+                       AND occ.course_id IN (' . implode(',', $placeholders) . ')
+                     ORDER BY oc.title ASC',
+                    $bindings
+                );
+            } catch (Exception $exception) {
+                $competencyRows = [];
+            }
+
+            if (!empty($competencyRows)) {
+                foreach ($competencyRows as $row) {
+                    $courseId = (int) ($row['course_id'] ?? 0);
+                    if (!isset($courseMap[$courseId])) {
+                        continue;
+                    }
+
+                    $competencyTitle = trim((string) ($row['competency_title'] ?? ''));
+                    if ($competencyTitle === '') {
+                        $competencyTitle = 'شایستگی بدون عنوان';
+                    }
+
+                    $courseMap[$courseId]['competency_titles'][] = $competencyTitle;
+                }
+            }
+
+            unset($competencyRows);
+        }
+        unset($courseMap);
+
         $successMessage = flash('success');
         $errorMessage = flash('error');
 
@@ -34412,10 +35001,20 @@ SQL;
         AuthHelper::startSession();
 
         $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationCompetencyDimensionsTableExists();
+        $this->ensureOrganizationCompetenciesTableExists();
+        $this->ensureOrganizationCourseCompetenciesTableExists();
+        $this->ensureOrganizationCompetencyDimensionsTableExists();
+        $this->ensureOrganizationCompetenciesTableExists();
+        $this->ensureOrganizationCourseCompetenciesTableExists();
 
         $title = 'ایجاد دوره جدید';
         $user = $sessionData['user'];
         $organization = $sessionData['organization'];
+        $organizationId = (int) ($organization['id'] ?? 0);
+
+        $competencies = $this->fetchOrganizationCompetenciesForModels($organizationId);
+        $selectedCourseCompetencyIds = [];
 
         include __DIR__ . '/../Views/organizations/courses/create.php';
     }
@@ -34426,9 +35025,14 @@ SQL;
         AuthHelper::startSession();
 
         $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationCompetencyDimensionsTableExists();
+        $this->ensureOrganizationCompetenciesTableExists();
+        $this->ensureOrganizationCourseCompetenciesTableExists();
 
         $organization = $sessionData['organization'];
+        $user = $sessionData['user'];
         $organizationId = (int) ($organization['id'] ?? 0);
+        $userIdentifier = (string) ($user['id'] ?? '');
 
         $title = trim((string) ($_POST['title'] ?? ''));
         $description = trim((string) ($_POST['description'] ?? ''));
@@ -34439,6 +35043,9 @@ SQL;
         $status = trim((string) ($_POST['status'] ?? 'draft'));
         $sortOrder = (int) ($_POST['sort_order'] ?? 0);
         $publishedAt = !empty($_POST['published_at']) ? trim((string) $_POST['published_at']) : null;
+        $rawCompetencyIds = $_POST['competency_ids'] ?? [];
+        $normalizedCompetencyIds = $this->normalizeCompetencyIdArray($rawCompetencyIds);
+        $validCompetencyIds = $this->filterValidCompetencyIds($normalizedCompetencyIds, $organizationId);
 
         if ($title === '') {
             ResponseHelper::flashError('عنوان دوره الزامی است.');
@@ -34464,26 +35071,39 @@ SQL;
         }
 
         try {
-            DatabaseHelper::query(
-                'INSERT INTO organization_courses (organization_id, title, description, category, instructor_name, price, duration_hours, cover_image, status, sort_order, published_at) VALUES (:organization_id, :title, :description, :category, :instructor_name, :price, :duration_hours, :cover_image, :status, :sort_order, :published_at)',
-                [
-                    'organization_id' => $organizationId,
-                    'title' => $title,
-                    'description' => $description,
-                    'category' => $category,
-                    'instructor_name' => $instructorName,
-                    'price' => $price,
-                    'duration_hours' => $durationHours,
-                    'cover_image' => $coverImage,
-                    'status' => $status,
-                    'sort_order' => $sortOrder,
-                    'published_at' => $publishedAt,
-                ]
-            );
+            DatabaseHelper::beginTransaction();
+
+            $courseId = (int) DatabaseHelper::insert('organization_courses', [
+                'organization_id' => $organizationId,
+                'title' => $title,
+                'description' => $description,
+                'category' => $category,
+                'instructor_name' => $instructorName,
+                'price' => $price,
+                'duration_hours' => $durationHours,
+                'cover_image' => $coverImage,
+                'status' => $status,
+                'sort_order' => $sortOrder,
+                'published_at' => $publishedAt,
+            ]);
+
+            if (!empty($courseId) && !empty($validCompetencyIds)) {
+                foreach ($validCompetencyIds as $competencyId) {
+                    DatabaseHelper::insert('organization_course_competencies', [
+                        'organization_id' => $organizationId,
+                        'course_id' => $courseId,
+                        'competency_id' => $competencyId,
+                        'user_id' => $userIdentifier,
+                    ]);
+                }
+            }
+
+            DatabaseHelper::commit();
 
             ResponseHelper::flashSuccess('دوره با موفقیت ایجاد شد.');
             header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
         } catch (Exception $exception) {
+            DatabaseHelper::rollback();
             ResponseHelper::flashError('خطا در ایجاد دوره: ' . $exception->getMessage());
             header('Location: ' . UtilityHelper::baseUrl('organizations/courses/create'));
         }
@@ -34525,6 +35145,9 @@ SQL;
             exit;
         }
 
+        $competencies = $this->fetchOrganizationCompetenciesForModels($organizationId);
+        $selectedCourseCompetencyIds = $this->getCourseCompetencyIds($organizationId, (int) ($course['id'] ?? 0));
+
         include __DIR__ . '/../Views/organizations/courses/edit.php';
     }
 
@@ -34534,9 +35157,14 @@ SQL;
         AuthHelper::startSession();
 
         $this->ensureOrganizationCoursesTableExists();
+        $this->ensureOrganizationCompetencyDimensionsTableExists();
+        $this->ensureOrganizationCompetenciesTableExists();
+        $this->ensureOrganizationCourseCompetenciesTableExists();
 
         $organization = $sessionData['organization'];
+        $user = $sessionData['user'];
         $organizationId = (int) ($organization['id'] ?? 0);
+        $userIdentifier = (string) ($user['id'] ?? '');
 
         $courseId = (int) ($_POST['course_id'] ?? $_POST['id'] ?? 0);
         $title = trim((string) ($_POST['title'] ?? ''));
@@ -34548,6 +35176,9 @@ SQL;
         $status = trim((string) ($_POST['status'] ?? 'draft'));
         $sortOrder = (int) ($_POST['sort_order'] ?? 0);
         $publishedAt = !empty($_POST['published_at']) ? trim((string) $_POST['published_at']) : null;
+        $rawCompetencyIds = $_POST['competency_ids'] ?? [];
+        $normalizedCompetencyIds = $this->normalizeCompetencyIdArray($rawCompetencyIds);
+        $validCompetencyIds = $this->filterValidCompetencyIds($normalizedCompetencyIds, $organizationId);
 
         if ($courseId <= 0 || $title === '') {
             ResponseHelper::flashError('اطلاعات نامعتبر است.');
@@ -34597,6 +35228,8 @@ SQL;
         }
 
         try {
+            DatabaseHelper::beginTransaction();
+
             DatabaseHelper::query(
                 'UPDATE organization_courses SET title = :title, description = :description, category = :category, instructor_name = :instructor_name, price = :price, duration_hours = :duration_hours, cover_image = :cover_image, status = :status, sort_order = :sort_order, published_at = :published_at WHERE id = :id AND organization_id = :organization_id',
                 [
@@ -34615,9 +35248,29 @@ SQL;
                 ]
             );
 
+            DatabaseHelper::delete(
+                'organization_course_competencies',
+                'organization_id = :organization_id AND course_id = :course_id',
+                ['organization_id' => $organizationId, 'course_id' => $courseId]
+            );
+
+            if (!empty($validCompetencyIds)) {
+                foreach ($validCompetencyIds as $competencyId) {
+                    DatabaseHelper::insert('organization_course_competencies', [
+                        'organization_id' => $organizationId,
+                        'course_id' => $courseId,
+                        'competency_id' => $competencyId,
+                        'user_id' => $userIdentifier,
+                    ]);
+                }
+            }
+
+            DatabaseHelper::commit();
+
             ResponseHelper::flashSuccess('دوره با موفقیت به‌روزرسانی شد.');
             header('Location: ' . UtilityHelper::baseUrl('organizations/courses'));
         } catch (Exception $exception) {
+            DatabaseHelper::rollback();
             ResponseHelper::flashError('خطا در به‌روزرسانی دوره: ' . $exception->getMessage());
             header('Location: ' . UtilityHelper::baseUrl('organizations/courses/edit?id=' . $courseId));
         }

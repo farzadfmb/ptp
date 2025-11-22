@@ -13,6 +13,9 @@ include __DIR__ . '/../../layouts/organization-sidebar.php';
 $navbarUser = $user;
 include __DIR__ . '/../../layouts/organization-navbar.php';
 
+$competencies = isset($competencies) && is_array($competencies) ? $competencies : [];
+$selectedCourseCompetencyIds = isset($selectedCourseCompetencyIds) && is_array($selectedCourseCompetencyIds) ? $selectedCourseCompetencyIds : [];
+
 // Status labels
 $statusLabels = [
     'draft' => 'پیش‌نویس',
@@ -129,6 +132,48 @@ if (!empty($course['published_at'])) {
         margin-top: 6px;
     }
     
+    .competency-checklist-container {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 12px;
+        background: #f8fafc;
+        max-height: 260px;
+        overflow-y: auto;
+    }
+
+    .competency-checklist {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 8px 12px;
+    }
+
+    .competency-check-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: white;
+        border: 1px solid #e2e8f0;
+        transition: all 0.2s ease;
+        font-size: 14px;
+    }
+
+    .competency-check-item input {
+        width: 16px;
+        height: 16px;
+    }
+
+    .competency-check-item span {
+        color: #0f172a;
+        font-weight: 500;
+    }
+
+    .competency-check-item:hover {
+        border-color: #94a3b8;
+        background: #f1f5f9;
+    }
+
     .required-mark {
         color: #ef4444;
         margin-right: 4px;
@@ -270,7 +315,6 @@ if (!empty($course['published_at'])) {
 
         <form action="<?= UtilityHelper::baseUrl('organizations/courses/update'); ?>" method="POST" enctype="multipart/form-data">
             <input type="hidden" name="course_id" value="<?= htmlspecialchars($course['id'] ?? ''); ?>">
-            
             <div class="course-form-card">
                 <!-- Basic Information -->
                 <div class="form-section">
@@ -293,14 +337,44 @@ if (!empty($course['published_at'])) {
                             <textarea name="description" class="form-control" rows="5" placeholder="توضیحات کامل درباره دوره، اهداف آموزشی و مخاطبان"><?= htmlspecialchars($course['description'] ?? ''); ?></textarea>
                             <div class="form-hint">توضیحات کامل و جذاب برای دوره خود بنویسید</div>
                         </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label">دسته‌بندی</label>
-                            <input type="text" name="category" class="form-control" placeholder="مثال: مدیریت، فناوری، مهارت‌های نرم" value="<?= htmlspecialchars($course['category'] ?? ''); ?>">
-                            <div class="form-hint">دسته‌بندی برای گروه‌بندی دوره‌ها</div>
+
+                        <div class="col-12 col-lg-6">
+                            <label class="form-label d-flex align-items-center justify-content-between gap-2">
+                                <span>شایستگی‌ها</span>
+                                <?php if (!empty($competencies)): ?>
+                                    <span class="badge bg-light text-secondary"><?= htmlspecialchars(UtilityHelper::englishToPersian((string) count($competencies)), ENT_QUOTES, 'UTF-8'); ?> مورد در دسترس</span>
+                                <?php endif; ?>
+                            </label>
+                            <?php if (!empty($competencies)): ?>
+                                <div class="competency-checklist-container">
+                                    <div class="competency-checklist">
+                                        <?php foreach ($competencies as $competency):
+                                            $competencyId = (int) ($competency['id'] ?? 0);
+                                            if ($competencyId <= 0) {
+                                                continue;
+                                            }
+                                            $title = trim((string) ($competency['title'] ?? ''));
+                                            $title = $title !== '' ? $title : 'بدون عنوان';
+                                            $isChecked = in_array($competencyId, $selectedCourseCompetencyIds, true);
+                                        ?>
+                                            <label class="competency-check-item">
+                                                <input type="checkbox" name="competency_ids[]" value="<?= htmlspecialchars((string) $competencyId, ENT_QUOTES, 'UTF-8'); ?>" <?= $isChecked ? 'checked' : ''; ?>>
+                                                <span><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <div class="form-hint">با انتخاب چند شایستگی، دوره با مهارت‌های مدنظر پیوند می‌خورد.</div>
+                            <?php else: ?>
+                                <div class="alert alert-warning mb-0">
+                                    هنوز شایستگی‌ای برای سازمان شما ثبت نشده است. ابتدا از طریق
+                                    <a href="<?= UtilityHelper::baseUrl('organizations/competencies/create'); ?>" class="alert-link">ایجاد شایستگی جدید</a>
+                                    موارد موردنیاز را اضافه کنید.
+                                </div>
+                            <?php endif; ?>
                         </div>
-                        
-                        <div class="col-md-6">
+
+                        <div class="col-12 col-lg-6">
                             <label class="form-label">نام مدرس</label>
                             <input type="text" name="instructor_name" class="form-control" placeholder="نام مدرس یا تیم تدریس" value="<?= htmlspecialchars($course['instructor_name'] ?? ''); ?>">
                         </div>

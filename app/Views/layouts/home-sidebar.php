@@ -90,7 +90,11 @@ $homeSidebarMenu = [
         'icon' => 'school-sharp',
         'route' => 'courses/personal-development',
     ],
-    
+    [
+        'title' => 'پشتیبانی سازمان',
+        'icon' => 'headset-sharp',
+        'route' => 'home/support',
+    ],
 ];
 ?>
 

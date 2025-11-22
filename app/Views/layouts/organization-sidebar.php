@@ -139,6 +139,16 @@ $organizationSidebarMenu = [
         'permission' => 'dashboard_overview_view',
     ],
     [
+        'title' => 'اطلاعات تماس',
+        'icon' => 'call-sharp',
+        'route' => 'organizations/contact-info',
+    ],
+    [
+        'title' => 'پشتیبانی',
+        'icon' => 'headset-sharp',
+        'route' => 'organizations/support',
+    ],
+    [
         'title' => 'مدیریت سازمان',
         'icon' => 'briefcase-sharp',
         'permissions' => ['org_report_settings_manage', 'org_posts_manage', 'org_service_locations_manage'],

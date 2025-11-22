@@ -23,6 +23,120 @@ class HomeController {
         include __DIR__ . '/../Views/home/dashboard/index.php';
     }
 
+    public function supportCenter(): void
+    {
+        AuthHelper::startSession();
+
+        AuthHelper::requireAuth(UtilityHelper::baseUrl('user/login'));
+
+        $title = 'مرکز پشتیبانی سازمان';
+        $user = AuthHelper::getUser();
+        $organizationId = (int) ($user['organization_id'] ?? 0);
+        $organizationName = (string) ($user['organization_name'] ?? '');
+
+        $availableDayOptions = [
+            'sat' => 'شنبه',
+            'sun' => 'یکشنبه',
+            'mon' => 'دوشنبه',
+            'tue' => 'سه‌شنبه',
+            'wed' => 'چهارشنبه',
+            'thu' => 'پنجشنبه',
+            'fri' => 'جمعه',
+        ];
+
+        $contactChannels = [
+            'phone' => 'تلفن ثابت',
+            'mobile' => 'موبایل / پیام‌رسان',
+            'email' => 'ایمیل',
+            'ticket' => 'سامانه تیکت',
+            'inperson' => 'پشتیبانی حضوری',
+        ];
+
+        $priorityOptions = [
+            'normal' => 'اولویت معمولی',
+            'high' => 'فوری (کمتر از ۲ ساعت)',
+            'low' => 'اطلاع‌رسانی صرف',
+        ];
+
+        $contactEntries = [];
+        $latestUpdate = null;
+
+        if ($organizationId > 0) {
+            try {
+                $rows = DatabaseHelper::fetchAll(
+                    'SELECT team_name, contact_phone, contact_email, support_channel, response_start, response_end, priority_level, support_region, notes, available_days, is_active, is_remote, created_at
+                     FROM organization_contact_channels
+                     WHERE organization_id = :organization_id
+                     ORDER BY is_active DESC, priority_level = \'high\' DESC, priority_level = \'normal\' DESC, created_at DESC',
+                    ['organization_id' => $organizationId]
+                );
+
+                foreach ($rows as $row) {
+                    $decodedDays = [];
+                    if (!empty($row['available_days'])) {
+                        $decoded = json_decode((string) $row['available_days'], true);
+                        if (is_array($decoded)) {
+                            $decodedDays = $decoded;
+                        }
+                    }
+                    $row['available_days'] = $decodedDays;
+                    if (!empty($row['response_start']) && !empty($row['response_end'])) {
+                        $row['response_hours'] = $row['response_start'] . ' تا ' . $row['response_end'];
+                    } else {
+                        $row['response_hours'] = null;
+                    }
+
+                    if (!empty($row['created_at'])) {
+                        $timestamp = strtotime((string) $row['created_at']);
+                        if ($timestamp !== false && ($latestUpdate === null || $timestamp > $latestUpdate)) {
+                            $latestUpdate = $timestamp;
+                        }
+                    }
+
+                    $contactEntries[] = $row;
+                }
+            } catch (Exception $exception) {
+                $contactEntries = [];
+            }
+        }
+
+        $totalContactCount = count($contactEntries);
+        $activeContactCount = 0;
+        $remoteContactCount = 0;
+        $channelStats = [];
+
+        foreach ($contactEntries as $entry) {
+            if (!empty($entry['is_active'])) {
+                $activeContactCount++;
+            }
+            if (!empty($entry['is_remote'])) {
+                $remoteContactCount++;
+            }
+
+            $channelKey = (string) ($entry['support_channel'] ?? 'phone');
+            if (!isset($channelStats[$channelKey])) {
+                $channelStats[$channelKey] = [
+                    'label' => $contactChannels[$channelKey] ?? 'نامشخص',
+                    'count' => 0,
+                    'active' => 0,
+                ];
+            }
+            $channelStats[$channelKey]['count']++;
+            if (!empty($entry['is_active'])) {
+                $channelStats[$channelKey]['active']++;
+            }
+        }
+
+        $supportHighlights = [
+            'total' => $totalContactCount,
+            'active' => $activeContactCount,
+            'inactive' => max($totalContactCount - $activeContactCount, 0),
+            'remote' => $remoteContactCount,
+        ];
+
+        include __DIR__ . '/../Views/home/support/index.php';
+    }
+
     public function profile(): void
     {
         AuthHelper::startSession();
@@ -4750,23 +4864,6 @@ class HomeController {
                 $pdo->commit();
             }
 
-            AuthHelper::startSession();
-
-            if (isset($_SESSION['course_exam_progress'][$organizationId][$courseId][$toolId])) {
-                unset($_SESSION['course_exam_progress'][$organizationId][$courseId][$toolId]);
-
-                if (empty($_SESSION['course_exam_progress'][$organizationId][$courseId])) {
-                    unset($_SESSION['course_exam_progress'][$organizationId][$courseId]);
-                }
-
-                if (empty($_SESSION['course_exam_progress'][$organizationId])) {
-                    unset($_SESSION['course_exam_progress'][$organizationId]);
-                }
-
-                if (empty($_SESSION['course_exam_progress'])) {
-                    unset($_SESSION['course_exam_progress']);
-                }
-            }
             return true;
         } catch (Exception $exception) {
             try {

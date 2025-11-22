@@ -134,6 +134,17 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
         font-weight: 600;
         margin-bottom: 12px;
     }
+
+    .course-competency-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+    }
+
+    .course-competency-tags .course-category {
+        margin-bottom: 0;
+    }
     
     .course-title {
         font-size: 18px;
@@ -149,6 +160,7 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
         line-height: 1.6;
         margin-bottom: 16px;
         display: -webkit-box;
+        line-clamp: 2;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
@@ -478,6 +490,15 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                         $title = htmlspecialchars((string) ($course['title'] ?? 'بدون عنوان'), ENT_QUOTES, 'UTF-8');
                         $description = htmlspecialchars((string) ($course['description'] ?? ''), ENT_QUOTES, 'UTF-8');
                         $category = htmlspecialchars((string) ($course['category'] ?? 'عمومی'), ENT_QUOTES, 'UTF-8');
+                        $competencyTitles = [];
+                        if (!empty($course['competency_titles']) && is_array($course['competency_titles'])) {
+                            foreach ($course['competency_titles'] as $competencyTitle) {
+                                $titleText = trim((string) $competencyTitle);
+                                if ($titleText !== '') {
+                                    $competencyTitles[] = htmlspecialchars($titleText, ENT_QUOTES, 'UTF-8');
+                                }
+                            }
+                        }
                         $status = (string) ($course['status'] ?? 'draft');
                         $statusLabel = $statusLabels[$status] ?? 'نامشخص';
                         $statusColor = $statusColors[$status] ?? 'secondary';
@@ -504,7 +525,15 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                             </div>
                             
                             <div class="course-body">
-                                <span class="course-category"><?= $category; ?></span>
+                                <?php if (!empty($competencyTitles)): ?>
+                                    <div class="course-competency-tags">
+                                        <?php foreach ($competencyTitles as $competencyTitle): ?>
+                                            <span class="course-category"><?= $competencyTitle; ?></span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="course-category"><?= $category; ?></span>
+                                <?php endif; ?>
                                 <h3 class="course-title"><?= $title; ?></h3>
                                 <?php if (!empty($description)): ?>
                                     <p class="course-description"><?= $description; ?></p>

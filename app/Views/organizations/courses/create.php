@@ -11,6 +11,9 @@ include __DIR__ . '/../../layouts/organization-sidebar.php';
 
 $navbarUser = $user;
 include __DIR__ . '/../../layouts/organization-navbar.php';
+
+$competencies = isset($competencies) && is_array($competencies) ? $competencies : [];
+$selectedCourseCompetencyIds = isset($selectedCourseCompetencyIds) && is_array($selectedCourseCompetencyIds) ? $selectedCourseCompetencyIds : [];
 ?>
 
 <style>
@@ -212,6 +215,46 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
     .persian-datepicker .day.today {
         border: 2px solid #667eea;
     }
+
+    .competency-checklist-container {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 16px;
+        background: #f8fafc;
+    }
+
+    .competency-checklist {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+        max-height: 260px;
+        overflow-y: auto;
+    }
+
+    .competency-check-item {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.95rem;
+        color: #0f172a;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .competency-check-item input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .competency-check-item:hover {
+        border-color: #94a3b8;
+        box-shadow: 0 4px 12px rgba(148, 163, 184, 0.25);
+    }
 </style>
 
 <div class="page-content-wrapper">
@@ -251,13 +294,43 @@ include __DIR__ . '/../../layouts/organization-navbar.php';
                             <div class="form-hint">توضیحات کامل و جذاب برای دوره خود بنویسید</div>
                         </div>
                         
-                        <div class="col-md-6">
-                            <label class="form-label">دسته‌بندی</label>
-                            <input type="text" name="category" class="form-control" placeholder="مثال: مدیریت، فناوری، مهارت‌های نرم">
-                            <div class="form-hint">دسته‌بندی برای گروه‌بندی دوره‌ها</div>
+                        <div class="col-12 col-lg-6">
+                            <label class="form-label d-flex align-items-center justify-content-between gap-2">
+                                <span>شایستگی‌ها</span>
+                                <?php if (!empty($competencies)): ?>
+                                    <span class="badge bg-light text-secondary"><?= htmlspecialchars(UtilityHelper::englishToPersian((string) count($competencies)), ENT_QUOTES, 'UTF-8'); ?> مورد در دسترس</span>
+                                <?php endif; ?>
+                            </label>
+                            <?php if (!empty($competencies)): ?>
+                                <div class="competency-checklist-container">
+                                    <div class="competency-checklist">
+                                        <?php foreach ($competencies as $competency):
+                                            $competencyId = (int) ($competency['id'] ?? 0);
+                                            if ($competencyId <= 0) {
+                                                continue;
+                                            }
+                                            $title = trim((string) ($competency['title'] ?? ''));
+                                            $title = $title !== '' ? $title : 'بدون عنوان';
+                                            $isChecked = in_array($competencyId, $selectedCourseCompetencyIds, true);
+                                        ?>
+                                            <label class="competency-check-item">
+                                                <input type="checkbox" name="competency_ids[]" value="<?= htmlspecialchars((string) $competencyId, ENT_QUOTES, 'UTF-8'); ?>" <?= $isChecked ? 'checked' : ''; ?>>
+                                                <span><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8'); ?></span>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <div class="form-hint">با انتخاب چند شایستگی، دوره با مهارت‌های مدنظر پیوند می‌خورد.</div>
+                            <?php else: ?>
+                                <div class="alert alert-warning mb-0">
+                                    هنوز شایستگی‌ای برای سازمان شما ثبت نشده است. ابتدا از طریق
+                                    <a href="<?= UtilityHelper::baseUrl('organizations/competencies/create'); ?>" class="alert-link">ایجاد شایستگی جدید</a>
+                                    موارد موردنیاز را اضافه کنید.
+                                </div>
+                            <?php endif; ?>
                         </div>
-                        
-                        <div class="col-md-6">
+
+                        <div class="col-12 col-lg-6">
                             <label class="form-label">نام مدرس</label>
                             <input type="text" name="instructor_name" class="form-control" placeholder="نام مدرس یا تیم تدریس">
                         </div>

@@ -4,6 +4,7 @@ $routes = [
     // GET Routes
     'GET:/' => ['controller' => 'HomeController', 'method' => 'index'],
     'GET:/home' => ['controller' => 'HomeController', 'method' => 'index'],
+    'GET:/home/support' => ['controller' => 'HomeController', 'method' => 'supportCenter'],
     'GET:/profile' => ['controller' => 'HomeController', 'method' => 'profile'],
     'GET:/login' => ['controller' => 'UserController', 'method' => 'showLogin'],
     'GET:/user/login' => ['controller' => 'UserController', 'method' => 'showLogin'],
@@ -129,12 +130,15 @@ $routes = [
     'POST:/tests/course-exam' => ['controller' => 'HomeController', 'method' => 'courseExam'],
     'GET:/courses/personal-development' => ['controller' => 'HomeController', 'method' => 'personalDevelopmentCourses'],
     'POST:/courses/lessons/progress' => ['controller' => 'HomeController', 'method' => 'updateCourseLessonProgress'],
+    'GET:/organizations/contact-info' => ['controller' => 'OrganizationController', 'method' => 'contactInfo'],
+    'GET:/organizations/support' => ['controller' => 'OrganizationController', 'method' => 'organizationSupport'],
     'POST:/profile' => ['controller' => 'HomeController', 'method' => 'updateProfile'],
     
     // POST Routes
     'POST:/login' => ['controller' => 'UserController', 'method' => 'handleLogin'],
     'POST:/user/login' => ['controller' => 'UserController', 'method' => 'handleLogin'],
     'POST:/user/register' => ['controller' => 'UserController', 'method' => 'handleRegister'],
+    'POST:/organizations/contact-info' => ['controller' => 'OrganizationController', 'method' => 'contactInfo'],
     'POST:/organizations/login' => ['controller' => 'OrganizationAuthController', 'method' => 'handleLogin'],
     'POST:/organizations/users' => ['controller' => 'OrganizationController', 'method' => 'storeOrganizationUser'],
     'POST:/organizations/users/import' => ['controller' => 'OrganizationController', 'method' => 'importOrganizationUsers'],
