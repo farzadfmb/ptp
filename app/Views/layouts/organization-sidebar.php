@@ -143,11 +143,11 @@ $organizationSidebarMenu = [
         'icon' => 'call-sharp',
         'route' => 'organizations/contact-info',
     ],
-    [
-        'title' => 'پشتیبانی',
-        'icon' => 'headset-sharp',
-        'route' => 'organizations/support',
-    ],
+    // [
+    //     'title' => 'پشتیبانی',
+    //     'icon' => 'headset-sharp',
+    //     'route' => 'organizations/support',
+    // ],
     [
         'title' => 'مدیریت سازمان',
         'icon' => 'briefcase-sharp',

@@ -16,33 +16,96 @@ class UtilityHelper
      */
     public static function baseUrl($path = '')
     {
-        static $baseUrl = null;
-        
-        if ($baseUrl === null) {
+        static $cachedBaseUrl = null;
+        static $cachedSignature = null;
+
+        $configuredBaseUrl = self::getConfiguredBaseUrl();
+
+        if ($configuredBaseUrl !== null) {
+            $resolvedBaseUrl = rtrim($configuredBaseUrl, '/');
+        } else {
             $protocol = self::getProtocol();
-            $host = $_SERVER['HTTP_HOST'];
-            
-            // Get the directory where index.php is located
-            $scriptName = $_SERVER['SCRIPT_NAME'];
-            $requestUri = $_SERVER['REQUEST_URI'];
-            
-            // If we're accessing through a subdirectory (like /ptp/)
+            $host = self::detectHost();
+            $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
             $baseDir = '';
-            if (strpos($scriptName, '/index.php') !== false) {
+
+            if ($scriptName !== '' && strpos($scriptName, '/index.php') !== false) {
                 $baseDir = dirname($scriptName);
                 if ($baseDir === '/' || $baseDir === '\\') {
                     $baseDir = '';
                 }
             }
-            
-            $baseUrl = "$protocol://$host$baseDir";
+
+            $resolvedBaseUrl = rtrim(sprintf('%s://%s%s', $protocol, $host, $baseDir), '/');
         }
-        
-        if ($path) {
-            return rtrim($baseUrl, '/') . '/' . ltrim($path, '/');
+
+        $currentSignature = $resolvedBaseUrl;
+        if ($cachedBaseUrl === null || $cachedSignature !== $currentSignature) {
+            $cachedBaseUrl = $resolvedBaseUrl;
+            $cachedSignature = $currentSignature;
         }
-        
-        return rtrim($baseUrl, '/');
+
+        if ($path !== '') {
+            return $cachedBaseUrl . '/' . ltrim($path, '/');
+        }
+
+        return $cachedBaseUrl;
+    }
+
+    private static function getConfiguredBaseUrl(): ?string
+    {
+        static $configBaseUrl = false;
+
+        if ($configBaseUrl !== false) {
+            return $configBaseUrl ?: null;
+        }
+
+        $appConfigPath = __DIR__ . '/../../config/app.php';
+        if (file_exists($appConfigPath)) {
+            $config = include $appConfigPath;
+            if (is_array($config)) {
+                $url = $config['url'] ?? null;
+                if (is_string($url) && $url !== '') {
+                    $configBaseUrl = rtrim($url, '/');
+                    return $configBaseUrl;
+                }
+            }
+        }
+
+        $envUrl = $_ENV['APP_URL'] ?? $_SERVER['APP_URL'] ?? getenv('APP_URL');
+        if (is_string($envUrl) && $envUrl !== '') {
+            $configBaseUrl = rtrim($envUrl, '/');
+            return $configBaseUrl;
+        }
+
+        $configBaseUrl = '';
+        return null;
+    }
+
+    private static function detectHost(): string
+    {
+        $forwardedHostHeader = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? '';
+        if ($forwardedHostHeader !== '') {
+            $hosts = array_map('trim', explode(',', $forwardedHostHeader));
+            $host = end($hosts);
+            if ($host !== '') {
+                return $host;
+            }
+        }
+
+        if (!empty($_SERVER['HTTP_HOST'])) {
+            return $_SERVER['HTTP_HOST'];
+        }
+
+        if (!empty($_SERVER['SERVER_NAME'])) {
+            return $_SERVER['SERVER_NAME'];
+        }
+
+        if (!empty($_SERVER['SERVER_ADDR'])) {
+            return $_SERVER['SERVER_ADDR'];
+        }
+
+        return 'localhost';
     }
     
     /**
@@ -50,15 +113,52 @@ class UtilityHelper
      */
     public static function getProtocol()
     {
-        if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
-            return 'https';
+        if (isset($_SERVER['HTTPS'])) {
+            $httpsValue = strtolower((string) $_SERVER['HTTPS']);
+            if (in_array($httpsValue, ['on', '1', 'true'], true)) {
+                return 'https';
+            }
         }
-        
-        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
-            return 'https';
+
+        $forwardedHeaders = [
+            'HTTP_X_FORWARDED_PROTO',
+            'HTTP_X_FORWARDED_SCHEME',
+            'HTTP_REQUEST_SCHEME',
+        ];
+        foreach ($forwardedHeaders as $headerKey) {
+            if (!isset($_SERVER[$headerKey])) {
+                continue;
+            }
+            $forwardedValue = strtolower(trim((string) $_SERVER[$headerKey]));
+            if ($forwardedValue === '') {
+                continue;
+            }
+
+            $protoParts = array_map('trim', explode(',', $forwardedValue));
+            if (in_array('https', $protoParts, true)) {
+                return 'https';
+            }
         }
-        
-        if (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443) {
+
+        if (isset($_SERVER['HTTP_X_FORWARDED_SSL'])) {
+            $forwardedSsl = strtolower((string) $_SERVER['HTTP_X_FORWARDED_SSL']);
+            if (in_array($forwardedSsl, ['on', '1', 'true'], true)) {
+                return 'https';
+            }
+        }
+
+        if (isset($_SERVER['HTTP_CF_VISITOR'])) {
+            $cfVisitor = trim((string) $_SERVER['HTTP_CF_VISITOR']);
+            $decoded = json_decode($cfVisitor, true);
+            if (is_array($decoded)) {
+                $scheme = strtolower((string) ($decoded['scheme'] ?? ''));
+                if ($scheme === 'https') {
+                    return 'https';
+                }
+            }
+        }
+
+        if (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
             return 'https';
         }
         
